@@ -154,6 +154,10 @@ from formats import sibling_archives as _sibling_archives
 # xvr_codec.py is still the canonical reference and remains the
 # canonical *rebuild* path (the round-trip md5-splice logic lives there).
 from formats import xvr_decode as _xvr_decode
+# In-process PRS (Sega LZ77) decompressor — verified byte-exact against
+# newserv/libpsoarchive. Replaces the dead PuyoToolsCli.exe subprocess on the
+# .prs tile path (every .prs texture was 500ing on the missing binary).
+from formats import prs as _prs
 # Sculpt deltas (2026-04-25). Per-vertex displacement persistence + brush
 # math (encode/decode + apply_displacement_to_payload). The frontend
 # does the live-stroke math itself; the server only handles save / fetch.
@@ -1519,12 +1523,17 @@ def extract_tiles(prs_path: Path) -> dict:
 
         is_prs = prs_path.suffix.lower() == ".prs"
         if is_prs:
-            # PuyoToolsCli works best when invoked from cwd, with bare filename
-            sh(
-                [PUYO, "compression", "decompress", "--overwrite", "-i", prs_path.name],
-                cwd=cdir,
-                timeout=TIMEOUT_PUYO,
-            )
+            # In-process PRS decompress (formats.prs, verified byte-exact) —
+            # replaces the dead PuyoToolsCli.exe subprocess that made every
+            # .prs texture 500 on a missing binary. Decompress in place so the
+            # magic-sniff + decode below sees the inner XVMH/PVRT/PACD/etc.
+            try:
+                _dec = _prs.decompress(work_prs.read_bytes())
+                work_prs.write_bytes(_dec)
+            except Exception as e:  # noqa: BLE001 — surface a clean 502
+                raise HTTPException(
+                    502, f"PRS decompress failed for {prs_path.name}: {e}"
+                ) from e
         # else: .xvm has no PRS layer
 
         tiles_dir = cdir / "tiles"
