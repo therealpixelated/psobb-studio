@@ -174,3 +174,12 @@ def get_layout(filename: str) -> Optional[dict]:
 def has_layout(filename: str) -> bool:
     """True if the given filename has a known atlas layout."""
     return filename in ATLAS_LAYOUTS
+
+
+def known_filenames() -> list[str]:
+    """Sorted list of every filename that has a known atlas layout.
+
+    The frontend fetches this once so it can skip probing ``/api/atlas/<f>``
+    for files with no layout (which would otherwise 404 on every texture
+    open and spam the console)."""
+    return sorted(ATLAS_LAYOUTS.keys())

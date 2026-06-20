@@ -5544,6 +5544,18 @@ def _slice_composite_to_tiles(
     }
 
 
+@app.get("/api/atlas_layouts")
+def api_atlas_layouts():
+    """List every filename that has a known atlas layout.
+
+    Returns ``{"filenames": ["LogoEP4.prs", ...]}`` (always 200). The
+    frontend fetches this once and only probes ``/api/atlas/<file>`` for
+    members, so a normal texture open no longer triggers a 404 on the
+    atlas-availability check.
+    """
+    return {"filenames": atlas_layouts.known_filenames()}
+
+
 @app.get("/api/atlas/{filename}")
 def api_atlas(filename: str):
     """Return the assembled composite image + layout metadata for a file.

@@ -2742,6 +2742,29 @@ async function importSession(file) {
 // existing repack pipeline picks it up unchanged.
 // =====================================================================
 
+// Cache of filenames that actually have an atlas layout (fetched once
+// from /api/atlas_layouts). Lets refreshAtlasAvailability() skip probing
+// /api/atlas/<f> for files with no layout — which 404'd on every texture
+// open and spammed the console. null = not yet fetched.
+let _atlasKnownSet = null;
+let _atlasKnownPromise = null;
+async function _getAtlasKnownSet() {
+  if (_atlasKnownSet) return _atlasKnownSet;
+  if (_atlasKnownPromise) return _atlasKnownPromise;
+  _atlasKnownPromise = (async () => {
+    try {
+      const data = await api("/api/atlas_layouts");
+      _atlasKnownSet = new Set((data && data.filenames) || []);
+    } catch (_e) {
+      // Endpoint missing/old server — fall back to an empty set so we
+      // simply never probe (no atlas toggle, but also no 404 spam).
+      _atlasKnownSet = new Set();
+    }
+    return _atlasKnownSet;
+  })();
+  return _atlasKnownPromise;
+}
+
 async function refreshAtlasAvailability() {
   // Probe /api/atlas/{filename} for the current file. 200 -> show the toggle
   // (default ON), 404 -> hide it (and force atlasMode off).
@@ -2755,6 +2778,20 @@ async function refreshAtlasAvailability() {
     return;
   }
   const fname = state.currentFile.name;
+  // Skip the probe entirely for files with no known atlas layout — this is
+  // the common case (only a handful of UI splash files have layouts) and
+  // probing them returns 404, which the browser logs to the console even
+  // though we catch it. Consult the cached known-atlas set first.
+  const known = await _getAtlasKnownSet();
+  if (known && !known.has(fname)) {
+    wrap.hidden = true;
+    state.atlasMode = false;
+    state.atlasState = null;
+    if ($("#atlasModeToggle")) $("#atlasModeToggle").checked = false;
+    wrap.classList.remove("atlas-active");
+    refreshAtlasView();
+    return;
+  }
   try {
     const data = await api(`/api/atlas/${encodeURIComponent(fname)}`);
     state.atlasState = {

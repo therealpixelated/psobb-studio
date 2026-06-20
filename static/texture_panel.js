@@ -149,6 +149,73 @@
         border-color: #00ffff;
         color: #00ffff;
       }
+
+      /* ---- tab overflow ("more ▾") ---- */
+      .pso-tex-tab-overflow {
+        position: relative;
+        flex: 0 0 auto;
+        display: inline-flex;
+      }
+      .pso-tex-tab-more {
+        background: transparent;
+        border: 1px solid #2a313a;
+        color: #99a4b3;
+        cursor: pointer;
+        padding: 3px 8px;
+        font: inherit;
+        font-size: 10.5px;
+        border-radius: 2px;
+        white-space: nowrap;
+      }
+      .pso-tex-tab-more:hover {
+        border-color: #4a90e2;
+        color: #c7d8ec;
+      }
+      .pso-tex-tab-more.has-active {
+        background: rgba(0, 255, 255, 0.12);
+        border-color: #00ffff;
+        color: #00ffff;
+      }
+      .pso-tex-tab-overflow-menu {
+        position: absolute;
+        top: calc(100% + 3px);
+        right: 0;
+        z-index: 12;
+        min-width: 130px;
+        background: rgba(12, 16, 22, 0.98);
+        border: 1px solid #2a313a;
+        border-radius: 3px;
+        padding: 3px;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
+      }
+      .pso-tex-tab-overflow-menu[hidden] { display: none; }
+      .pso-tex-tab-overflow-menu button {
+        flex: 0 0 auto;
+        width: 100%;
+        text-align: left;
+        background: transparent;
+        border: 1px solid transparent;
+        color: #99a4b3;
+        cursor: pointer;
+        padding: 4px 8px;
+        font: inherit;
+        font-size: 10.5px;
+        border-radius: 2px;
+      }
+      .pso-tex-tab-overflow-menu button:hover {
+        border-color: #4a90e2;
+        color: #c7d8ec;
+        background: rgba(74, 144, 226, 0.10);
+      }
+      .pso-tex-tab-overflow-menu button.active {
+        background: rgba(0, 255, 255, 0.12);
+        border-color: #00ffff;
+        color: #00ffff;
+      }
+
       .pso-tex-panel-body {
         flex: 1;
         overflow-y: auto;
@@ -591,17 +658,60 @@
   // Per-tile state pip cache.
   const status = new Map(); // tile_index -> { state, msg }
 
+  // ---- perspective gating (overlap fix, 2026-06-20) ------------------
+  // The texture panel + variant strip are scenery for the 3D-view (and
+  // viewport-paint) perspectives ONLY. Other perspectives — map-editor,
+  // floor-editor — ALSO relocate the shared .model-stage into their own
+  // viewport host (#mapViewport / #floorViewport). Without this gate,
+  // texture_panel.js's perspective.switched handler would re-mount the
+  // absolutely-positioned panel into THAT relocated .model-stage and it
+  // would render on top of the map/floor sidebar + viewport (the green
+  // "Model assets" panel overlap bug).
+  //
+  // We only ever mount into a .model-stage that lives inside one of these
+  // allowed hosts, and we proactively detach when the active perspective
+  // is anything else.
+  const TEXTURE_PANEL_PERSPECTIVES = new Set(["3d-view", "viewport-paint"]);
+
+  function activePerspectiveName() {
+    // Source of truth set by perspectives.js on every switchTo().
+    return (document.body && document.body.dataset &&
+            document.body.dataset.psoActivePerspective) || null;
+  }
+
+  function perspectiveWantsTexturePanel() {
+    // Classic-modal mode (body without .unified-viewport-mode) has no
+    // perspective concept — the panel belongs to #modelModal there.
+    if (!document.body.classList.contains("unified-viewport-mode")) return true;
+    const name = activePerspectiveName();
+    // No perspective active yet (initial load) — defer to the model-stage
+    // discovery below, which only resolves a stage when one legitimately
+    // exists in #modelModal / .vp-stage-3d.
+    if (!name) return true;
+    return TEXTURE_PANEL_PERSPECTIVES.has(name);
+  }
+
+  // The ONLY DOM locations the panel is allowed to live in: the 3d-view
+  // stage wrapper (unified mode) or #modelModal (classic mode). We do NOT
+  // fall back to a bare ".model-stage" — that selector also matches the
+  // stage after map/floor relocate it into their own viewport, which is
+  // exactly the overlap we are preventing.
+  function findAllowedModelStage() {
+    return document.querySelector(".vp-stage-3d .model-stage")
+      || document.querySelector("#modelModal .model-stage");
+  }
+
   function ensurePanelDom() {
     ensureStyleInjected();
-    if (panel && panel.isConnected) return panel;
-    // Find the active .model-stage. perspectives.js relocates it
-    // between #modelModal and #vpStage > .vp-stage-3d depending on
-    // whether the user is in classic-modal mode or unified-viewport mode.
-    // We accept whichever is currently in the DOM.
-    const stage = document.querySelector(".vp-stage-3d .model-stage")
-      || document.querySelector("#modelModal .model-stage")
-      || document.querySelector(".model-stage");
-    if (!stage) return null;
+    if (!perspectiveWantsTexturePanel()) { detachPanel(); return null; }
+    const stage = findAllowedModelStage();
+    if (!stage) { detachPanel(); return null; }
+    if (panel && panel.isConnected) {
+      // If the panel drifted onto a stale stage (e.g. the model-stage was
+      // relocated), re-home it onto the allowed stage.
+      if (panel.parentElement !== stage) stage.appendChild(panel);
+      return panel;
+    }
     if (panel && !panel.isConnected) {
       stage.appendChild(panel);
       return panel;
@@ -629,6 +739,17 @@
     `;
     stage.appendChild(panel);
     panel.addEventListener("click", onPanelClick);
+    // Replay any external tab buttons (sculpt/material/paint/…) that were
+    // registered before this (re)build so they survive a teardown.
+    reinstallExternalTabButtons();
+    // Signal panels that inject their own tab DOM directly (paint_panel.js)
+    // so they can re-attach to the freshly-built tab strip. Those panels
+    // append a button synchronously in their handler, so re-flow once more
+    // afterwards to fold any newly-added tab into the overflow menu.
+    if (window.bus && typeof window.bus.emit === "function") {
+      try { window.bus.emit("texture-panel.rebuilt", {}); } catch (_e) {}
+    }
+    reflowTabs();
     return panel;
   }
 
@@ -717,11 +838,12 @@
   let activeVariantIdx = -1;
 
   function ensureVariantStripDom() {
-    // Same active-stage discovery rule as ensurePanelDom().
-    const stage = document.querySelector(".vp-stage-3d .model-stage")
-      || document.querySelector("#modelModal .model-stage")
-      || document.querySelector(".model-stage");
-    if (!stage) return null;
+    // Same active-stage discovery + perspective gate as ensurePanelDom():
+    // never mount onto a .model-stage that map/floor relocated into their
+    // own viewport, or the strip overlaps the same way the panel did.
+    if (!perspectiveWantsTexturePanel()) { detachVariantStrip(); return null; }
+    const stage = findAllowedModelStage();
+    if (!stage) { detachVariantStrip(); return null; }
     if (variantStrip && variantStrip.isConnected) {
       // Move the strip if its parent is no longer the active stage
       // (perspective switch leaves the strip on the old DOM tree
@@ -862,7 +984,16 @@
   function onPanelClick(ev) {
     const t = ev.target;
     if (!t) return;
-    const act = t.getAttribute && t.getAttribute("data-act");
+    // Resolve the nearest actionable element (clicks can land on inner
+    // text nodes / spans of a button).
+    const actEl = t.closest && t.closest("[data-act]");
+    const act = actEl && actEl.getAttribute("data-act");
+    if (act === "tab-more") {
+      ev.preventDefault();
+      ev.stopPropagation();
+      toggleTabOverflowMenu();
+      return;
+    }
     if (act === "collapse") {
       panel.classList.toggle("collapsed");
       return;
@@ -879,12 +1010,17 @@
       });
       return;
     }
-    const tab = t.getAttribute && t.getAttribute("data-tab");
+    const tabEl = t.closest && t.closest("button[data-tab]");
+    const tab = tabEl && tabEl.getAttribute("data-tab");
     if (tab) {
       activeTab = tab;
-      const tabs = panel.querySelectorAll(".pso-tex-panel-tabs button");
+      const tabs = panel.querySelectorAll(".pso-tex-panel-tabs button[data-tab]");
       tabs.forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
       renderActiveTab();
+      // Close the overflow menu and re-flow so the freshly-active tab is
+      // hoisted inline (and "more" un-highlights if it left the menu).
+      closeTabOverflowMenu();
+      reflowTabs();
       return;
     }
   }
@@ -1221,6 +1357,129 @@
   // (added 2026-04-25) so sculpt_panel.js owns its own body rendering
   // without us refactoring the existing built-in tabs.
   const _externalTabRenderers = new Map(); // tabName -> (bodyEl) => void
+  // Remember every external tab BUTTON definition (sculpt/material/paint/
+  // rig/anim-editor/edit/skeleton/uv …). External panels register their
+  // button exactly once at init via psoTexturePanelAddTabButton; the panel
+  // DOM, however, can be rebuilt from scratch (e.g. after the overlap-fix
+  // detach when leaving a 3D perspective, or on a model swap). We replay
+  // these on every rebuild so the extra tabs survive a teardown.
+  const _externalTabButtons = new Map(); // tabName -> { label, title }
+
+  // Re-add all remembered external tab buttons to a freshly-built tab
+  // strip. Called from ensurePanelDom right after the panel HTML is set.
+  function reinstallExternalTabButtons() {
+    if (!panel) return;
+    const tabs = panel.querySelector(".pso-tex-panel-tabs");
+    if (!tabs) return;
+    for (const [tabName, def] of _externalTabButtons) {
+      if (tabs.querySelector(`button[data-tab="${tabName}"]`)) continue;
+      const btn = document.createElement("button");
+      btn.dataset.tab = tabName;
+      if (def && def.title) btn.title = def.title;
+      btn.textContent = (def && def.label) || tabName;
+      tabs.appendChild(btn);
+    }
+    reflowTabs();
+  }
+
+  // ---- tab overflow ("more ▾") ---------------------------------------
+  // 12 tabs (Textures/Layers/Motions/Subdivide/Sculpt/Material/Paint/Rig/
+  // Anim Editor/Edit/Skeleton/UV) wrapped into a 3-row wall. Keep the
+  // common tabs inline and tuck the rest under a "more ▾" overflow menu.
+  // Reachability is preserved — every overflow item is a real tab button
+  // (same data-tab) that the existing click delegation already handles;
+  // we just relocate it into a popdown. The active tab is always hoisted
+  // inline so the user can see what's selected.
+  const PRIMARY_TABS = ["textures", "layers", "motions", "subdivide"];
+
+  function reflowTabs() {
+    if (!panel) return;
+    const tabs = panel.querySelector(".pso-tex-panel-tabs");
+    if (!tabs) return;
+
+    // Gather the real tab buttons (exclude our own overflow control).
+    let overflowWrap = tabs.querySelector(".pso-tex-tab-overflow");
+    const allBtns = Array.from(tabs.querySelectorAll("button[data-tab]"))
+      .filter((b) => !b.closest(".pso-tex-tab-overflow-menu"));
+    const menuBtns = overflowWrap
+      ? Array.from(overflowWrap.querySelectorAll("button[data-tab]"))
+      : [];
+    const buttons = allBtns.concat(menuBtns);
+    if (!buttons.length) return;
+
+    // Decide primary vs overflow. Primary = the fixed common set, PLUS the
+    // currently-active tab (so the selection is always visible inline).
+    const primary = [];
+    const overflow = [];
+    for (const b of buttons) {
+      const name = b.dataset.tab;
+      const isActive = name === activeTab || b.classList.contains("active");
+      if (PRIMARY_TABS.includes(name) || isActive) primary.push(b);
+      else overflow.push(b);
+    }
+
+    // If nothing overflows, drop the overflow control entirely and put all
+    // buttons back inline in a stable order.
+    if (!overflow.length) {
+      if (overflowWrap) overflowWrap.remove();
+      orderTabs(tabs, primary, []);
+      return;
+    }
+
+    // Build / reuse the overflow control.
+    if (!overflowWrap) {
+      overflowWrap = document.createElement("div");
+      overflowWrap.className = "pso-tex-tab-overflow";
+      overflowWrap.innerHTML =
+        '<button type="button" class="pso-tex-tab-more" ' +
+        'data-act="tab-more" aria-haspopup="true" aria-expanded="false" ' +
+        'title="more editors">more ▾</button>' +
+        '<div class="pso-tex-tab-overflow-menu" hidden></div>';
+    }
+    const menu = overflowWrap.querySelector(".pso-tex-tab-overflow-menu");
+
+    orderTabs(tabs, primary, []);
+    // The overflow control sits after the primary inline tabs.
+    tabs.appendChild(overflowWrap);
+    // Move overflow buttons into the menu (in stable order).
+    for (const b of overflow) menu.appendChild(b);
+
+    // Highlight the "more" control when the active tab lives inside it.
+    const moreBtn = overflowWrap.querySelector(".pso-tex-tab-more");
+    const activeInMenu = overflow.some((b) => b.dataset.tab === activeTab);
+    if (moreBtn) moreBtn.classList.toggle("has-active", activeInMenu);
+  }
+
+  // Place `inline` buttons directly inside the tab strip in a stable order
+  // (PRIMARY_TABS order first, then any extras by their existing order).
+  function orderTabs(tabs, inline, _unused) {
+    const ordered = inline.slice().sort((a, b) => {
+      const ia = PRIMARY_TABS.indexOf(a.dataset.tab);
+      const ib = PRIMARY_TABS.indexOf(b.dataset.tab);
+      const ra = ia === -1 ? 999 : ia;
+      const rb = ib === -1 ? 999 : ib;
+      return ra - rb;
+    });
+    for (const b of ordered) tabs.appendChild(b);
+  }
+
+  function closeTabOverflowMenu() {
+    if (!panel) return;
+    const menu = panel.querySelector(".pso-tex-tab-overflow-menu");
+    const more = panel.querySelector(".pso-tex-tab-more");
+    if (menu) menu.hidden = true;
+    if (more) more.setAttribute("aria-expanded", "false");
+  }
+
+  function toggleTabOverflowMenu() {
+    if (!panel) return;
+    const menu = panel.querySelector(".pso-tex-tab-overflow-menu");
+    const more = panel.querySelector(".pso-tex-tab-more");
+    if (!menu) return;
+    const open = menu.hidden;
+    menu.hidden = !open;
+    if (more) more.setAttribute("aria-expanded", open ? "true" : "false");
+  }
 
   function renderActiveTab() {
     if (!panel) return;
@@ -1249,8 +1508,19 @@
   };
 
   window.psoTexturePanelAddTabButton = function (tabName, label, title) {
+    // Remember the definition so we can replay it whenever the panel DOM
+    // is rebuilt (the overlap-fix detach + a model swap both null `panel`).
+    if (typeof tabName === "string" && tabName) {
+      _externalTabButtons.set(tabName, { label: label, title: title });
+    }
     ensurePanelDom();
-    if (!panel) return false;
+    if (!panel) {
+      // Panel not mountable right now (e.g. user is on a non-3D
+      // perspective). The button is remembered and will be installed by
+      // reinstallExternalTabButtons() on the next rebuild — treat as OK so
+      // the external panel's one-shot install loop stops retrying.
+      return true;
+    }
     const tabs = panel.querySelector(".pso-tex-panel-tabs");
     if (!tabs) return false;
     if (tabs.querySelector(`button[data-tab="${tabName}"]`)) return true;
@@ -1259,6 +1529,10 @@
     if (title) btn.title = title;
     btn.textContent = label || tabName;
     tabs.appendChild(btn);
+    // External tabs register over time (each panel polls independently);
+    // re-flow on every addition so they fold into the overflow menu
+    // instead of accumulating inline as the old multi-row wall.
+    reflowTabs();
     return true;
   };
 
@@ -1928,8 +2202,17 @@
     if (_refreshTimer) clearTimeout(_refreshTimer);
     _refreshTimer = setTimeout(() => {
       _refreshTimer = null;
-      // Re-attach panel to whichever .model-stage is currently mounted
-      // (perspectives.js relocates it between the modal and vp-stage).
+      // Overlap fix: if the active perspective is not a texture-panel
+      // host (e.g. map-editor / floor-editor relocated .model-stage into
+      // their own viewport), tear the panel + strip down instead of
+      // re-mounting them on top of that perspective's content.
+      if (!perspectiveWantsTexturePanel()) {
+        detachPanel();
+        return;
+      }
+      // Re-attach panel to whichever allowed .model-stage is currently
+      // mounted (perspectives.js relocates it between the modal and the
+      // 3d-view vp-stage).
       ensurePanelDom();
       ensureVariantStripDom();
       renderActiveTab();
@@ -2108,6 +2391,16 @@
 
   function init() {
     waitForOpener(Date.now() + 5000);
+    // Close the tab-overflow menu on any click outside it (or outside the
+    // "more ▾" toggle). Bound once.
+    document.addEventListener("click", (ev) => {
+      if (!panel) return;
+      const menu = panel.querySelector(".pso-tex-tab-overflow-menu");
+      if (!menu || menu.hidden) return;
+      const wrap = panel.querySelector(".pso-tex-tab-overflow");
+      if (wrap && wrap.contains(ev.target)) return; // handled by onPanelClick
+      closeTabOverflowMenu();
+    });
     // If the user is already on the 3D-view perspective when this
     // script loads, mount the panel right away. Otherwise it'll mount
     // on the next openByPath wrap.
@@ -2137,4 +2430,7 @@
 
   // Surface a manual refresh hook for tests + devtools.
   window.psoTexturePanelRefresh = scheduleRefresh;
+  // Public re-flow hook for panels that inject their own tab DOM directly
+  // (paint_panel.js) so they can fold their tab into the overflow menu.
+  window.psoTexturePanelReflowTabs = function () { try { reflowTabs(); } catch (_e) {} };
 })();

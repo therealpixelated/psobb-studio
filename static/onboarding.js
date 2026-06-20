@@ -106,18 +106,34 @@
     });
   }
 
+  // The onboarding pills mirror the asset-tree FILTER pills (tree.js
+  // TAB_FILTERS, minus the catch-all "All") so the walkthrough teaches the
+  // exact same vocabulary the user then sees in the tree. Each filter pill
+  // aggregates one or more manifest-enum categories.
+  var FILTER_PILLS = [
+    { label: "Models",   cats: ["model"] },
+    { label: "Textures", cats: ["texture", "container"] },
+    { label: "UI",       cats: ["ui"] },
+    { label: "Audio",    cats: ["audio"] },
+    { label: "Quests",   cats: ["quest"] },
+    { label: "Floors",   cats: ["map"] },
+  ];
+
   function catListHtml() {
     if (!liveCategories || !liveCategories.length) return "";
-    var top = liveCategories
-      .filter(function (c) { return c && c.count > 0; })
-      .slice(0, 8);
-    if (!top.length) return "";
-    var chips = top.map(function (c) {
+    var byName = {};
+    liveCategories.forEach(function (c) {
+      if (c && c.name) byName[c.name] = c.count || 0;
+    });
+    var chips = FILTER_PILLS.map(function (p) {
+      var n = p.cats.reduce(function (a, cat) { return a + (byName[cat] || 0); }, 0);
+      if (n <= 0) return "";
       return (
-        '<span class="ob-cat">' + esc(c.name) +
-        '<span class="ob-cat-n">' + c.count.toLocaleString() + "</span></span>"
+        '<span class="ob-cat">' + esc(p.label) +
+        '<span class="ob-cat-n">' + n.toLocaleString() + "</span></span>"
       );
-    }).join("");
+    }).filter(Boolean).join("");
+    if (!chips) return "";
     return '<div class="ob-cat-list">' + chips + "</div>";
   }
 

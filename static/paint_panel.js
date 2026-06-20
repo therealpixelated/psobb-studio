@@ -485,6 +485,11 @@
     btn.title = "UV-aware brush — click + drag on the model";
     btn.textContent = "Paint";
     tabs.appendChild(btn);
+    // Fold this newly-added tab into the texture panel's "more ▾" overflow
+    // (2026-06-20) instead of widening the inline tab wall.
+    if (typeof window.psoTexturePanelReflowTabs === "function") {
+      window.psoTexturePanelReflowTabs();
+    }
     return panel;
   }
 
@@ -2717,5 +2722,15 @@
     document.addEventListener("DOMContentLoaded", poll);
   } else {
     poll();
+  }
+
+  // The texture panel can be torn down + rebuilt when the user leaves a
+  // 3D perspective (overlap fix, 2026-06-20) — its tab strip loses the
+  // manually-injected Paint button. texture_panel.js emits this right
+  // after it (re)builds the panel DOM; re-install then. tryInstall() is
+  // idempotent (ensureTabButton skips when the button already exists,
+  // wireTabSwitch guards on a dataset flag).
+  if (window.bus && typeof window.bus.on === "function") {
+    window.bus.on("texture-panel.rebuilt", function () { tryInstall(); });
   }
 })();

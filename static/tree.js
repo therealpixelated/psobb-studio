@@ -610,6 +610,23 @@
       this._renderTree();
     }
 
+    // 2026-06-20: own the "All assets" pane-header coverage label so the
+    // header count matches the tree's actual top-level categories (the
+    // display buckets the user navigates), labelled "categories" to agree
+    // with the footer. Replaces asset_router.js's old enum-category writer
+    // that showed a different (manifest-enum) count under the same noun.
+    _updateCoverageHeader(allEntries) {
+      const el = document.getElementById("assetTreeCoverage");
+      if (!el) return;
+      let total = 0;
+      for (const e of allEntries) { if (e && !e.deprecated) total += 1; }
+      const { labels } = bucketEntries(
+        allEntries.filter((e) => e && !e.deprecated)
+      );
+      const n = labels.length;
+      el.textContent = `${total.toLocaleString()} entries · ${n} categor${n === 1 ? "y" : "ies"}`;
+    }
+
     _updateTabCounts(entries) {
       // Counts are computed against the canonical category enum so the
       // tab-strip filter (Models / Textures / Audio / Quests) lines up
@@ -1035,17 +1052,24 @@
       }
 
       // Status footer reflects: {shown of total} {tab scope} · "{query}"
-      // 2026-06-19 anti-slop: the tree buckets by *inferred display
-      // group* (Bosses/Enemies/...), of which there are ~20 — a DIFFERENT
-      // axis from the 11 canonical categories shown in the pane title.
-      // Call these "groups" so the two counts no longer read as a
-      // contradictory "11 vs 20 categories".
+      // 2026-06-20 taxonomy reconciliation: the tree is the user's primary
+      // navigation, and its top-level collapsible buckets (Bosses/Enemies/
+      // NPCs/…) ARE the "categories" the user browses. We label that count
+      // "categories" everywhere (footer here + the #assetTreeCoverage
+      // header below) so the UI tells ONE story instead of the old
+      // "10 categories (header) vs 20 groups (footer)" contradiction.
       const tabLbl = activeTab && activeTab.match ? ` · ${activeTab.label}` : "";
-      const bucketLbl = labels.length > 1 ? ` · ${labels.length} groups` : "";
+      const bucketLbl = labels.length > 1 ? ` · ${labels.length} categories` : "";
       this._statsEl.textContent = q
         ? `${totalShown} of ${totalEntries} shown${tabLbl}${bucketLbl} · "${q}"`
         : (tabAllow ? `${totalShown} of ${totalEntries} shown${tabLbl}${bucketLbl}`
                     : `${totalEntries} entries${bucketLbl}`);
+
+      // Single source of truth for the "All assets" pane-header coverage
+      // label (#assetTreeCoverage, light-DOM sibling of <pso-asset-tree>).
+      // Always reflects the FULL unfiltered taxonomy so the header stays
+      // stable while the footer tracks the active filter/search scope.
+      this._updateCoverageHeader(allEntries);
     }
   }
 

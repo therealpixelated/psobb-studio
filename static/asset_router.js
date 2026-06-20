@@ -876,19 +876,29 @@
 
   // ---- coverage label ------------------------------------------------
 
-  // Update the small "(N entries across M categories)" hint above the
-  // tree once the manifest is loaded. Keeps the user oriented even when
-  // the tree itself is collapsed/filtered.
+  // Coverage hint above the "All assets" tree.
+  //
+  // 2026-06-20 taxonomy reconciliation: tree.js (_updateCoverageHeader) is
+  // now the single source of truth for this label — it counts the tree's
+  // actual top-level categories (the display buckets the user navigates)
+  // and labels them "categories", matching the tree footer. We only write
+  // here as a FALLBACK when the tree component hasn't populated the label
+  // yet (e.g. manifest still loading), and we use the same "categories"
+  // noun. Using the manifest-enum count here previously produced a
+  // contradictory "10 categories (header) vs 20 groups (footer)".
   async function updateCoverageLabel() {
     const el = document.getElementById("assetTreeCoverage");
     if (!el) return;
+    // Defer to tree.js if it already wrote the label.
+    if (el.textContent && el.textContent.trim()) return;
     try {
       const r = await fetch("/api/manifest/categories", { cache: "no-store" });
       if (!r.ok) return;
       const data = await r.json();
+      // Re-check: tree.js may have populated the label while we awaited.
+      if (el.textContent && el.textContent.trim()) return;
       const total = data.total || 0;
-      const cats = (data.categories || []).length;
-      el.textContent = total + " entries · " + cats + " categories";
+      el.textContent = total.toLocaleString() + " entries";
     } catch (_e) {
       // silently degrade — not worth a toast
     }
