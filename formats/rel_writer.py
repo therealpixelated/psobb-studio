@@ -1100,19 +1100,42 @@ def _build_nrel_data(
     # Which nodes own geometry (one XjMesh each).
     geom_nodes = [i for i, nd in enumerate(nodes) if nd.submeshes]
 
+    # SHARED VERTEX BUFFERS: submeshes that reference the SAME vertex-list
+    # object (``id()`` identity — the stripified path reuses one array per
+    # source mesh across all its strips) emit a SINGLE VertexBufferContainer
+    # + a SINGLE on-disk vertex array.  Each submesh's IndexBufferContainer
+    # then points at the shared vbuf via ``vertex_buffer_index``.  This is
+    # the density win: K strips over one mesh write the vertex array ONCE,
+    # not K times.  The 1-tri-per-strip baseline gives every submesh a
+    # distinct 3-vertex list, so dedup is a no-op there (one vbuf each).
+    vbufs_for_node: dict = {}    # node_i -> list of vertex-list objects (unique)
+    sub_vbidx: dict = {}         # (node_i, sub_j) -> index into vbufs_for_node[i]
+    for i in geom_nodes:
+        uniq: List = []
+        seen: dict = {}          # id(vertex-list) -> vbuf index
+        for j, sm in enumerate(nodes[i].submeshes):
+            key = id(sm.vertices)
+            vb = seen.get(key)
+            if vb is None:
+                vb = len(uniq)
+                seen[key] = vb
+                uniq.append(sm.vertices)
+            sub_vbidx[(i, j)] = vb
+        vbufs_for_node[i] = uniq
+
     # R8 XjMesh structs.
     mesh_off: dict = {}
     for i in geom_nodes:
         mesh_off[i] = cursor
         cursor += NREL_XJ_MESH_SIZE
 
-    # R8a VertexBufferContainer[] — one per submesh per geom node.
+    # R8a VertexBufferContainer[] — one per UNIQUE vertex buffer per geom node.
     vbuf_off: dict = {}      # (node_i) -> base offset of its vbuf array
     vbuf_count: dict = {}
     for i in geom_nodes:
         vbuf_off[i] = cursor
-        vbuf_count[i] = len(nodes[i].submeshes)
-        cursor += NREL_VBUF_CONTAINER_SIZE * len(nodes[i].submeshes)
+        vbuf_count[i] = len(vbufs_for_node[i])
+        cursor += NREL_VBUF_CONTAINER_SIZE * len(vbufs_for_node[i])
 
     # R8b IndexBufferContainer[] — one per submesh per geom node.
     ibuf_off: dict = {}
@@ -1129,12 +1152,12 @@ def _build_nrel_data(
             rs_off[(i, j)] = cursor
             cursor += NREL_RSARGS_SIZE
 
-    # R9v raw vertex arrays — one per submesh.
-    varr_off: dict = {}
+    # R9v raw vertex arrays — one per UNIQUE vertex buffer.
+    varr_off: dict = {}      # (node_i, vbuf_k) -> offset
     for i in geom_nodes:
-        for j, sm in enumerate(nodes[i].submeshes):
-            varr_off[(i, j)] = cursor
-            cursor += NREL_VERTEX_STRIDE * len(sm.vertices)
+        for k, vl in enumerate(vbufs_for_node[i]):
+            varr_off[(i, k)] = cursor
+            cursor += NREL_VERTEX_STRIDE * len(vl)
 
     # R9i raw index arrays — one per submesh.
     iarr_off: dict = {}
@@ -1263,20 +1286,21 @@ def _build_nrel_data(
         ptr_locs.append(m_off + 0x0C)            # index_buffers_ptr FLAG
         # alpha_index_buffers_ptr null (count 0) -> NOT flagged.
 
-    # R8a: VertexBufferContainer[].
+    # R8a: VertexBufferContainer[] — one per UNIQUE vertex buffer.
     for i in geom_nodes:
-        for j, sm in enumerate(nodes[i].submeshes):
-            vb = vbuf_off[i] + j * NREL_VBUF_CONTAINER_SIZE
+        for k, vl in enumerate(vbufs_for_node[i]):
+            vb = vbuf_off[i] + k * NREL_VBUF_CONTAINER_SIZE
             struct.pack_into(
                 _NREL_VBUF_FMT, buf, vb,
                 NREL_VERTEX_FORMAT,
-                varr_off[(i, j)],
+                varr_off[(i, k)],
                 NREL_VERTEX_STRIDE,
-                len(sm.vertices),
+                len(vl),
             )
             ptr_locs.append(vb + 0x04)           # vertices_ptr FLAG
 
-    # R8b: IndexBufferContainer[] (vb_index == j, one strip per submesh).
+    # R8b: IndexBufferContainer[] — one per submesh; vertex_buffer_index
+    # points at the (possibly SHARED) deduped vbuf.
     for i in geom_nodes:
         for j, sm in enumerate(nodes[i].submeshes):
             ib = ibuf_off[i] + j * NREL_IBUF_CONTAINER_SIZE
@@ -1284,7 +1308,7 @@ def _build_nrel_data(
                 _NREL_IBUF_FMT, buf, ib,
                 rs_off[(i, j)], 1,               # renderstate_args_ptr + count
                 iarr_off[(i, j)], len(sm.indices),
-                j,                               # vertex_buffer_index
+                sub_vbidx[(i, j)],               # vertex_buffer_index (shared)
             )
             ptr_locs.append(ib + 0x00)           # renderstate_args_ptr FLAG (count>0)
             ptr_locs.append(ib + 0x08)           # indices_ptr FLAG
@@ -1301,12 +1325,12 @@ def _build_nrel_data(
             )
             # RenderStateArgs has no pointers.
 
-    # R9v: raw vertex arrays (vertex_format 3 stride 32).
+    # R9v: raw vertex arrays (vertex_format 3 stride 32) — one per UNIQUE vbuf.
     for i in geom_nodes:
-        for j, sm in enumerate(nodes[i].submeshes):
-            base = varr_off[(i, j)]
-            for k, v in enumerate(sm.vertices):
-                vo = base + k * NREL_VERTEX_STRIDE
+        for k, vl in enumerate(vbufs_for_node[i]):
+            base = varr_off[(i, k)]
+            for vi, v in enumerate(vl):
+                vo = base + vi * NREL_VERTEX_STRIDE
                 struct.pack_into("<3f", buf, vo,
                                  float(v.pos[0]), float(v.pos[1]), float(v.pos[2]))
                 struct.pack_into("<3f", buf, vo + 12,
@@ -1415,7 +1439,9 @@ def nrel_pointer_count(
       + 1   (static mesh-tree root_node_ptr)
       + per node:   1 mesh_ptr-if-geometry + 1 child-if + 1 sibling-if
       + per geom node: 2 (vertex_buffers_ptr + index_buffers_ptr)
-      + per submesh: 1 vbuf vertices_ptr + 2 ibuf (rs_ptr + indices_ptr)
+      + per UNIQUE vertex buffer: 1 vbuf vertices_ptr  (submeshes that share
+        one vertex-list object — the stripified path — share one vbuf)
+      + per submesh: 2 ibuf (rs_ptr + indices_ptr)
       + 1   texlist elements_ptr (if textured)
       + per name: 1 name_ptr
     """
@@ -1437,8 +1463,14 @@ def nrel_pointer_count(
         if not nd.submeshes:
             continue
         count += 2                   # XjMesh vertex_buffers_ptr + index_buffers_ptr
-        for _sm in nd.submeshes:
-            count += 1               # vbuf vertices_ptr
+        # Unique vertex buffers (deduped by vertex-list object identity, the
+        # same rule _build_nrel_data uses) each get one vertices_ptr.
+        seen_vb: set = set()
+        for sm in nd.submeshes:
+            key = id(sm.vertices)
+            if key not in seen_vb:
+                seen_vb.add(key)
+                count += 1           # vbuf vertices_ptr (one per unique buffer)
             count += 2               # ibuf rs_ptr + indices_ptr
     if has_tex:
         count += 1                   # texlist elements_ptr
@@ -1446,27 +1478,47 @@ def nrel_pointer_count(
     return count
 
 
-def nrel_nodes_from_meshes(
+def _mesh_local_vertices(
+    mesh, ox: float, oy: float, oz: float,
+) -> List[NrelVertex]:
+    """The mesh's full vertex list, chunk-local (``world - chunk_origin``)."""
+    return [
+        NrelVertex(
+            pos=(float(v.pos[0]) - ox, float(v.pos[1]) - oy, float(v.pos[2]) - oz),
+            normal=tuple(float(c) for c in v.normal),
+            uv=tuple(float(c) for c in v.uv),
+        )
+        for v in mesh.vertices
+    ]
+
+
+def nrel_submeshes_stripified(
     meshes: Sequence,
     *,
     chunk_origin: Tuple[float, float, float] = (0.0, 0.0, 0.0),
     texture_index_of=None,
-) -> List[NrelNode]:
-    """Convert world-space submeshes into a single-node authoring tree.
+    max_strip_len: Optional[int] = None,
+) -> List[NrelSubmesh]:
+    """Stripify each source mesh into ONE submesh PER STRIP over a SHARED array.
 
-    Each input ``mesh`` exposes ``vertices`` (``.pos`` / ``.normal`` /
-    ``.uv``), an ``indices`` triangle LIST, and ``material_id`` — the
-    ``formats.xj.XjMesh`` / ``extract_nrel_meshes`` shape.  Every input
-    triangle becomes one 3-index strip (its own submesh) so the
-    round-trip winding is exact (a 3-index strip ``[a,b,c]`` de-strips to
-    ``(a,b,c)`` with no parity flip).
+    The density win: instead of one submesh (VertexInfo+Strip+Material row
+    + 3 duplicated verts) per triangle, a source mesh emits ONE submesh per
+    triangle-STRIP, all sharing the mesh's FULL vertex array.  Long strips
+    coalesce many triangles, so the per-strip overhead amortises and no
+    vertex is duplicated — far more triangles fit under the 768 KB cap.
 
-    ``texture_index_of(material_id) -> int`` maps a source material id to
-    a texture-name index; defaults to identity (clamped to >= 0).  All
-    vertices are stored chunk-local: ``local = world - chunk_origin`` so
-    that ``extract_nrel_meshes`` (which adds the chunk origin back)
-    reproduces the world positions.
+    Strips are built by :func:`formats.strippify.stripify` (deterministic
+    greedy adjacency walk).  Winding may flip per triangle, but the reader's
+    ``_strip_to_triangles`` parity reproduces the same triangle VERTEX SET
+    (the correctness gate — compare unordered triples, not index order).
+
+    ``texture_id`` is per SOURCE MESH (one strip can only carry one texture
+    via its RenderStateArgs), matching ``nrel_nodes_from_meshes``.  A mesh
+    whose strips reference only a subset of its vertices still ships the full
+    shared array; ``extract_nrel_meshes`` compacts unused slots on re-parse.
     """
+    from formats.strippify import stripify
+
     ox, oy, oz = chunk_origin
 
     def _tex(mid: int) -> int:
@@ -1476,14 +1528,75 @@ def nrel_nodes_from_meshes(
 
     submeshes: List[NrelSubmesh] = []
     for mesh in meshes:
-        verts = [
-            NrelVertex(
-                pos=(float(v.pos[0]) - ox, float(v.pos[1]) - oy, float(v.pos[2]) - oz),
-                normal=tuple(float(c) for c in v.normal),
-                uv=tuple(float(c) for c in v.uv),
-            )
-            for v in mesh.vertices
-        ]
+        verts = _mesh_local_vertices(mesh, ox, oy, oz)
+        tex = _tex(getattr(mesh, "material_id", 0))
+        idx = list(mesh.indices)
+        n_tri = len(idx) // 3
+        if n_tri == 0:
+            continue
+        faces = [idx[t:t + 3] for t in range(0, n_tri * 3, 3)]
+        strips = stripify(faces, max_strip_len=max_strip_len)
+        for strip in strips:
+            if len(strip) < 3:
+                continue
+            submeshes.append(NrelSubmesh(
+                vertices=verts,        # SHARED full array (same object reuse)
+                indices=list(strip),   # u16 triangle-strip indices
+                texture_id=tex,
+            ))
+    return submeshes
+
+
+def nrel_nodes_from_meshes(
+    meshes: Sequence,
+    *,
+    chunk_origin: Tuple[float, float, float] = (0.0, 0.0, 0.0),
+    texture_index_of=None,
+    stripify: bool = True,
+    max_strip_len: Optional[int] = None,
+) -> List[NrelNode]:
+    """Convert world-space submeshes into a single-node authoring tree.
+
+    Each input ``mesh`` exposes ``vertices`` (``.pos`` / ``.normal`` /
+    ``.uv``), an ``indices`` triangle LIST, and ``material_id`` — the
+    ``formats.xj.XjMesh`` / ``extract_nrel_meshes`` shape.
+
+    With ``stripify=True`` (default) each source mesh is coalesced into long
+    triangle strips over a SHARED vertex array via
+    :func:`nrel_submeshes_stripified` — far fewer submeshes and no
+    per-triangle vertex duplication, so much more geometry fits the 768 KB
+    cap.  The round-trip triangle VERTEX SET is preserved (winding may flip;
+    the reader recomputes it) — compare unordered triples, never index order.
+
+    With ``stripify=False`` each input triangle becomes one 3-index strip
+    (its own 3-vertex submesh): the correctness BASELINE, where a 3-index
+    strip ``[a,b,c]`` de-strips to ``(a,b,c)`` with no parity flip.
+
+    ``texture_index_of(material_id) -> int`` maps a source material id to
+    a texture-name index; defaults to identity (clamped to >= 0).  All
+    vertices are stored chunk-local: ``local = world - chunk_origin`` so
+    that ``extract_nrel_meshes`` (which adds the chunk origin back)
+    reproduces the world positions.
+    """
+    if stripify:
+        submeshes = nrel_submeshes_stripified(
+            meshes,
+            chunk_origin=chunk_origin,
+            texture_index_of=texture_index_of,
+            max_strip_len=max_strip_len,
+        )
+        return [NrelNode(submeshes=submeshes)]
+
+    ox, oy, oz = chunk_origin
+
+    def _tex(mid: int) -> int:
+        if texture_index_of is not None:
+            return int(texture_index_of(mid))
+        return max(0, int(mid))
+
+    submeshes: List[NrelSubmesh] = []
+    for mesh in meshes:
+        verts = _mesh_local_vertices(mesh, ox, oy, oz)
         tex = _tex(getattr(mesh, "material_id", 0))
         idx = list(mesh.indices)
         for t in range(0, len(idx) - 2, 3):
@@ -1538,6 +1651,7 @@ __all__ = [
     "build_nrel_from_meshes",
     "nrel_pointer_count",
     "nrel_nodes_from_meshes",
+    "nrel_submeshes_stripified",
     "NREL_SIZE_BUDGET",
     "NREL_VERTEX_FORMAT",
     "NREL_VERTEX_STRIDE",

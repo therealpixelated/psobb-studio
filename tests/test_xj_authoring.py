@@ -409,12 +409,18 @@ def test_nrel_no_texture_list():
 
 
 def test_nrel_budget_edge():
-    """T6: over-budget builds raise; near-but-under builds succeed."""
-    # Build a mesh large enough to blow the 768 KB cap.  Each triangle
-    # submesh costs ~ (16 vbuf + 20 ibuf + 16 rs + 96 verts + 6 idx +
-    # node-relocs) -> a few hundred bytes; ~3000 tris overflows.
-    big_verts = [NrelVertex(pos=(float(i), 0.0, 0.0)) for i in range(3)]
-    sm = [NrelSubmesh(vertices=big_verts, indices=[0, 1, 2], texture_id=0)
+    """T6: over-budget builds raise; near-but-under builds succeed.
+
+    Each submesh carries its OWN vertex list (DISTINCT objects) so the
+    builder's shared-vertex-buffer dedup can't collapse them — this is the
+    genuine over-budget case (the 1-tri-per-strip baseline, where every
+    triangle owns 3 unique verts).  Each triangle submesh costs ~ (16 vbuf
+    + 20 ibuf + 16 rs + 96 verts + 6 idx + node-relocs) -> a few hundred
+    bytes; ~6000 tris overflows the 768 KB cap.
+    """
+    def _three():
+        return [NrelVertex(pos=(float(i), 0.0, 0.0)) for i in range(3)]
+    sm = [NrelSubmesh(vertices=_three(), indices=[0, 1, 2], texture_id=0)
           for _ in range(6000)]
     nodes = [NrelNode(submeshes=sm)]
     with pytest.raises(RelWriteError, match="budget"):
@@ -424,7 +430,7 @@ def test_nrel_budget_edge():
     assert len(out) > NREL_SIZE_BUDGET
 
     # A small model is comfortably under budget.
-    small = [NrelNode(submeshes=[NrelSubmesh(vertices=big_verts,
+    small = [NrelNode(submeshes=[NrelSubmesh(vertices=_three(),
                                              indices=[0, 1, 2], texture_id=0)])]
     assert len(build_nrel_from_meshes(small, [])) <= NREL_SIZE_BUDGET
 

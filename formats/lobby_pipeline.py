@@ -139,19 +139,28 @@ def load_and_merge(glb_path: Path):
     return V, U, F, model
 
 
-def author_nrel(V, F, texname: str, enforce: bool) -> bytes:
+# Author with the triangle-STRIP optimizer ON by default: one submesh per
+# coalesced strip over a SHARED vertex array (vs one 3-vertex submesh per
+# triangle).  This collapses the per-triangle VertexInfo/Strip/Material +
+# duplicated-vertex overhead, so far more geometry fits the 768 KB n.rel cap.
+# The round-trip triangle VERTEX SET is preserved (winding may flip; the
+# engine recomputes it from normals).  Set ``stripify=False`` only to author
+# the correctness baseline.
+def author_nrel(V, F, texname: str, enforce: bool, *, stripify: bool = True) -> bytes:
     N = _vertex_normals(V, F)
     shim = _MeshShim(V, N, V[:, :2] * 0.0, F)  # uv filled below
     return _rw.build_nrel_from_meshes(
-        _rw.nrel_nodes_from_meshes([shim]), [texname], enforce_budget=enforce
+        _rw.nrel_nodes_from_meshes([shim], stripify=stripify),
+        [texname], enforce_budget=enforce
     )
 
 
-def author_nrel_uv(V, U, F, texname: str, enforce: bool) -> bytes:
+def author_nrel_uv(V, U, F, texname: str, enforce: bool, *, stripify: bool = True) -> bytes:
     N = _vertex_normals(V, F)
     shim = _MeshShim(V, N, U, F)
     return _rw.build_nrel_from_meshes(
-        _rw.nrel_nodes_from_meshes([shim]), [texname], enforce_budget=enforce
+        _rw.nrel_nodes_from_meshes([shim], stripify=stripify),
+        [texname], enforce_budget=enforce
     )
 
 
@@ -163,10 +172,14 @@ def decimate_to_fit(V, U, F, budget: int, texname: str):
     returning. Raises SystemExit after 8 passes if it still won't fit — the
     server catches that and maps it to HTTP 422.
     """
+    # Try the FULL-resolution mesh first.  The triangle-strip optimizer
+    # (author_nrel_uv -> stripify) amortises the per-triangle overhead, so a
+    # mesh that would blow the cap at one-triangle-per-strip (~170 B/tri)
+    # often fits stripified (~20-30 B/tri) with NO decimation.  The loop
+    # below MEASURES the real authored size and only shrinks on a genuine
+    # overflow, so starting from the full mesh keeps the maximum triangle
+    # count the budget actually allows (the whole point of the optimizer).
     target = F.shape[0]
-    # First pass: an a-priori target from the measured ~170 B/triangle cost,
-    # leaving headroom; then verify+shrink against the real authored size.
-    target = min(target, max(64, budget // 200))
     cur_v, cur_u, cur_f = V, U, F
     for _ in range(8):
         if target < cur_f.shape[0]:
