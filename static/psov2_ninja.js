@@ -971,11 +971,15 @@ class NinjaModel {
         this.vcolors.push(bClr.r, bClr.g, bClr.b, bClr.a);
         this.vcolors.push(cClr.r, cClr.g, cClr.b, cClr.a);
 
-        // UV Values
+        // UV Values — V-flip (1 - v). psov2's UVs were authored for
+        // flipY=true (THREE's TextureLoader default / DashGL's PVR), but
+        // OUR tiles upload with flipY=false (PSOBB top-down V). Without
+        // this flip the textures — most visibly the face — render upside
+        // down. Flipping V here keeps the shared tile pipeline unchanged.
 
-        this.uv.push(a.uv.x, a.uv.y);
-        this.uv.push(b.uv.x, b.uv.y);
-        this.uv.push(c.uv.x, c.uv.y);
+        this.uv.push(a.uv.x, 1.0 - a.uv.y);
+        this.uv.push(b.uv.x, 1.0 - b.uv.y);
+        this.uv.push(c.uv.x, 1.0 - c.uv.y);
 
         // Skin Index
 
