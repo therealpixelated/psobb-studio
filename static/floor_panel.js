@@ -598,6 +598,10 @@
         state._escSuppressor = null;
       }
       closeCreateModal();
+      // Stop the shared render loop + cancel any pending one-shot so the
+      // viewer fully idles when we leave the floor editor (scene mode
+      // shares the model viewer's renderer; no continuous animator).
+      window.psoViewerStopLoop && window.psoViewerStopLoop();
       window.psoSceneClearMap && window.psoSceneClearMap();
       window.psoSceneResetEnvironment && window.psoSceneResetEnvironment();
       try {

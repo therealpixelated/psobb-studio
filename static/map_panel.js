@@ -949,6 +949,11 @@
         document.removeEventListener("keydown", state._escSuppressor, true);
         state._escSuppressor = null;
       }
+      // Stop the shared render loop + cancel any pending one-shot so the
+      // viewer fully idles when we leave the map tab (scene mode shares
+      // the model viewer's renderer and has no continuous animator of its
+      // own — without this the loop would keep running after unmount).
+      window.psoViewerStopLoop && window.psoViewerStopLoop();
       // Clear the loaded scene so it doesn't bleed into the next perspective.
       window.psoSceneClearMap && window.psoSceneClearMap();
       // Roll back per-area fog + lighting tweaks so the model viewer

@@ -59,6 +59,14 @@ const state = {
   mesh: null,                // active mesh group (real OR primitive)
   texture: null,
   rafId: null,
+  // On-demand render scheme (2026-06-20). The viewer no longer runs an
+  // unconditional 60fps loop. `rafId` is the CONTINUOUS-loop handle (set
+  // only while shouldAnimateContinuously() holds — skinned playback,
+  // autorotate, or an active drag). `renderPending` is the ONE-SHOT
+  // handle used by requestRender() to coalesce N view-mutating events in
+  // a frame into a single paint, then idle at 0 renders/sec.
+  renderPending: null,
+  loopReason: "",            // debug/introspection: "" | "anim" | "autorotate" | "drag"
   resizeObs: null,
   // mesh-mode tracking
   realMesh: false,           // true when displaying loaded XJ geometry
@@ -208,6 +216,10 @@ function ensureRenderer() {
     state.drag.rotX = state.mesh ? state.mesh.rotation.x : 0;
     state.drag.rotY = state.mesh ? state.mesh.rotation.y : 0;
     cv.setPointerCapture(e.pointerId);
+    // drag.active is in shouldAnimateContinuously() — run the continuous
+    // loop for the whole gesture so per-pointer-event scheduling jitter
+    // never drops a frame.
+    startLoop();
   });
   cv.addEventListener("pointermove", (e) => {
     if (!state.drag.active || !state.mesh) return;
@@ -215,10 +227,15 @@ function ensureRenderer() {
     const dy = (e.clientY - state.drag.y) / 200;
     state.mesh.rotation.y = state.drag.rotY + dx;
     state.mesh.rotation.x = state.drag.rotX + dy;
+    requestRender();
   });
   const release = (e) => {
     state.drag.active = false;
     try { cv.releasePointerCapture(e.pointerId); } catch {}
+    // Paint the final pose; the continuous loop self-stops on its next
+    // tick now that drag.active is false (unless anim/autorotate keep it
+    // alive, in which case requestRender is a no-op).
+    requestRender();
   };
   cv.addEventListener("pointerup", release);
   cv.addEventListener("pointercancel", release);
@@ -229,6 +246,7 @@ function ensureRenderer() {
       1.4,
       Math.min(8, state.camera.position.z + (e.deltaY > 0 ? 0.2 : -0.2)),
     );
+    requestRender();
   }, { passive: false });
 
   // Resize watcher
@@ -247,6 +265,8 @@ function resizeRenderer() {
     state.camera.aspect = w / h;
     state.camera.updateProjectionMatrix();
   }
+  // Repaint at the new size (covers ResizeObserver + window 'resize').
+  requestRender();
 }
 
 function disposeMesh() {
@@ -345,7 +365,7 @@ function rebuildMeshNow() {
       });
   state.mesh = new THREE.Mesh(geo, mat);
   state.scene.add(state.mesh);
-  startLoop();
+  kick();
 }
 
 // Phantasmal-diff fix 5 (2026-04-25): trailing-edge throttle. Coalesce
@@ -372,11 +392,57 @@ function rebuildMesh() {
   rebuildMeshNow();
 }
 
+// Is there anything that needs a CONTINUOUS (per-frame) animator right
+// now? Single source of truth shared by startLoop() (self-terminates
+// when this goes false) and kick() (decides loop-vs-one-shot).
+//   - skinned playback (a motion is actively advancing time)
+//   - autorotate (model mode only; scene mode never autorotates —
+//     state.sceneRoot is set in scene mode)
+//   - an active orbit drag (smooth per-frame paint during the gesture)
+function shouldAnimateContinuously() {
+  const a = state.anim;
+  if (a && a.skinned && a.playing && a.currentData) { state.loopReason = "anim"; return true; }
+  if (state.autoRotate && state.mesh && !state.sceneRoot) { state.loopReason = "autorotate"; return true; }
+  if (state.drag && state.drag.active) { state.loopReason = "drag"; return true; }
+  state.loopReason = "";
+  return false;
+}
+
+// Schedule EXACTLY ONE render on the next animation frame. Coalescing +
+// idempotent: multiple calls in the same frame fold into one paint, and
+// it is a no-op while the continuous loop is already painting. This is
+// the on-demand path — every view-mutating handler routes through it so
+// a static model idles at ~0 renders/sec.
+function requestRender() {
+  if (!state.renderer || !state.scene || !state.camera) return;
+  if (state.rafId) return;            // continuous loop already paints this frame
+  if (state.renderPending) return;    // already scheduled this frame
+  state.renderPending = requestAnimationFrame(() => {
+    state.renderPending = null;
+    // Run one anim tick so a paused-but-scrubbed skinned mesh re-bakes.
+    if (typeof tickAnimation === "function") {
+      tickAnimation(performance.now());
+    }
+    // Wrapped render (preserves the exact-Lambert uniform sync installed
+    // on state.renderer.render).
+    state.renderer.render(state.scene, state.camera);
+  });
+}
+
+// Ensure the CONTINUOUS loop is running. Self-terminating: the first
+// tick where shouldAnimateContinuously() returns false sets rafId=null
+// and returns (that tick already painted the final frame).
 function startLoop() {
   if (state.rafId) return;
+  // Fold any pending one-shot into the continuous loop.
+  if (state.renderPending) {
+    cancelAnimationFrame(state.renderPending);
+    state.renderPending = null;
+  }
   const tick = (nowMs) => {
+    if (!shouldAnimateContinuously()) { state.rafId = null; return; }
     state.rafId = requestAnimationFrame(tick);
-    if (state.autoRotate && state.mesh && !state.drag.active) {
+    if (state.autoRotate && state.mesh && !state.drag.active && !state.sceneRoot) {
       state.mesh.rotation.y += 0.008;
     }
     // Skeletal animation tick (no-op when state.anim.skinned is false
@@ -394,6 +460,16 @@ function stopLoop() {
     cancelAnimationFrame(state.rafId);
     state.rafId = null;
   }
+}
+
+// Start the continuous loop IF something needs it, otherwise paint a
+// single on-demand frame. Replaces the old unconditional startLoop()
+// calls at mesh-build sites: a static (non-playing, autorotate-off)
+// model paints once then idles; a skinned/autorotating model starts the
+// loop.
+function kick() {
+  if (shouldAnimateContinuously()) startLoop();
+  else requestRender();
 }
 
 // ---- texture loading -----------------------------------------------
@@ -475,18 +551,26 @@ async function loadTexture() {
     // for free; 4 was leaving quality on the table. Stays under the
     // typical 16x ceiling on contemporary cards.
     tex.anisotropy = 8;
-    // Wrap mode (2026-06-20, decompile-checked): Psobb.exe selects the D3D
-    // sampler address mode PER TEXTURE — the Ghidra decompile shows
-    // D3DTADDRESS_WRAP, _MIRROR and _CLAMP all in use at different stages,
-    // so the prior "REPEAT is the only verified mode" note was overstated.
-    // Until per-texture wrap flags are parsed from the NJ/XVR material
-    // (backlog: per-texture-wrap-flags), default the real-mesh + per-binding
-    // paths to MIRROR to match the Sega Ninja convention (psov2 / Phantasmal).
-    // Sphere preview keeps ClampToEdge (avoids the back-seam); the primitive
+    // V-flip (2026-06-20): PSOBB UVs are top-down-V (see
+    // formats/import_external.py "PSOBB V is top-down"); THREE's
+    // TextureLoader defaults flipY=true, which would upload the PNG rows
+    // inverted and render every model texture vertically flipped. The
+    // known-good Phantasmal reference uses flipY=false with the same raw
+    // V. Set it BEFORE first GPU upload (here, before resolve) so no
+    // needsUpdate is required.
+    tex.flipY = false;
+    // Wrap mode: REPEAT (= D3DTADDRESS_WRAP) is the engine default for
+    // materials whose mirror bit is clear, which is the vast majority.
+    // MIRROR is a PER-MATERIAL flag in the Sega Ninja format (CLAMP_U/V,
+    // FLIP_U/V bits), NOT a global mode — forcing MIRROR globally
+    // mirror-folds tiled textures (UVs > [0,1], e.g. floors) at integer
+    // boundaries and corrupts wrap/clamp materials. Honoring the
+    // per-texture flags is backlog (per-texture-wrap-flags). Sphere
+    // preview keeps ClampToEdge (avoids the back-seam); the primitive
     // fallback keeps plain Repeat.
     if (state.realMesh) {
-      tex.wrapS = THREE.MirroredRepeatWrapping;
-      tex.wrapT = THREE.MirroredRepeatWrapping;
+      tex.wrapS = THREE.RepeatWrapping;
+      tex.wrapT = THREE.RepeatWrapping;
     } else if (state.shape === "sphere") {
       tex.wrapS = THREE.ClampToEdgeWrapping;
       tex.wrapT = THREE.ClampToEdgeWrapping;
@@ -497,13 +581,11 @@ async function loadTexture() {
     if (state.texture) state.texture.dispose();
     state.texture = tex;
     applyTextureToCurrentMesh(tex);
-    // Force a synchronous render so the user sees the new texture
-    // immediately, instead of waiting for the next RAF tick (which can
-    // visibly stall when the load resolves between ticks or before the
-    // RAF loop starts).
-    if (state.renderer && state.scene && state.camera) {
-      state.renderer.render(state.scene, state.camera);
-    }
+    // Paint the new texture on the next frame (on-demand). When the
+    // continuous loop is active this is a no-op; otherwise it schedules
+    // exactly one frame so the user sees the texture without waiting on a
+    // loop that no longer runs while idle.
+    requestRender();
     setStatus(`loaded ${label}`);
   } catch (e) {
     setStatus(`texture load failed: ${e && e.message ? e.message : String(e)}`);
@@ -922,11 +1004,18 @@ function loadTileTexture(archivePath, tileIdx) {
         // Phantasmal-diff fix 1 (2026-04-25): leave colorSpace at its
         // linear default (no double-gamma).
         //
-        // Wrap mode (2026-06-20, decompile-checked): the engine selects the
-        // sampler address mode per texture (WRAP/MIRROR/CLAMP all present in
-        // the Ghidra decompile). Defaulting the per-binding texture path to
-        // MIRROR to match the Sega Ninja convention (psov2 / Phantasmal)
-        // until per-texture wrap flags are parsed (backlog: per-texture-wrap-flags).
+        // V-flip (2026-06-20): PSOBB UVs are top-down-V but THREE's
+        // TextureLoader defaults flipY=true, which renders the texture
+        // vertically inverted. Match the Phantasmal reference (flipY=false
+        // with raw top-down V). Set before resolve (pre-upload) so no
+        // needsUpdate is needed.
+        tex.flipY = false;
+        // Wrap mode: REPEAT (= D3DTADDRESS_WRAP) is the engine default for
+        // materials with the mirror bit clear (the majority). MIRROR is a
+        // PER-MATERIAL Sega Ninja flag, not a global mode — forcing it
+        // globally mirror-folds tiled textures (floors/walls with UVs > 1)
+        // at integer boundaries. Per-texture wrap flags are backlog
+        // (per-texture-wrap-flags).
         //
         // Anisotropy: bumped from 4 → 8 (2026-04-30). Modern GPUs
         // (anything since GeForce 5xx / Radeon HD 5xxx) handle 8x
@@ -936,8 +1025,8 @@ function loadTileTexture(archivePath, tileIdx) {
         // varies by GPU but is typically 16 on contemporary
         // hardware; 8 stays under that ceiling on all known cards.
         tex.anisotropy = 8;
-        tex.wrapS = THREE.MirroredRepeatWrapping;
-        tex.wrapT = THREE.MirroredRepeatWrapping;
+        tex.wrapS = THREE.RepeatWrapping;
+        tex.wrapT = THREE.RepeatWrapping;
         resolve(tex);
       },
       undefined,
@@ -1439,7 +1528,7 @@ async function tryLoadRealMesh(hint) {
   state.debugActiveIdx = -1;
   rebuildDebugSidebar();
   if (state.debugMode) applyDebugMaterials(true);
-  startLoop();
+  kick();
 
   const aabbDx = built.aabbMax[0] - built.aabbMin[0];
   const aabbDy = built.aabbMax[1] - built.aabbMin[1];
@@ -1537,16 +1626,19 @@ async function open(filename) {
   // to "kick" it. (Prior bug: 'comes up weird until you click off and
   // back on'.)
   requestAnimationFrame(() => {
-    resizeRenderer();
-    if (state.renderer && state.scene && state.camera) {
-      state.renderer.render(state.scene, state.camera);
-    }
+    resizeRenderer();   // resizeRenderer() already schedules a paint via requestRender()
   });
 }
 
 function close() {
   $("#modelModal").hidden = true;
   stopLoop();
+  // Cancel any pending one-shot so no stray frame is scheduled after the
+  // viewer is torn down.
+  if (state.renderPending) {
+    cancelAnimationFrame(state.renderPending);
+    state.renderPending = null;
+  }
   // Free GPU resources so reopening (or switching files) starts fresh.
   if (state.texture) {
     state.texture.dispose();
@@ -1798,9 +1890,7 @@ function setDebugMode(enable) {
   const tog = $("#modelDebugToggle");
   if (tog) tog.checked = state.debugMode;
   if (state.debugMode) rebuildDebugSidebar();
-  if (state.renderer && state.scene && state.camera) {
-    state.renderer.render(state.scene, state.camera);
-  }
+  requestRender();
 }
 
 // ---- wire up UI handlers -------------------------------------------
@@ -1859,6 +1949,9 @@ function init() {
 
   $("#modelAutoRotate").addEventListener("change", (e) => {
     state.autoRotate = !!e.target.checked;
+    // Turning ON starts the continuous loop; turning OFF lets it
+    // self-stop after the next tick (which paints the final orientation).
+    kick();
   });
 
   $("#modelWireframe").addEventListener("change", (e) => {
@@ -1876,6 +1969,7 @@ function init() {
         state.mesh.material.needsUpdate = true;
       }
     }
+    requestRender();
   });
 
   $("#modelRefreshTex").addEventListener("click", loadTexture);
@@ -2728,7 +2822,7 @@ async function tryLoadCompositeBmlMesh(bmlPath, innerNames) {
       populateAnimationPanel(animTarget);
     } catch (_e) { /* swallow — population is best-effort */ }
   }
-  startLoop();
+  kick();
 
   const aabbDx = aabbMax[0] - aabbMin[0];
   const aabbDy = aabbMax[1] - aabbMin[1];
@@ -2943,10 +3037,7 @@ async function openByPath(modelPath, _entry, matchedTextures) {
   // and the parent's clientWidth/Height may have only resolved after
   // layout settled.
   requestAnimationFrame(() => {
-    resizeRenderer();
-    if (state.renderer && state.scene && state.camera) {
-      state.renderer.render(state.scene, state.camera);
-    }
+    resizeRenderer();   // resizeRenderer() already schedules a paint via requestRender()
   });
 }
 
@@ -3105,10 +3196,7 @@ window.psoModelRebindResize = function () {
       state.resizeObs = new ResizeObserver(resizeRenderer);
       if (cv.parentElement) state.resizeObs.observe(cv.parentElement);
     }
-    resizeRenderer();
-    if (state.renderer && state.scene && state.camera) {
-      state.renderer.render(state.scene, state.camera);
-    }
+    resizeRenderer();   // resizeRenderer() already schedules a paint via requestRender()
   } catch (_e) {}
 };
 
@@ -3887,7 +3975,7 @@ async function tryLoadSkinnedMesh(modelPath, hint) {
   state.anim.playing = false;
   state.anim.lastTimestamp = 0;
 
-  startLoop();
+  kick();
 
   setMeshStats(
     `skinned mesh: ${payload.mesh_count} sub  verts ${built.totalVerts}  ` +
@@ -4009,6 +4097,8 @@ async function loadMotion(motionName) {
       _bakeSkinnedSubmeshes(a.skinSubmeshes, a.bones.length);
     }
     updateAnimationUi();
+    // Bind-pose reset: not playing, so just paint the bind pose once.
+    kick();
     return;
   }
   if (!a.modelPath) return;
@@ -4084,6 +4174,8 @@ async function loadMotion(motionName) {
   }
   setAnimStatus(`playing ${motionName}`);
   updateAnimationUi();
+  // A motion just started playing -> start the continuous loop.
+  kick();
 }
 
 /** Update the play/pause button label, scrub bar, time display. */
@@ -4176,6 +4268,9 @@ function wireAnimationPanel() {
       a.playing = !a.playing;
       a.lastTimestamp = 0;
       updateAnimationUi();
+      // Play -> start the continuous loop; pause -> requestRender for the
+      // paused frame (loop self-stops on its next tick).
+      kick();
     });
   }
   const scrub = $("#modelAnimScrub");
@@ -4187,8 +4282,9 @@ function wireAnimationPanel() {
       a.time = frame / a.fps;
       a.playing = false;
       a.lastTimestamp = 0;
-      // Force one tick to re-bake immediately.
+      // Force one tick to re-bake immediately, then paint it on-demand.
       tickAnimation(performance.now());
+      requestRender();
     });
   }
   const fpsSel = $("#modelAnimFps");
@@ -4366,10 +4462,8 @@ window.psoReloadTexture = async function (tileIdx) {
       }
     });
   }
-  // Force a render so the user sees the new texture immediately.
-  if (state.renderer && state.scene && state.camera) {
-    state.renderer.render(state.scene, state.camera);
-  }
+  // Paint the new texture on demand.
+  requestRender();
   return true;
 };
 
@@ -4431,7 +4525,7 @@ window.psoApplyMeshPayload = function (payload, opts) {
   state.debugActiveIdx = -1;
   if (typeof rebuildDebugSidebar === "function") rebuildDebugSidebar();
   if (state.debugMode && typeof applyDebugMaterials === "function") applyDebugMaterials(true);
-  startLoop();
+  kick();
 
   const label = (opts && opts.label) || payload.filename || "(payload)";
   const aabbDx = built.aabbMax[0] - built.aabbMin[0];
@@ -4539,9 +4633,7 @@ window.psoApplyVariantSlotOffset = async function (slotOffset) {
   state.boundTextures = newBoundTextures;
   state.variantSlotOffset = slotOffset;
 
-  if (state.renderer && state.scene && state.camera) {
-    state.renderer.render(state.scene, state.camera);
-  }
+  requestRender();
   return true;
 };
 
@@ -4624,6 +4716,9 @@ window.psoSetAnimationPlaying = function (playing) {
     state.anim.playing = !!playing;
     state.anim.lastTimestamp = 0;
   }
+  // (Re)start the loop on play; on pause requestRender paints the
+  // stopped frame and the loop self-terminates.
+  kick();
 };
 
 // =====================================================================
@@ -4761,10 +4856,25 @@ window.psoGetMaterialTexture = function (materialId) {
 };
 
 // Force a single render-pass — used after writing into a CanvasTexture
-// when auto-rotate is off and the user is dragging the brush.
+// when auto-rotate is off and the user is dragging the brush. Now an
+// alias of requestRender(): it schedules exactly one on-demand frame
+// (coalesced; no-op while the continuous loop is active). Existing
+// callers (edit_panel/paint_panel/skeleton_panel/transform_gizmo) keep
+// working — they schedule one frame instead of relying on an always-on
+// loop.
 window.psoForceRender = function () {
-  if (state.renderer && state.scene && state.camera) {
-    state.renderer.render(state.scene, state.camera);
+  requestRender();
+};
+
+// Stop the continuous loop AND cancel any pending one-shot. Exported so
+// the scene/floor perspective unmounts can fully quiesce the shared
+// renderer when the user leaves a 3D view (the 3d-view perspective
+// already stops via close()).
+window.psoViewerStopLoop = function () {
+  stopLoop();
+  if (state.renderPending) {
+    cancelAnimationFrame(state.renderPending);
+    state.renderPending = null;
   }
 };
 
@@ -4991,6 +5101,9 @@ function _psoSceneInstallNav() {
       state.sceneCamTarget.addScaledVector(up, dy * moveScale);
       cam.lookAt(state.sceneCamTarget);
     }
+    // Scene mode has no continuous animator — paint each pan move on
+    // demand (coalesced) or the map appears frozen while dragging.
+    requestRender();
   });
   const release = (e) => {
     if (panActive) {
@@ -5037,7 +5150,10 @@ window.psoSceneLoadMap = async function (bundle) {
     throw new Error("psoSceneLoadMap: bundle.renderable missing");
   }
   ensureRenderer();
-  startLoop();
+  // Scene mode has NO continuous animator (sceneRoot is set below, so
+  // shouldAnimateContinuously() stays false). We paint on demand instead
+  // — a requestRender() is issued after the scene is built (below) and
+  // on every nav event. Do NOT startLoop() here.
   // Drop any previously-loaded scene.
   window.psoSceneClearMap();
   // Hide the single-model preview group if one is active so the scene
@@ -5108,11 +5224,9 @@ window.psoSceneLoadMap = async function (bundle) {
 
   _psoSceneInstallNav();
   _psoSceneAutoFit();
-  // Force a render so the user sees something within the first frame
-  // even if the RAF tick hasn't fired yet.
-  if (state.renderer && state.scene && state.camera) {
-    state.renderer.render(state.scene, state.camera);
-  }
+  // Paint the freshly-built scene on the next frame (on-demand; scene
+  // mode idles afterward until a nav event requests another render).
+  requestRender();
 
   return {
     map_id: bundle.map_id,
@@ -5149,6 +5263,7 @@ window.psoSceneAddProp = async function (modelPath, position, rotation) {
       grp.rotation.y = rotation;
     }
     state.sceneRoot.add(grp);
+    requestRender();
     return grp;
   } catch (e) {
     console.warn("psoSceneAddProp failed:", e);
@@ -5226,6 +5341,7 @@ window.psoSceneAddMarker = function (id, worldPos, type) {
   m.userData.markerType = type;
   m.renderOrder = 1000;
   state.sceneMarkers.add(m);
+  requestRender();
   return m;
 };
 
@@ -5239,6 +5355,7 @@ window.psoSceneRemoveMarker = function (id) {
   state.sceneMarkers.remove(found);
   try { found.geometry.dispose(); } catch (_e) {}
   try { found.material.dispose(); } catch (_e) {}
+  requestRender();
   return true;
 };
 
@@ -5250,6 +5367,7 @@ window.psoSceneMoveMarker = function (id, worldPos) {
   });
   if (!found) return false;
   found.position.set(worldPos[0], worldPos[1], worldPos[2]);
+  requestRender();
   return true;
 };
 
@@ -5261,6 +5379,7 @@ window.psoSceneClearMarkers = function () {
     try { m.geometry.dispose(); } catch (_e) {}
     try { m.material.dispose(); } catch (_e) {}
   }
+  requestRender();
 };
 
 // Draw / update one connector between two world points. ``id`` is the
@@ -5297,6 +5416,7 @@ window.psoSceneSetConnector = function (id, fromPos, toPos, style) {
   line.userData.connectorId = id;
   line.renderOrder = 999;
   state.sceneConnectors.add(line);
+  requestRender();
   return line;
 };
 
@@ -5310,6 +5430,7 @@ window.psoSceneRemoveConnector = function (id) {
   state.sceneConnectors.remove(found);
   try { found.geometry.dispose(); } catch (_e) {}
   try { found.material.dispose(); } catch (_e) {}
+  requestRender();
   return true;
 };
 
@@ -5321,6 +5442,7 @@ window.psoSceneClearConnectors = function () {
     try { c.geometry.dispose(); } catch (_e) {}
     try { c.material.dispose(); } catch (_e) {}
   }
+  requestRender();
 };
 
 // Toggle a reference grid in the XZ plane at the scene's center. Helpful
@@ -5334,7 +5456,7 @@ window.psoSceneToggleGrid = function (visible) {
     try { state.sceneGrid.material.dispose(); } catch (_e) {}
     state.sceneGrid = null;
   }
-  if (visible === false) return false;
+  if (visible === false) { requestRender(); return false; }
   // Auto-size to scene
   const dist = state.sceneCamDist || 50;
   const size = dist * 4;
@@ -5347,6 +5469,7 @@ window.psoSceneToggleGrid = function (visible) {
   grid.material.opacity = 0.4;
   state.scene.add(grid);
   state.sceneGrid = grid;
+  requestRender();
   return true;
 };
 
@@ -5359,6 +5482,7 @@ window.psoSceneResetCamera = function (mode) {
     const d = state.sceneCamDist || 50;
     state.camera.position.set(t.x, t.y + d, t.z + 0.001);
     state.camera.lookAt(t);
+    requestRender();
     return;
   }
   if (mode === "first-person" && state.sceneCamTarget) {
@@ -5366,10 +5490,12 @@ window.psoSceneResetCamera = function (mode) {
     const d = (state.sceneCamDist || 50) * 0.05;
     state.camera.position.set(t.x + d, t.y + d * 0.3, t.z + d);
     state.camera.lookAt(t);
+    requestRender();
     return;
   }
   // Default = auto-fit
   _psoSceneAutoFit();
+  requestRender();
 };
 
 // Peek into the scene state — the Map Editor's sidebar uses this to
@@ -5407,6 +5533,7 @@ window.psoSceneSetPartVisible = function (path, visible) {
   }
   if (!found) return false;
   found.visible = !!visible;
+  requestRender();
   return true;
 };
 
@@ -5960,6 +6087,7 @@ window.psoSceneApplyEnvironment = function (category) {
   }
 
   state.envApplied = category;
+  requestRender();
   return true;
 };
 
@@ -6019,6 +6147,7 @@ window.psoSceneUseLambertMaterials = function () {
     m.material = next;
     switched++;
   });
+  if (switched) requestRender();
   return switched;
 };
 
@@ -6062,15 +6191,12 @@ window.psoSeekAnimationToFrame = function (frameIdx) {
   a.time = f / fps;
   a.playing = false;
   a.lastTimestamp = 0;
-  // Force one tick so bone matrices reflect the new time. The render
-  // loop will paint the result on the next rAF — calling psoForceRender
-  // here pushes the just-baked vertices to the screen synchronously.
+  // Force one tick so bone matrices reflect the new time, then paint the
+  // just-baked vertices on the next frame (on-demand).
   if (typeof tickAnimation === "function") {
     try { tickAnimation(performance.now()); } catch (_e) {}
   }
-  if (state.renderer && state.scene && state.camera) {
-    try { state.renderer.render(state.scene, state.camera); } catch (_e) {}
-  }
+  requestRender();
   return f | 0;
 };
 
@@ -6674,11 +6800,9 @@ window.psoUpdateMaterial = function (submeshIdx, edits) {
     m.needsUpdate = true;
   }
 
-  // Force a re-render so the user sees the change immediately even
-  // when the autorotate loop is paused.
-  if (state.renderer && state.scene && state.camera) {
-    state.renderer.render(state.scene, state.camera);
-  }
+  // Repaint on demand so the user sees the change immediately even when
+  // the continuous loop is idle.
+  requestRender();
   return true;
 };
 
