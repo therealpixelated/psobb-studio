@@ -889,39 +889,12 @@
   });
 
   // ---------- AUDIO perspective --------------------------------------
-  register("audio", {
-    label: "Audio",
-    match: function (entry, file) {
-      if (!entry) return 0;
-      if (entry.category === "audio") return 100;
-      const ext = ((file || "").split(".").pop() || "").toLowerCase();
-      if (ext === "ogg" || ext === "wav" || ext === "mp3") return 90;
-      return 0;
-    },
-    mount: function (stage, insp, ctx) {
-      const path = ctx && ctx.path;
-      const url = path ? makeRawUrl(path) : "";
-      stage.innerHTML = '' +
-        '<div class="vp-stage-card">' +
-        '<div class="vp-stage-card-title">' + escapeHtml(path || "") + '</div>' +
-        '<audio id="vpAudioPlayer" controls preload="metadata" style="width:100%"></audio>' +
-        '<div class="dim" style="margin-top:8px">streamed via /api/raw — Ogg Vorbis is the only audio format PSOBB ships</div>' +
-        '</div>';
-      const a = stage.querySelector("#vpAudioPlayer");
-      if (a) {
-        a.src = url;
-        a.play().catch(function () {});
-      }
-
-      insp.innerHTML = '<div class="vp-insp-title">Audio</div>' +
-        '<div class="vp-insp-help dim">click play to preview. Use the download link below to grab raw bytes.</div>' +
-        '<div class="vp-insp-section"><a class="ghost" href="' + escapeHtml(url) + '" download>download raw</a></div>';
-    },
-    unmount: function (stage) {
-      const a = stage.querySelector("#vpAudioPlayer");
-      if (a) try { a.pause(); a.removeAttribute("src"); a.load(); } catch (_e) {}
-    },
-  });
+  // The audio perspective lives in static/audio_panel.js (the audio suite):
+  // codec badge, .pac record-picker, waveform canvas, and a DEV-only Replace
+  // input. It registers itself via window.PSOPerspectives.register("audio",…)
+  // after this file loads, so the stub that used to live here (a bare /api/raw
+  // <audio> with the now-false "Ogg Vorbis is the only audio format PSOBB
+  // ships" caption) has been removed to avoid a double registration.
 
   // ---------- HEX perspective ----------------------------------------
   register("hex", {

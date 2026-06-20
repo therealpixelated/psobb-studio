@@ -245,6 +245,14 @@ from formats import scene_loader as _scene_loader
 # safe_live_path / reference LIVE_DATA_DIR for any write.
 from formats import rel_writer as _rw
 
+# Audio suite (2026-06-20). Pure-Python byte-exact .pac PCM SFX-bank codec
+# (audio_pac) + optional ffmpeg-backed .ogg/.sfd decode (audio_codec), behind
+# the `audio` facade. The Replace verb here is DEV-ONLY: every output is
+# hard-asserted (via _floor_assert_not_live) to resolve inside DEV_DATA_DIR
+# and NEVER under LIVE_DATA_DIR — unlike /api/repack_afs_inner which writes
+# LIVE. ffmpeg absence degrades to HTTP 501, never 500.
+from formats import audio as audio_mod
+
 # AI generation provider plugins (additive; never imported at request-time
 # critical paths, so an ImportError here only kills /api/aigen/* — the
 # rest of the editor keeps working).
@@ -4224,6 +4232,419 @@ def api_repack_afs_inner(req: RepackAfsInnerReq, request: Request):
         }
     finally:
         lk.release()
+
+
+# ===========================================================================
+# Audio suite (2026-06-20)
+#
+# Endpoints for the audio perspective: browse container/codec, decode a .pac
+# record (pure-Python) or .sfd track (ffmpeg) to WAV, render a downsampled
+# waveform, and a DEV-ONLY Replace verb.
+#
+# CARDINAL SAFETY INVARIANT: the Replace verb writes DEV ONLY. Every output
+# path is hard-asserted via `_floor_assert_not_live` to resolve inside
+# DEV_DATA_DIR and NEVER under LIVE_DATA_DIR (RuntimeError otherwise) BEFORE
+# any byte hits disk. This is the OPPOSITE of /api/repack_afs_inner, which
+# deliberately writes LIVE — that pattern is NOT copied here. Atomic write is
+# .tmp + os.replace; a `.pre_promote_<ts>` backup is taken on overwrite; a
+# per-file lock returns HTTP 409 on a concurrent write.
+#
+# ffmpeg is OPTIONAL: .ogg/.sfd decode and .ogg re-encode degrade to HTTP 501
+# when ffmpeg is absent, never 500. The core .pac codec is pure Python.
+# ===========================================================================
+
+MAX_AUDIO_REPLACE_BODY = 64 * 1024 * 1024  # 64 MB multipart cap for replace
+
+# Per-bank write locks for the audio Replace verb (one writer per .pac/.ogg).
+_AUDIO_LOCKS: "OrderedDict[str, threading.Lock]" = OrderedDict()
+MAX_AUDIO_LOCKS = 64
+
+
+def _audio_resolve_read(filename: str) -> Tuple[Path, bytes]:
+    """Resolve an audio asset under DATA_DIR then LIVE_DATA_DIR (read-only) and
+    return ``(path, bytes)``. 404 if missing, 413 if over the raw cap."""
+    p = _resolve_under_roots(
+        filename,
+        (DATA_DIR, LIVE_DATA_DIR),
+        label="filename",
+        missing_msg=f"audio asset not found in DATA_DIR or LIVE_DATA_DIR: {filename}",
+    )
+    sz = p.stat().st_size
+    if sz > MAX_RAW_RESPONSE_BYTES * 4:  # banks can be ~9 MB; allow generous read
+        raise HTTPException(413, f"audio file too large to load: {sz} bytes")
+    return p, p.read_bytes()
+
+
+def _audio_kind_for(filename: str) -> Tuple[str, str, str]:
+    """Return ``(container, codec, decode_kind)`` or 400 if not an audio file."""
+    info = audio_mod.classify_audio(filename)
+    if info is None:
+        raise HTTPException(400, f"not an audio container this suite handles: {filename}")
+    return info
+
+
+@app.get("/api/audio/info")
+def api_audio_info(path: str):
+    """Container/codec/ffmpeg/records[]/replace_supported for an audio asset.
+
+    For a .pac bank, ``records`` is the per-record summary (index, structured,
+    bytes, pcm_bytes, sample_rate, duration_s). For .ogg/.sfd/.wav the record
+    list is a single logical stream. ``replace_supported`` is True only for
+    .pac (and only when the whole bank is structured) and .ogg (ffmpeg-gated).
+    """
+    container, codec, kind = _audio_kind_for(path)
+    p, blob = _audio_resolve_read(path)
+    have_ffmpeg = audio_mod.ffmpeg_available()
+
+    records: List[dict] = []
+    warnings: List[str] = []
+    replace_supported = False
+
+    if kind == "pac":
+        bank = audio_mod.parse_pac(blob)
+        records = audio_mod.summarize_bank(bank)
+        warnings = list(bank.warnings)
+        # Only a fully-structured bank is a safe per-record Replace target.
+        replace_supported = bank.replace_safe
+    elif kind == "ogg":
+        records = [{
+            "index": 0, "structured": True, "bytes": len(blob),
+            "codec": "Ogg Vorbis", "stream": "browser-native",
+        }]
+        # Whole-file .ogg replace needs ffmpeg only if a non-ogg upload must
+        # be transcoded; a like-for-like .ogg upload is a pure byte copy, so
+        # replace is always offered for .ogg.
+        replace_supported = True
+    elif kind == "sfd":
+        records = [{
+            "index": 0, "structured": have_ffmpeg, "bytes": len(blob),
+            "codec": "ASF/WMV (WMV3 + WMAv2)",
+            "stream": "ffmpeg" if have_ffmpeg else "ffmpeg-required",
+        }]
+        replace_supported = False  # A/V movie: never a replace target
+    elif kind == "wav":
+        records = [{"index": 0, "structured": True, "bytes": len(blob), "codec": "PCM"}]
+        replace_supported = False
+
+    return {
+        "path": p.name,
+        "container": container,
+        "codec": codec,
+        "decode_kind": kind,
+        "ffmpeg": have_ffmpeg,
+        "records": records,
+        "record_count": len(records),
+        "replace_supported": replace_supported,
+        "warnings": warnings,
+    }
+
+
+@app.get("/api/audio/decode")
+def api_audio_decode(path: str, record: int = 0):
+    """Decode one audio record to ``audio/wav``.
+
+    .pac  -> pure-Python per-record PCM -> WAV (under the raw cap).
+    .ogg  -> ffmpeg decode to WAV (501 if absent); the frontend normally just
+             plays the .ogg natively via /api/raw, but a server-side WAV is
+             offered for parity / waveform.
+    .sfd  -> ffmpeg audio-track decode to WAV (501 if absent).
+    .wav  -> passthrough.
+    """
+    container, codec, kind = _audio_kind_for(path)
+    p, blob = _audio_resolve_read(path)
+
+    if kind == "pac":
+        bank = audio_mod.parse_pac(blob)
+        if record < 0 or record >= len(bank.records):
+            raise HTTPException(404, f"record {record} out of range (count={len(bank.records)})")
+        rec = bank.records[record]
+        if not rec.structured:
+            raise HTTPException(
+                422, f"record {record} is an opaque/variant record with no decodable PCM")
+        wav = audio_mod.record_to_wav(rec)
+        if len(wav) > MAX_RAW_RESPONSE_BYTES:
+            raise HTTPException(413, f"decoded WAV too large: {len(wav)} bytes")
+        return Response(content=wav, media_type="audio/wav")
+
+    if kind == "wav":
+        return Response(content=blob, media_type="audio/wav")
+
+    if kind in ("ogg", "sfd"):
+        # The .sfd intro movie's audio track can run minutes -> a full WAV
+        # would blow the raw cap. Decode it downmixed to 22050/mono and cap
+        # the preview to ~5 min (22050*2*300 = ~12.6 MB < MAX_RAW_RESPONSE_BYTES);
+        # ogg is left native (already small).
+        if kind == "sfd":
+            sfd_sr, sfd_ch, max_secs = 22050, 1, 300.0
+        else:
+            sfd_sr = sfd_ch = max_secs = None
+        try:
+            wav = audio_mod.decode_to_wav(
+                blob, kind, sample_rate=sfd_sr, channels=sfd_ch, max_seconds=max_secs)
+        except audio_mod.FfmpegUnavailable as e:
+            raise HTTPException(501, f"ffmpeg required to decode {container}: {e}")
+        except audio_mod.FfmpegError as e:
+            raise HTTPException(502, f"ffmpeg decode failed: {e}")
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        if len(wav) > MAX_RAW_RESPONSE_BYTES:
+            raise HTTPException(413, f"decoded WAV too large: {len(wav)} bytes")
+        return Response(content=wav, media_type="audio/wav")
+
+    raise HTTPException(400, f"cannot decode {container}")
+
+
+@app.get("/api/audio/waveform")
+def api_audio_waveform(path: str, record: int = 0, buckets: int = 600):
+    """Downsampled (min,max,rms) peaks for an audio record's overview canvas.
+
+    .pac: pure-Python directly from the record's PCM. .ogg/.sfd/.wav: decoded
+    to PCM via ffmpeg (501 if absent) or stdlib (wav), then downsampled.
+    """
+    container, codec, kind = _audio_kind_for(path)
+    p, blob = _audio_resolve_read(path)
+    buckets = max(1, min(int(buckets), 4000))
+
+    pcm: bytes
+    channels = audio_mod.PCM_CHANNELS
+    if kind == "pac":
+        bank = audio_mod.parse_pac(blob)
+        if record < 0 or record >= len(bank.records):
+            raise HTTPException(404, f"record {record} out of range (count={len(bank.records)})")
+        rec = bank.records[record]
+        if not rec.structured:
+            raise HTTPException(422, f"record {record} has no decodable PCM")
+        pcm = rec.pcm
+    elif kind == "wav":
+        pcm, _rate, channels, _bits = audio_mod.wav_to_pcm(blob)
+    elif kind in ("ogg", "sfd"):
+        try:
+            wav = audio_mod.decode_to_wav(blob, kind)
+        except audio_mod.FfmpegUnavailable as e:
+            raise HTTPException(501, f"ffmpeg required for {container} waveform: {e}")
+        except audio_mod.FfmpegError as e:
+            raise HTTPException(502, f"ffmpeg decode failed: {e}")
+        pcm, _rate, channels, _bits = audio_mod.wav_to_pcm(wav)
+    else:
+        raise HTTPException(400, f"cannot compute waveform for {container}")
+
+    peaks = audio_mod.waveform_peaks(pcm, buckets=buckets, channels=channels)
+    peaks["path"] = p.name
+    peaks["record"] = record
+    return peaks
+
+
+@app.post("/api/audio/replace")
+async def api_audio_replace(
+    request: Request,
+    path: str = Form(...),
+    record: int = Form(0),
+    deploy: bool = Form(False),
+    normalize: bool = Form(False),
+    trim_start: int = Form(0),
+    trim_end: int = Form(-1),
+    file: UploadFile = File(...),
+):
+    """DEV-ONLY Replace: swap a .pac record's PCM (or replace an .ogg) with an
+    uploaded .wav/.ogg.
+
+    deploy=false -> mint an export token + preview URL (NOTHING written to the
+                    data tree).
+    deploy=true  -> write the rebuilt bank/ogg to DEV_DATA_DIR ONLY, atomically
+                    (.tmp + os.replace), with a `.pre_promote_<ts>` backup on
+                    overwrite. The output path is hard-asserted by
+                    `_floor_assert_not_live` to be inside DEV and never LIVE.
+
+    .sfd / .adx are never replace targets (HTTP 400). A concurrent write to the
+    same target returns HTTP 409. ffmpeg-needing conversions degrade to 501.
+    """
+    _enforce_body_size(request, MAX_AUDIO_REPLACE_BODY)
+    container, codec, kind = _audio_kind_for(path)
+    if not audio_mod.replace_supported(path):
+        raise HTTPException(400, f"{container} is not a replace target (only .pac and .ogg)")
+
+    bare = _validate_bare_filename(path, label="path")
+    upload = await file.read()
+    if not upload:
+        raise HTTPException(400, "empty upload")
+    if len(upload) > MAX_AUDIO_REPLACE_BODY:
+        raise HTTPException(413, f"upload too large: {len(upload)} bytes")
+    upload_name = (file.filename or "").lower()
+
+    lk = _get_lock(_AUDIO_LOCKS, bare, MAX_AUDIO_LOCKS)
+    if not lk.acquire(blocking=False):
+        raise HTTPException(409, f"audio replace already in progress for {bare}")
+    try:
+        # Resolve & read the source bank/file (DATA_DIR then LIVE_DATA_DIR).
+        _src_path, blob = _audio_resolve_read(bare)
+
+        if kind == "pac":
+            new_bytes = _audio_build_replaced_pac(
+                blob, record, upload, upload_name, normalize, trim_start, trim_end)
+        elif kind == "ogg":
+            new_bytes = _audio_build_replaced_ogg(upload, upload_name)
+        else:  # pragma: no cover - guarded by replace_supported above
+            raise HTTPException(400, f"{container} is not a replace target")
+
+        if not deploy:
+            # Preview only: stage under a token, write NOTHING into the tree.
+            _gc_export_tokens()
+            token = _make_audio_export_token(new_bytes, bare)
+            return {
+                "ok": True,
+                "deployed": False,
+                "path": bare,
+                "record": record if kind == "pac" else None,
+                "new_size": len(new_bytes),
+                "export_token": token,
+                "export_url": f"/api/export/{token}",
+                "export_filename": bare,
+            }
+
+        # deploy=True: DEV-ONLY atomic write with backup. Hard-assert target.
+        target = (DEV_DATA_DIR / bare)
+        target = _floor_assert_not_live(target)  # RuntimeError if LIVE/escape
+        DEV_DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+        backup_path = None
+        if target.exists():
+            ts = time.strftime("%Y%m%d_%H%M%S")
+            bak = target.with_name(f"{target.name}.pre_promote_{ts}")
+            counter = 0
+            while bak.exists():
+                counter += 1
+                bak = target.with_name(f"{target.name}.pre_promote_{ts}_{counter}")
+            _floor_assert_not_live(bak)
+            shutil.copy(target, bak)
+            backup_path = str(bak)
+
+        _floor_atomic_write(target, new_bytes)
+        log.info("audio replace DEPLOYED (DEV) %s record=%s new=%d backup=%s",
+                 bare, record, len(new_bytes), backup_path)
+        return {
+            "ok": True,
+            "deployed": True,
+            "path": str(target),
+            "record": record if kind == "pac" else None,
+            "new_size": len(new_bytes),
+            "backup_path": backup_path,
+        }
+    finally:
+        lk.release()
+
+
+def _make_audio_export_token(data: bytes, filename: str) -> str:
+    """Stage replaced audio bytes under a random export token (preview path).
+
+    Mirrors `_make_export_token` but writes raw bytes (no .prs/.xvm suffix
+    coercion) so a .pac/.ogg preview keeps its real extension.
+    """
+    token = secrets.token_urlsafe(24)
+    ext = Path(filename).suffix or ".bin"
+    staged = EXPORT_DIR / f"{token}{ext}"
+    EXPORT_DIR.mkdir(parents=True, exist_ok=True)
+    staged.write_bytes(data)
+    entry = {
+        "path": str(staged),
+        "filename": filename,
+        "expires_at": time.time() + EXPORT_TTL_SECONDS,
+    }
+    with _EXPORT_TOKENS_LOCK:
+        _EXPORT_TOKENS[token] = entry
+    _persist_export_token(token, entry)
+    return token
+
+
+def _audio_pcm_from_upload(upload: bytes, upload_name: str) -> bytes:
+    """Decode an uploaded .wav/.ogg to PSOBB-native 22050/mono/16 PCM bytes.
+
+    .wav: stdlib `wave`. If it isn't already 22050/mono/16, ffmpeg is used to
+          resample/downmix (501 if ffmpeg absent for a non-native WAV).
+    .ogg: ffmpeg decode (501 if absent).
+    Raises HTTPException on bad input / missing ffmpeg.
+    """
+    sr_native = audio_mod.PCM_SAMPLE_RATE
+    if upload_name.endswith(".wav") or upload[:4] == b"RIFF":
+        try:
+            pcm, rate, channels, bits = audio_mod.wav_to_pcm(upload)
+        except ValueError as e:
+            raise HTTPException(400, f"bad WAV upload: {e}")
+        if rate == sr_native and channels == 1 and bits == 16:
+            return pcm
+        # Non-native WAV: ffmpeg resample/downmix to 22050/mono/16
+        # (decode_to_wav only knows ogg/sfd demuxers, so run ffmpeg
+        # WAV->WAV directly with the target framing).
+        try:
+            conv = audio_mod.audio_codec._run_ffmpeg(
+                ["-hide_banner", "-loglevel", "error", "-f", "wav", "-i", "pipe:0",
+                 "-f", "wav", "-acodec", "pcm_s16le",
+                 "-ar", str(sr_native), "-ac", "1", "pipe:1"],
+                upload,
+            )
+        except audio_mod.FfmpegUnavailable as e:
+            raise HTTPException(
+                501, f"ffmpeg required to convert WAV to 22050/mono/16: {e}")
+        except audio_mod.FfmpegError as e:
+            raise HTTPException(400, f"WAV conversion failed: {e}")
+        pcm, _r, _c, _b = audio_mod.wav_to_pcm(conv)
+        return pcm
+
+    if upload_name.endswith(".ogg") or upload[:4] == b"OggS":
+        try:
+            wav = audio_mod.decode_to_wav(upload, "ogg", sample_rate=sr_native, channels=1)
+        except audio_mod.FfmpegUnavailable as e:
+            raise HTTPException(501, f"ffmpeg required to decode Ogg upload: {e}")
+        except audio_mod.FfmpegError as e:
+            raise HTTPException(400, f"Ogg decode failed: {e}")
+        pcm, _r, _c, _b = audio_mod.wav_to_pcm(wav)
+        return pcm
+
+    raise HTTPException(400, "upload must be a .wav or .ogg file")
+
+
+def _audio_build_replaced_pac(blob: bytes, record: int, upload: bytes,
+                              upload_name: str, normalize: bool,
+                              trim_start: int, trim_end: int) -> bytes:
+    """Build new .pac bytes with ``record``'s PCM swapped for the upload."""
+    bank = audio_mod.parse_pac(blob)
+    if not bank.replace_safe:
+        raise HTTPException(
+            400, "this .pac bank has opaque/variant records; replace is disabled for it")
+    if record < 0 or record >= len(bank.records):
+        raise HTTPException(404, f"record {record} out of range (count={len(bank.records)})")
+
+    pcm = _audio_pcm_from_upload(upload, upload_name)
+    if trim_start or (trim_end is not None and trim_end >= 0):
+        end = None if (trim_end is None or trim_end < 0) else trim_end
+        pcm = audio_mod.trim_pcm(pcm, start_frame=trim_start, end_frame=end)
+    if normalize:
+        pcm = audio_mod.normalize_pcm(pcm)
+    if not pcm:
+        raise HTTPException(400, "converted PCM is empty")
+
+    try:
+        new_bank = audio_mod.replace_record_pcm(bank, record, pcm)
+    except (ValueError, IndexError, TypeError) as e:
+        raise HTTPException(400, f"record replace failed: {e}")
+    return audio_mod.write_pac(new_bank)
+
+
+def _audio_build_replaced_ogg(upload: bytes, upload_name: str) -> bytes:
+    """Build replacement .ogg bytes from the upload.
+
+    A .ogg upload is copied byte-for-byte (like-for-like). A .wav upload is
+    encoded to Ogg Vorbis via ffmpeg (501 if absent).
+    """
+    if upload_name.endswith(".ogg") or upload[:4] == b"OggS":
+        return upload
+    if upload_name.endswith(".wav") or upload[:4] == b"RIFF":
+        try:
+            return audio_mod.encode_ogg(upload, in_kind="wav")
+        except audio_mod.FfmpegUnavailable as e:
+            raise HTTPException(501, f"ffmpeg required to encode WAV to Ogg: {e}")
+        except audio_mod.FfmpegError as e:
+            raise HTTPException(400, f"Ogg encode failed: {e}")
+    raise HTTPException(400, "ogg replace upload must be a .ogg or .wav file")
 
 
 # ---------------------------------------------------------------------------

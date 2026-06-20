@@ -152,6 +152,14 @@ _EXT_MAP: dict[str, tuple[str, str, str]] = {
     ".lst": ("script",    "LST",       "yes"),
     ".png": ("ui",        "PNG",       "yes"),
     ".ogg": ("audio",     "OGG",       "yes"),
+    # Audio routing (audio suite). .pac = raw-PCM SFX bank (pure-Python
+    # byte-exact codec, formats/audio_pac), .sfd = ASF/WMV intro movie
+    # (ffmpeg-decodable audio track; NOT CRI Sofdec/ADX), .wav = PCM
+    # interchange. The 27 data/sound/*.pac banks and opening_j.sfd were
+    # previously unrouted and fell through to UNKNOWN.
+    ".pac": ("audio",     "PAC",       "yes"),
+    ".sfd": ("audio",     "SFD",       "partial"),
+    ".wav": ("audio",     "WAV",       "yes"),
     ".txt": ("metadata",  "TXT",       "yes"),
 }
 
@@ -164,6 +172,13 @@ _MAGIC_TABLE: list[tuple[bytes, str]] = [
     (b"AFS\x00", "AFS"),
     (b"\x89PNG", "PNG"),
     (b"OggS",   "OGG"),
+    # Audio suite. The .pac PCM SFX banks open with a bare 16-byte
+    # WAVEFORMATEX (PCM/mono/22050/16) — a distinctive, longer-than-most
+    # signature so it is listed early. opening_j.sfd is an ASF/WMV
+    # container (GUID 3026B2758E66CF11). .wav is plain RIFF/WAVE.
+    (bytes.fromhex("010001002256000044ac000002001000"), "PAC"),
+    (bytes.fromhex("3026b2758e66cf11"), "SFD"),
+    (b"RIFF",   "WAV"),
 ]
 
 

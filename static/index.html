@@ -593,7 +593,7 @@
         <!-- Audio panel: HTML5 audio element fed by /api/raw/<path>. -->
         <div id="assetAudio" class="asset-panel" hidden>
           <audio id="assetAudioEl" controls preload="metadata" style="width:100%"></audio>
-          <div class="dim asset-help">streamed via /api/raw — Ogg Vorbis is the only audio format PSOBB ships</div>
+          <div class="dim asset-help">streamed via /api/raw — PSOBB ships Ogg Vorbis (music/SFX), .pac PCM SFX banks, and one ASF/WMV intro (.sfd). Open the Audio perspective to browse records, view waveforms, and replace sounds.</div>
         </div>
         <!-- Hex / text panel: monospace pre with the file contents. -->
         <div id="assetHex" class="asset-panel" hidden>
@@ -799,6 +799,12 @@
        restores it on unmount, so existing wiring keeps working.
        Toggle off via header "classic UI" button. -->
   <script src="/static/perspectives.js"></script>
+
+  <!-- Audio suite perspective (2026-06-20).
+       Owns the "audio" perspective (registers itself after perspectives.js,
+       which no longer ships a built-in stub): codec badge, .pac record
+       picker, waveform canvas, and a DEV-only Replace input. -->
+  <script src="/static/audio_panel.js"></script>
 
   <!-- In-viewport texture + subdivide panel (2026-04-25).
        Mounts a docked sidebar inside the 3D-view's .model-stage that

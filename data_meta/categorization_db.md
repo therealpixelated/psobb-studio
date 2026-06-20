@@ -261,6 +261,18 @@ This is THE important resolution: the editor was treating `bm4_ps_*` and `bm7_ps
 | `ogg/*` | BGM tracks |
 | `sound/*` | SFX |
 
+> **Audio routing note (2026-06-20, audio suite).** The `manifest._EXT_MAP`
+> now routes `.pac`, `.sfd`, and `.wav` as `audio` (previously only `.ogg`
+> was). The 27 `data/sound/*.pac` banks are headerless raw-PCM SFX archives
+> (mono/22050/16-bit, multiple records each — see `formats/audio_pac.py`,
+> byte-exact codec) and the single `opening_j.sfd` is an **ASF/WMV** intro
+> movie (WMV3 video + WMAv2 audio), **NOT** CRI Sofdec/ADX as older notes
+> claimed. The `*.adx` rule above matches **nothing in the live tree** — those
+> SFX were transcoded to `.ogg` (DRAROAR.ogg, GOLDEATH.ogg, …); the rule is
+> retained only to label any foreign `.adx` a user might drop in. `.pac` and
+> `.ogg` are the only Replace targets (the audio suite's DEV-only Replace);
+> `.sfd`/`.adx` are read-only.
+
 ## 4. Resolved miscategorizations (the user's 5 reports)
 
 ### 4.1 `bm4_ps_ma_body.bml`

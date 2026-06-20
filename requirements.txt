@@ -15,7 +15,13 @@ python-multipart==0.0.26  # required for FastAPI Form()/UploadFile() endpoints
 
 # --- Core asset processing (required) ---
 pillow==12.2.0            # imported as PIL — texture decode/encode, PNG I/O
-numpy==2.4.4              # mesh math (formats/import_external, fbx_reader, rigging, sculpt)
+numpy==2.4.4              # mesh math + audio DSP (formats/audio_pac trim/normalize/waveform)
+
+# --- Audio suite (formats/audio_pac, audio_codec) ---
+# NO new mandatory dependency: the .pac codec is pure Python (stdlib `wave`
+# + numpy, already listed). ffmpeg is OPTIONAL and resolved at runtime via
+# shutil.which — used only for .ogg/.sfd decode + .ogg encode; absence
+# degrades to HTTP 501, never a crash. Do NOT add PyAV/soundfile/pydub.
 
 # --- Texture codecs (optional; xvr_decode degrades w/o, used for BC1/BC3 encode) ---
 quicktex==0.3.1           # formats/xvr_decode.py — S3TC (BC1/BC3) re-encode

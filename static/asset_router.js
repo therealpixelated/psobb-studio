@@ -110,11 +110,21 @@
   // ---- viewers ------------------------------------------------------
 
   function openAudio(path, entry) {
-    const url = rawUrl(path);
-    openAssetModal(path, fmtSize(entry && entry.size), url);
+    // .ogg / .wav play natively from /api/raw. .pac (PCM bank) and .sfd
+    // (ASF/WMV) have no browser codec — route the classic-mode modal player
+    // at /api/audio/decode (record 0) so they still audition. The full audio
+    // suite (record picker, waveform, DEV replace) lives in the unified-
+    // viewport "audio" perspective (static/audio_panel.js).
+    const ext = ("." + (path.split(".").pop() || "")).toLowerCase();
+    const rawSrc = rawUrl(path);
+    let src = rawSrc;
+    if (ext === ".pac" || ext === ".sfd") {
+      src = "/api/audio/decode?path=" + encodeURIComponent(path) + "&record=0";
+    }
+    openAssetModal(path, fmtSize(entry && entry.size), rawSrc);
     showPanel("assetAudio");
     const a = $("#assetAudioEl");
-    a.src = url;
+    a.src = src;
     a.play().catch(function () {
       // autoplay blocked is fine; controls let the user start manually
     });
