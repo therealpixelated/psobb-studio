@@ -559,18 +559,19 @@ async function loadTexture() {
     // V. Set it BEFORE first GPU upload (here, before resolve) so no
     // needsUpdate is required.
     tex.flipY = false;
-    // Wrap mode: REPEAT (= D3DTADDRESS_WRAP) is the engine default for
-    // materials whose mirror bit is clear, which is the vast majority.
-    // MIRROR is a PER-MATERIAL flag in the Sega Ninja format (CLAMP_U/V,
-    // FLIP_U/V bits), NOT a global mode — forcing MIRROR globally
-    // mirror-folds tiled textures (UVs > [0,1], e.g. floors) at integer
-    // boundaries and corrupts wrap/clamp materials. Honoring the
-    // per-texture flags is backlog (per-texture-wrap-flags). Sphere
-    // preview keeps ClampToEdge (avoids the back-seam); the primitive
-    // fallback keeps plain Repeat.
+    // Wrap mode (2026-06-20, psov2-grounded): the Sega Ninja default for
+    // OBJECT textures is D3DTADDRESS_MIRROR — psov2's NinjaTexture.js sets
+    // MirroredRepeat by default (overriding only a named allowlist back to
+    // Repeat). This is the object-model viewer: model UVs sit in [0,1], so
+    // Mirror is visually identical to Repeat for the common case but matches
+    // the reference on the rare edge-tiled object. Tiled FLOOR/room geometry
+    // (UVs > 1) is a SEPARATE path (floor/map editor) that psov2 keeps on
+    // Repeat via the clampU/clampV flags, so Mirror here never folds a floor.
+    // Sphere preview keeps ClampToEdge (avoids the back-seam); the bare
+    // primitive fallback keeps plain Repeat.
     if (state.realMesh) {
-      tex.wrapS = THREE.RepeatWrapping;
-      tex.wrapT = THREE.RepeatWrapping;
+      tex.wrapS = THREE.MirroredRepeatWrapping;
+      tex.wrapT = THREE.MirroredRepeatWrapping;
     } else if (state.shape === "sphere") {
       tex.wrapS = THREE.ClampToEdgeWrapping;
       tex.wrapT = THREE.ClampToEdgeWrapping;
@@ -1021,12 +1022,12 @@ function loadTileTexture(archivePath, tileIdx) {
         // with raw top-down V). Set before resolve (pre-upload) so no
         // needsUpdate is needed.
         tex.flipY = false;
-        // Wrap mode: REPEAT (= D3DTADDRESS_WRAP) is the engine default for
-        // materials with the mirror bit clear (the majority). MIRROR is a
-        // PER-MATERIAL Sega Ninja flag, not a global mode — forcing it
-        // globally mirror-folds tiled textures (floors/walls with UVs > 1)
-        // at integer boundaries. Per-texture wrap flags are backlog
-        // (per-texture-wrap-flags).
+        // Wrap mode (2026-06-20, psov2-grounded): MirroredRepeat = the Sega
+        // Ninja / psov2 NinjaTexture.js default for object textures. This is
+        // the per-binding MODEL-texture path — object UVs sit in [0,1], so
+        // Mirror is harmless for the common case and matches the reference on
+        // edge-tiled objects. Tiled floor/room textures are a separate path
+        // that stays on Repeat (clampU/clampV), so no floor gets mirror-folded.
         //
         // Anisotropy: bumped from 4 → 8 (2026-04-30). Modern GPUs
         // (anything since GeForce 5xx / Radeon HD 5xxx) handle 8x
@@ -1036,8 +1037,8 @@ function loadTileTexture(archivePath, tileIdx) {
         // varies by GPU but is typically 16 on contemporary
         // hardware; 8 stays under that ceiling on all known cards.
         tex.anisotropy = 8;
-        tex.wrapS = THREE.RepeatWrapping;
-        tex.wrapT = THREE.RepeatWrapping;
+        tex.wrapS = THREE.MirroredRepeatWrapping;
+        tex.wrapT = THREE.MirroredRepeatWrapping;
         resolve(tex);
       },
       undefined,
