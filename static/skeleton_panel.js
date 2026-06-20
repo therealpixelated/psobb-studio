@@ -51,12 +51,14 @@
     style.textContent = `
       .pso-skel-panel-body {
         display: flex;
+        flex-direction: column;
         gap: 8px;
         height: 100%;
         min-height: 200px;
       }
       .pso-skel-panel-tree {
-        flex: 1 1 60%;
+        flex: 1 1 auto;
+        min-height: 160px;
         overflow: auto;
         background: #1a1f25;
         border: 1px solid #2a313a;
@@ -67,7 +69,9 @@
         max-height: 360px;
       }
       .pso-skel-panel-inspector {
-        flex: 0 0 240px;
+        flex: 0 0 auto;
+        max-height: 200px;
+        overflow: auto;
         background: #1a1f25;
         border: 1px solid #2a313a;
         border-radius: 4px;
@@ -395,17 +399,30 @@
     getBoneCount: function () { return state.bones.length; },
   });
 
-  function refreshFromViewport() {
+  let _refreshRetry = null;
+  function refreshFromViewport(_attempt) {
+    _attempt = _attempt | 0;
     const skel = window.psoGetSkeleton && window.psoGetSkeleton();
     if (!skel || !skel.length) {
-      state.bones = [];
-      state.boneNames.clear();
-      state.selectedIdx = -1;
-      state.expanded.clear();
-      renderTree();
-      renderInspector();
+      if (_attempt === 0) {
+        state.bones = [];
+        state.boneNames.clear();
+        state.selectedIdx = -1;
+        state.expanded.clear();
+        renderTree();
+        renderInspector();
+      }
+      // Skinned models stream their bones in over several frames, so opening
+      // the Skeleton tab right after a model loads can momentarily see an empty
+      // skeleton. Poll briefly before settling on "no skeleton" (a static model
+      // simply stays empty after the poll window).
+      if (_refreshRetry) { clearTimeout(_refreshRetry); _refreshRetry = null; }
+      if (_attempt < 12) {
+        _refreshRetry = setTimeout(function () { refreshFromViewport(_attempt + 1); }, 250);
+      }
       return false;
     }
+    if (_refreshRetry) { clearTimeout(_refreshRetry); _refreshRetry = null; }
     state.bones = skel;
     // Auto-expand depth 0 + 1 for discovery.
     state.expanded.clear();
