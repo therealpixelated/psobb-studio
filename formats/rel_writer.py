@@ -915,6 +915,591 @@ def encode_nrel(model: NrelModel) -> bytes:
     return assemble_rel(bytes(buf), ptr_offsets, pl_off)
 
 
+# ---------------------------------------------------------------------------
+# STEP 3b — n.rel FROM-SCRATCH authoring (build_nrel_from_meshes)
+# ---------------------------------------------------------------------------
+#
+# Builds a fresh, minimal valid n.rel from XJ submeshes + a mesh-tree +
+# texture names.  Unlike ``encode_nrel`` (the layout-hint round-trip
+# path), this re-derives the entire data section and the relocation
+# graph from a high-level model — it is the path the editor's
+# import/author pipeline uses.
+#
+# The geometry structs are the rel.py D3D ``XjMesh`` family (28B XjMesh /
+# 16B VertexBufferContainer / 20B IndexBufferContainer / 16B
+# RenderStateArgs) — NOT the 44B descriptor ``XjModel`` (that one lives
+# in formats/xj_writer.py).  Output is validated by
+# ``formats.rel.extract_nrel_meshes`` + ``simulate_rel_relocation``.
+#
+# Data-section region order (small fixed structs first, bulk geometry
+# last so it can grow toward the 768 KB budget):
+#   R1  static_mesh_trees[]      16B each
+#   R3  NrelChunk[]              52B each
+#   R4  NrelFmt2 header          24B   (= payload_offset)
+#   R5  TextureList              8B    (omitted when no names)
+#   R6  TextureListEntry[]       12B each
+#   R7  MeshTreeNode[]           52B each (Ninja node hierarchy)
+#   R8  XjMesh[]                 28B each
+#   R8a VertexBufferContainer[]  16B each
+#   R8b IndexBufferContainer[]   20B each
+#   R8c RenderStateArgs[]        16B each
+#   R9v raw vertex arrays        (no pointers)
+#   R9i raw index arrays         (no pointers)
+#   R10 texture name strings     (NUL-terminated, 4-aligned; no pointers)
+# (TAM / animated trees are OMITTED for fresh authoring.)
+
+# 768 KB engine budget for an authored map n.rel.
+NREL_SIZE_BUDGET = 0xC0000
+
+NREL_XJ_MESH_SIZE = 28
+NREL_VBUF_CONTAINER_SIZE = 16
+NREL_IBUF_CONTAINER_SIZE = 20
+NREL_RSARGS_SIZE = 16
+NREL_TEXLIST_SIZE = 8
+
+_NREL_XJ_MESH_FMT = "<7I"
+_NREL_VBUF_FMT = "<4I"            # vertex_format, vertices_ptr, vertex_size, vertex_count
+_NREL_IBUF_FMT = "<5I"           # rs_ptr, rs_count, indices_ptr, index_count, vb_index
+_NREL_RSARGS_FMT = "<4I"         # state_type, arg1, arg2, unk
+_NREL_TEXLIST_FMT = "<II"        # elements_ptr, count
+assert struct.calcsize(_NREL_XJ_MESH_FMT) == NREL_XJ_MESH_SIZE
+assert struct.calcsize(_NREL_VBUF_FMT) == NREL_VBUF_CONTAINER_SIZE
+assert struct.calcsize(_NREL_IBUF_FMT) == NREL_IBUF_CONTAINER_SIZE
+assert struct.calcsize(_NREL_RSARGS_FMT) == NREL_RSARGS_SIZE
+
+# Authored eval_flags: identity-local single leaf (UNIT_POS|ANG|SCL|BREAK).
+# extract_nrel_meshes treats chunk pose as a pure translation and does
+# NOT apply node rotation/scale, so v1 nodes are translation-only.
+NREL_NODE_EVAL_FLAGS = 0x17
+
+# vertex_format 3 = pos f32x3 @0, normal f32x3 @12, uv f32x2 @24 (stride
+# 32) — fully round-trips via rel._VERTEX_LAYOUTS.
+NREL_VERTEX_FORMAT = 3
+NREL_VERTEX_STRIDE = 32
+
+# Default chunk render-flags (semantics undecoded; a benign vanilla
+# value).  Copied from a vanilla lobby_01 chunk.
+DEFAULT_NREL_CHUNK_FLAGS = 0x00000000
+DEFAULT_NREL_FMT2_UNK1 = 64
+
+
+@dataclass
+class NrelVertex:
+    """One authored vertex: position + normal + UV (vertex_format 3)."""
+    pos: Tuple[float, float, float]
+    normal: Tuple[float, float, float] = (0.0, 1.0, 0.0)
+    uv: Tuple[float, float] = (0.0, 0.0)
+
+
+@dataclass
+class NrelSubmesh:
+    """One authored submesh: a vertex array + a triangle-strip index list.
+
+    ``indices`` are u16 triangle-STRIP indices into ``vertices`` (the
+    engine de-stripifies via ``_strip_to_triangles``).  A trivial
+    one-triangle-per-strip authoring keeps each submesh a single strip;
+    callers wanting many triangles should hand a pre-built strip OR use
+    :func:`nrel_submeshes_from_triangle_list`.  ``texture_id`` indexes
+    the texture-name list and is written as a type-3 RenderStateArgs.
+    """
+    vertices: List[NrelVertex] = field(default_factory=list)
+    indices: List[int] = field(default_factory=list)
+    texture_id: int = 0
+
+
+@dataclass
+class NrelNode:
+    """One authored mesh-tree node: a TRS transform + its submeshes.
+
+    ``submeshes`` become the node's XjMesh (one VertexBufferContainer +
+    one IndexBufferContainer per submesh).  ``child_index`` /
+    ``sibling_index`` index into the flat node list (-1 = none).  v1
+    nodes are translation-only (see ``NREL_NODE_EVAL_FLAGS``).
+    """
+    position: Tuple[float, float, float] = (0.0, 0.0, 0.0)
+    rotation_bams: Tuple[int, int, int] = (0, 0, 0)
+    scale: Tuple[float, float, float] = (1.0, 1.0, 1.0)
+    eval_flags: int = NREL_NODE_EVAL_FLAGS
+    submeshes: List[NrelSubmesh] = field(default_factory=list)
+    child_index: int = -1
+    sibling_index: int = -1
+
+
+def _nrel_enclosing_sphere(
+    points: Sequence[Tuple[float, float, float]],
+    origin: Tuple[float, float, float] = (0.0, 0.0, 0.0),
+) -> float:
+    """Max distance from ``origin`` to any point (a chunk-enclosing radius)."""
+    r = 0.0
+    ox, oy, oz = origin
+    for (x, y, z) in points:
+        d = ((x - ox) ** 2 + (y - oy) ** 2 + (z - oz) ** 2) ** 0.5
+        if d > r:
+            r = d
+    return r
+
+
+def _build_nrel_data(
+    nodes: Sequence[NrelNode],
+    texture_names: Sequence[str],
+    chunk_pos: Tuple[float, float, float],
+    chunk_flags: int,
+    fmt2_unk1: int,
+) -> Tuple[bytes, List[int], int]:
+    """Emit the n.rel data section (pre-framing) for a single chunk.
+
+    Returns ``(data_bytes, ptr_locations, payload_offset)``.  ``nodes``
+    are wired into ONE static mesh-tree under ONE chunk; the geometry of
+    every node that has submeshes becomes an XjMesh.  Every submesh is
+    emitted as a SEPARATE IndexBufferContainer (one draw-strip), so a
+    triangle-list submesh splits into one strip-row per triangle to
+    dodge the ``_strip_to_triangles`` parity flip.
+
+    The pointer-location set is enumerated by recording the byte offset
+    of each in-data pointer field as it is written (see the per-region
+    FLAG comments).  The null child/next policy matches what
+    ``parse_rel`` resolves on a vanilla file: a null child/next/anim/
+    alpha/tex_anim field is NOT flagged.
+    """
+    n_nodes = len(nodes)
+    if n_nodes == 0:
+        raise RelWriteError("build_nrel_from_meshes: no nodes")
+
+    # ---- PASS 1: assign region offsets ----
+    # Reserve a small NUL header so NO meaningful pointer target lands at
+    # data offset 0.  The reader helpers (read_mesh_trees,
+    # read_nrel_chunks, _resolve_texture_id, ...) treat a stored pointer
+    # value of 0 as "null/absent", so a real structure at offset 0 would
+    # be unreachable.  Vanilla files place an (omitted-here) TAM block at
+    # the front for the same effect; 16 NUL bytes suffice and nothing
+    # points into them.
+    _R0_RESERVED = 16
+    cursor = _R0_RESERVED
+    r1_trees_off = cursor
+    cursor += NREL_MESH_TREE_SIZE              # one static mesh-tree
+    r3_chunks_off = cursor
+    cursor += NREL_CHUNK_SIZE                   # one chunk
+    r4_fmt2_off = cursor
+    cursor += NREL_FMT2_HEADER_SIZE
+
+    has_tex = len(texture_names) > 0
+    if has_tex:
+        r5_texlist_off = cursor
+        cursor += NREL_TEXLIST_SIZE
+        r6_entries_off = cursor
+        cursor += NREL_TEXLIST_ENTRY_SIZE * len(texture_names)
+    else:
+        r5_texlist_off = 0
+        r6_entries_off = 0
+
+    # R7 nodes.
+    r7_nodes_off = cursor
+    node_offsets = [r7_nodes_off + i * NREL_MESH_TREE_SIZE for i in range(n_nodes)]
+    cursor += NREL_MESH_TREE_SIZE * n_nodes
+
+    # Which nodes own geometry (one XjMesh each).
+    geom_nodes = [i for i, nd in enumerate(nodes) if nd.submeshes]
+
+    # R8 XjMesh structs.
+    mesh_off: dict = {}
+    for i in geom_nodes:
+        mesh_off[i] = cursor
+        cursor += NREL_XJ_MESH_SIZE
+
+    # R8a VertexBufferContainer[] — one per submesh per geom node.
+    vbuf_off: dict = {}      # (node_i) -> base offset of its vbuf array
+    vbuf_count: dict = {}
+    for i in geom_nodes:
+        vbuf_off[i] = cursor
+        vbuf_count[i] = len(nodes[i].submeshes)
+        cursor += NREL_VBUF_CONTAINER_SIZE * len(nodes[i].submeshes)
+
+    # R8b IndexBufferContainer[] — one per submesh per geom node.
+    ibuf_off: dict = {}
+    ibuf_count: dict = {}
+    for i in geom_nodes:
+        ibuf_off[i] = cursor
+        ibuf_count[i] = len(nodes[i].submeshes)
+        cursor += NREL_IBUF_CONTAINER_SIZE * len(nodes[i].submeshes)
+
+    # R8c RenderStateArgs[] — one type-3 entry per submesh.
+    rs_off: dict = {}        # (node_i, sub_j) -> offset
+    for i in geom_nodes:
+        for j in range(len(nodes[i].submeshes)):
+            rs_off[(i, j)] = cursor
+            cursor += NREL_RSARGS_SIZE
+
+    # R9v raw vertex arrays — one per submesh.
+    varr_off: dict = {}
+    for i in geom_nodes:
+        for j, sm in enumerate(nodes[i].submeshes):
+            varr_off[(i, j)] = cursor
+            cursor += NREL_VERTEX_STRIDE * len(sm.vertices)
+
+    # R9i raw index arrays — one per submesh.
+    iarr_off: dict = {}
+    for i in geom_nodes:
+        for j, sm in enumerate(nodes[i].submeshes):
+            iarr_off[(i, j)] = cursor
+            cursor += 2 * len(sm.indices)
+
+    # R10 texture name strings (4-aligned each).
+    name_off: dict = {}
+    if has_tex:
+        for k, nm in enumerate(texture_names):
+            name_off[k] = cursor
+            cursor += ((len(nm.encode("ascii", errors="replace")) + 1 + 3) & ~3)
+
+    data_size = cursor
+
+    # ---- PASS 2: write + record pointer locations ----
+    buf = bytearray(data_size)
+    ptr_locs: List[int] = []
+
+    # Compute the chunk-enclosing radius from world-space vertex
+    # positions (chunk is at chunk_pos; verts are stored chunk-local
+    # i.e. world = local + chunk_pos at extract time -> here vertices
+    # are authored already as the local frame around chunk origin 0).
+    all_local_pts: List[Tuple[float, float, float]] = []
+    for nd in nodes:
+        for sm in nd.submeshes:
+            for v in sm.vertices:
+                all_local_pts.append(v.pos)
+    chunk_radius = _nrel_enclosing_sphere(all_local_pts) if all_local_pts else 1.0
+
+    # R1: static mesh-tree (root_node_ptr -> first node).
+    struct.pack_into(
+        _NREL_MESH_TREE_FMT, buf, r1_trees_off,
+        node_offsets[0],   # root_node_ptr
+        0,                 # unk1
+        0,                 # tex_anim_info_ptr (omitted)
+        0,                 # tree_flags
+    )
+    ptr_locs.append(r1_trees_off + 0x00)   # root_node_ptr FLAG
+    # tex_anim_info_ptr null -> NOT flagged.
+
+    # R3: chunk.
+    struct.pack_into(
+        _NREL_CHUNK_FMT, buf, r3_chunks_off,
+        0,                                  # id
+        float(chunk_pos[0]), float(chunk_pos[1]), float(chunk_pos[2]),
+        0, 0, 0,                            # rot BAMS
+        float(chunk_radius),
+        r1_trees_off,                       # static_mesh_trees_ptr
+        0,                                  # animated_mesh_trees_ptr
+        1,                                  # static_count
+        0,                                  # animated_count
+        chunk_flags & 0xFFFFFFFF,
+    )
+    ptr_locs.append(r3_chunks_off + 0x20)   # static_mesh_trees_ptr FLAG
+    # animated_mesh_trees_ptr null (count 0) -> NOT flagged.
+
+    # R4: NrelFmt2 header.
+    tex_data_ptr = r5_texlist_off if has_tex else 0
+    struct.pack_into(
+        _NREL_FMT2_HEADER_FMT, buf, r4_fmt2_off,
+        NREL_FMT2_MAGIC,
+        fmt2_unk1 & 0xFFFFFFFF,
+        1,                                  # chunk_count
+        0,                                  # unk2
+        float(chunk_radius),
+        r3_chunks_off,                      # chunks_ptr
+        tex_data_ptr,                       # texture_data_ptr
+    )
+    ptr_locs.append(r4_fmt2_off + 0x10)     # chunks_ptr FLAG
+    if has_tex:
+        ptr_locs.append(r4_fmt2_off + 0x14)  # texture_data_ptr FLAG (only with a list)
+
+    # R5/R6: texture list + entries.
+    if has_tex:
+        struct.pack_into(
+            _NREL_TEXLIST_FMT, buf, r5_texlist_off,
+            r6_entries_off, len(texture_names),
+        )
+        ptr_locs.append(r5_texlist_off + 0x00)   # elements_ptr FLAG
+        for k in range(len(texture_names)):
+            ent = r6_entries_off + k * NREL_TEXLIST_ENTRY_SIZE
+            struct.pack_into("<III", buf, ent, name_off[k], 0, 0)
+            ptr_locs.append(ent + 0x00)          # name_ptr FLAG
+            # +0x04, +0x08 runtime pointers (on-disk 0) -> NOT flagged.
+
+    # R7: mesh-tree nodes.
+    for i, nd in enumerate(nodes):
+        n_off = node_offsets[i]
+        mptr = mesh_off.get(i, 0)
+        child_ptr = node_offsets[nd.child_index] if nd.child_index >= 0 else 0
+        next_ptr = node_offsets[nd.sibling_index] if nd.sibling_index >= 0 else 0
+        struct.pack_into(
+            "<II3f3i3fII", buf, n_off,
+            nd.eval_flags & 0xFFFFFFFF,
+            mptr,
+            float(nd.position[0]), float(nd.position[1]), float(nd.position[2]),
+            int(nd.rotation_bams[0]), int(nd.rotation_bams[1]), int(nd.rotation_bams[2]),
+            float(nd.scale[0]), float(nd.scale[1]), float(nd.scale[2]),
+            child_ptr,
+            next_ptr,
+        )
+        # mesh_ptr is flagged ONLY when the node owns a mesh.  A pure
+        # transform node (no submeshes) keeps mesh_ptr==0 UNflagged,
+        # matching vanilla.
+        if i in mesh_off:
+            ptr_locs.append(n_off + 0x04)        # mesh_ptr FLAG
+        if nd.child_index >= 0:
+            ptr_locs.append(n_off + 0x2C)        # child_ptr FLAG (non-null)
+        if nd.sibling_index >= 0:
+            ptr_locs.append(n_off + 0x30)        # next_ptr FLAG (non-null)
+
+    # R8: XjMesh structs.
+    for i in geom_nodes:
+        m_off = mesh_off[i]
+        struct.pack_into(
+            _NREL_XJ_MESH_FMT, buf, m_off,
+            0,                       # flags
+            vbuf_off[i], vbuf_count[i],
+            ibuf_off[i], ibuf_count[i],
+            0, 0,                    # alpha_index_buffers_ptr/count (omitted)
+        )
+        ptr_locs.append(m_off + 0x04)            # vertex_buffers_ptr FLAG
+        ptr_locs.append(m_off + 0x0C)            # index_buffers_ptr FLAG
+        # alpha_index_buffers_ptr null (count 0) -> NOT flagged.
+
+    # R8a: VertexBufferContainer[].
+    for i in geom_nodes:
+        for j, sm in enumerate(nodes[i].submeshes):
+            vb = vbuf_off[i] + j * NREL_VBUF_CONTAINER_SIZE
+            struct.pack_into(
+                _NREL_VBUF_FMT, buf, vb,
+                NREL_VERTEX_FORMAT,
+                varr_off[(i, j)],
+                NREL_VERTEX_STRIDE,
+                len(sm.vertices),
+            )
+            ptr_locs.append(vb + 0x04)           # vertices_ptr FLAG
+
+    # R8b: IndexBufferContainer[] (vb_index == j, one strip per submesh).
+    for i in geom_nodes:
+        for j, sm in enumerate(nodes[i].submeshes):
+            ib = ibuf_off[i] + j * NREL_IBUF_CONTAINER_SIZE
+            struct.pack_into(
+                _NREL_IBUF_FMT, buf, ib,
+                rs_off[(i, j)], 1,               # renderstate_args_ptr + count
+                iarr_off[(i, j)], len(sm.indices),
+                j,                               # vertex_buffer_index
+            )
+            ptr_locs.append(ib + 0x00)           # renderstate_args_ptr FLAG (count>0)
+            ptr_locs.append(ib + 0x08)           # indices_ptr FLAG
+
+    # R8c: RenderStateArgs[] (type 3 = TEXTURE_ID).
+    for i in geom_nodes:
+        for j, sm in enumerate(nodes[i].submeshes):
+            rs = rs_off[(i, j)]
+            struct.pack_into(
+                _NREL_RSARGS_FMT, buf, rs,
+                3,                               # state_type = TEXTURE_ID
+                sm.texture_id & 0xFFFFFFFF,      # arg1 = texture id
+                0, 0,
+            )
+            # RenderStateArgs has no pointers.
+
+    # R9v: raw vertex arrays (vertex_format 3 stride 32).
+    for i in geom_nodes:
+        for j, sm in enumerate(nodes[i].submeshes):
+            base = varr_off[(i, j)]
+            for k, v in enumerate(sm.vertices):
+                vo = base + k * NREL_VERTEX_STRIDE
+                struct.pack_into("<3f", buf, vo,
+                                 float(v.pos[0]), float(v.pos[1]), float(v.pos[2]))
+                struct.pack_into("<3f", buf, vo + 12,
+                                 float(v.normal[0]), float(v.normal[1]), float(v.normal[2]))
+                struct.pack_into("<2f", buf, vo + 24,
+                                 float(v.uv[0]), float(v.uv[1]))
+
+    # R9i: raw index arrays.
+    for i in geom_nodes:
+        for j, sm in enumerate(nodes[i].submeshes):
+            if sm.indices:
+                struct.pack_into(
+                    f"<{len(sm.indices)}H", buf, iarr_off[(i, j)],
+                    *[idx & 0xFFFF for idx in sm.indices])
+
+    # R10: texture name strings.
+    if has_tex:
+        for k, nm in enumerate(texture_names):
+            raw = nm.encode("ascii", errors="replace") + b"\x00"
+            buf[name_off[k]:name_off[k] + len(raw)] = raw
+
+    return bytes(buf), ptr_locs, r4_fmt2_off
+
+
+def build_nrel_from_meshes(
+    nodes: Sequence[NrelNode],
+    texture_names: Sequence[str],
+    *,
+    chunk_pos: Tuple[float, float, float] = (0.0, 0.0, 0.0),
+    chunk_flags: int = DEFAULT_NREL_CHUNK_FLAGS,
+    fmt2_unk1: int = DEFAULT_NREL_FMT2_UNK1,
+    enforce_budget: bool = True,
+) -> bytes:
+    """Build a fresh n.rel from authored mesh-tree nodes + texture names.
+
+    Parameters
+    ----------
+    nodes:
+        Mesh-tree nodes (node 0 is the static-tree root).  Each node's
+        ``submeshes`` become its XjMesh; each submesh is one draw-strip.
+    texture_names:
+        Texture name list; ``texture_id`` on each submesh indexes it.
+        Empty -> no TextureList region (texture_data_ptr == 0).
+    chunk_pos:
+        World origin of the single visibility chunk.
+    enforce_budget:
+        When True (default) raises ``RelWriteError`` if the result
+        exceeds ``NREL_SIZE_BUDGET`` (768 KB).
+
+    Returns
+    -------
+    bytes
+        A complete n.rel container that re-parses via ``formats.rel``,
+        passes ``simulate_rel_relocation``, and (when ``enforce_budget``)
+        fits the 768 KB cap.
+
+    Raises
+    ------
+    RelWriteError
+        On an empty node list, an out-of-range child/sibling index, or a
+        budget overflow.
+
+    Notes
+    -----
+    Child/sibling node chains are written and relocate correctly, but the
+    v1 ``formats.rel.extract_nrel_meshes`` reader walks only the ROOT
+    node of each mesh-tree (it does not descend ``child_ptr``/``next_ptr``
+    in the bake path).  ``nrel_nodes_from_meshes`` therefore merges all
+    submeshes into a single root node so the round-trip is complete; emit
+    multi-node trees only when the consuming reader walks the chain.
+    """
+    for nd in nodes:
+        if nd.child_index >= len(nodes) or nd.sibling_index >= len(nodes):
+            raise RelWriteError("node child/sibling index out of range")
+
+    data, ptr_locs, payload_off = _build_nrel_data(
+        nodes, texture_names, chunk_pos, chunk_flags, fmt2_unk1,
+    )
+    ptr_locs.sort()
+    # Self-check: every pointer location is unique & 4-aligned (a layout
+    # bug otherwise; assemble_rel re-checks but we want a clear message).
+    if len(set(ptr_locs)) != len(ptr_locs):
+        raise RelWriteError("duplicate pointer location (n.rel layout bug)")
+
+    out = assemble_rel(data, ptr_locs, payload_off)
+    if enforce_budget and len(out) > NREL_SIZE_BUDGET:
+        raise RelWriteError(
+            f"n.rel is {len(out)} bytes, exceeds the 0x{NREL_SIZE_BUDGET:x} "
+            f"(768 KB) budget — decimate the geometry")
+    return out
+
+
+def nrel_pointer_count(
+    nodes: Sequence[NrelNode],
+    texture_names: Sequence[str],
+) -> int:
+    """Closed-form expected relocation-entry count for the authored model.
+
+    A numeric self-check companion to :func:`build_nrel_from_meshes`:
+    a stray/missing pointer flag shows up as a count mismatch instead of
+    only as a load-time crash.
+
+    Count =
+        2   (fmt2 chunks_ptr + texture_data_ptr-if-textured)  -- see below
+      + 1   (chunk static_mesh_trees_ptr)
+      + 1   (static mesh-tree root_node_ptr)
+      + per node:   1 mesh_ptr-if-geometry + 1 child-if + 1 sibling-if
+      + per geom node: 2 (vertex_buffers_ptr + index_buffers_ptr)
+      + per submesh: 1 vbuf vertices_ptr + 2 ibuf (rs_ptr + indices_ptr)
+      + 1   texlist elements_ptr (if textured)
+      + per name: 1 name_ptr
+    """
+    has_tex = len(texture_names) > 0
+    count = 0
+    count += 1                       # fmt2 chunks_ptr
+    if has_tex:
+        count += 1                   # fmt2 texture_data_ptr
+    count += 1                       # chunk static_mesh_trees_ptr
+    count += 1                       # mesh-tree root_node_ptr
+    for nd in nodes:
+        if nd.submeshes:
+            count += 1               # mesh_ptr
+        if nd.child_index >= 0:
+            count += 1
+        if nd.sibling_index >= 0:
+            count += 1
+    for nd in nodes:
+        if not nd.submeshes:
+            continue
+        count += 2                   # XjMesh vertex_buffers_ptr + index_buffers_ptr
+        for _sm in nd.submeshes:
+            count += 1               # vbuf vertices_ptr
+            count += 2               # ibuf rs_ptr + indices_ptr
+    if has_tex:
+        count += 1                   # texlist elements_ptr
+        count += len(texture_names)  # name_ptrs
+    return count
+
+
+def nrel_nodes_from_meshes(
+    meshes: Sequence,
+    *,
+    chunk_origin: Tuple[float, float, float] = (0.0, 0.0, 0.0),
+    texture_index_of=None,
+) -> List[NrelNode]:
+    """Convert world-space submeshes into a single-node authoring tree.
+
+    Each input ``mesh`` exposes ``vertices`` (``.pos`` / ``.normal`` /
+    ``.uv``), an ``indices`` triangle LIST, and ``material_id`` — the
+    ``formats.xj.XjMesh`` / ``extract_nrel_meshes`` shape.  Every input
+    triangle becomes one 3-index strip (its own submesh) so the
+    round-trip winding is exact (a 3-index strip ``[a,b,c]`` de-strips to
+    ``(a,b,c)`` with no parity flip).
+
+    ``texture_index_of(material_id) -> int`` maps a source material id to
+    a texture-name index; defaults to identity (clamped to >= 0).  All
+    vertices are stored chunk-local: ``local = world - chunk_origin`` so
+    that ``extract_nrel_meshes`` (which adds the chunk origin back)
+    reproduces the world positions.
+    """
+    ox, oy, oz = chunk_origin
+
+    def _tex(mid: int) -> int:
+        if texture_index_of is not None:
+            return int(texture_index_of(mid))
+        return max(0, int(mid))
+
+    submeshes: List[NrelSubmesh] = []
+    for mesh in meshes:
+        verts = [
+            NrelVertex(
+                pos=(float(v.pos[0]) - ox, float(v.pos[1]) - oy, float(v.pos[2]) - oz),
+                normal=tuple(float(c) for c in v.normal),
+                uv=tuple(float(c) for c in v.uv),
+            )
+            for v in mesh.vertices
+        ]
+        tex = _tex(getattr(mesh, "material_id", 0))
+        idx = list(mesh.indices)
+        for t in range(0, len(idx) - 2, 3):
+            a, b, c = idx[t], idx[t + 1], idx[t + 2]
+            # Each triangle is its own 3-vertex submesh (one 3-index
+            # strip => no _strip_to_triangles parity flip).  Carry ONLY
+            # the 3 referenced vertices so the vertex array isn't
+            # duplicated per triangle (that would bloat the file ~10x).
+            submeshes.append(NrelSubmesh(
+                vertices=[verts[a], verts[b], verts[c]],
+                indices=[0, 1, 2],
+                texture_id=tex,
+            ))
+    return [NrelNode(submeshes=submeshes)]
+
+
 __all__ = [
     "RelWriteError",
     # STEP 0
@@ -946,4 +1531,15 @@ __all__ = [
     "NREL_FMT2_HEADER_SIZE",
     "NREL_CHUNK_SIZE",
     "NREL_MESH_TREE_SIZE",
+    # STEP 3b — n.rel from-scratch authoring
+    "NrelVertex",
+    "NrelSubmesh",
+    "NrelNode",
+    "build_nrel_from_meshes",
+    "nrel_pointer_count",
+    "nrel_nodes_from_meshes",
+    "NREL_SIZE_BUDGET",
+    "NREL_VERTEX_FORMAT",
+    "NREL_VERTEX_STRIDE",
+    "NREL_NODE_EVAL_FLAGS",
 ]
