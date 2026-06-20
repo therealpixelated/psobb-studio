@@ -1554,6 +1554,55 @@ async function tryLoadRealMesh(hint) {
   return true;
 }
 
+// ---- model export (OBJ / GLB) --------------------------------------
+
+/**
+ * Export the currently-loaded model + its bound textures via
+ * POST /api/export_model, then download the staged artifact. The mesh is
+ * rebuilt server-side from the SAME asset path the viewer opened, so the
+ * export matches what's on screen. FBX is disabled in the dropdown (no
+ * writer) and would 501 if forced.
+ */
+async function exportModel() {
+  const fmt = ($("#modelExportFmt") && $("#modelExportFmt").value) || "glb";
+  // The asset path that produced the real mesh (e.g. "<bml>#<inner>" or a
+  // bare ".nj"). Stashed by tryLoadRealMesh on success.
+  const assetPath = state.realMeshArchive;
+  if (!state.realMesh || !assetPath) {
+    setStatus("export: load a real model first (primitives can't be exported)");
+    return;
+  }
+  setStatus(`exporting ${assetPath} as ${fmt.toUpperCase()}...`);
+  try {
+    const r = await fetch("/api/export_model", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: assetPath, format: fmt }),
+    });
+    if (!r.ok) {
+      let detail = `http ${r.status}`;
+      try { detail = (await r.json()).detail || detail; } catch {}
+      setStatus(`export failed: ${detail}`);
+      return;
+    }
+    const body = await r.json();
+    if (Array.isArray(body.warnings) && body.warnings.length) {
+      console.warn("model export warnings:", body.warnings);
+    }
+    // Trigger the browser download of the staged artifact.
+    const a = document.createElement("a");
+    a.href = body.export_url;
+    a.download = body.filename || `model.${fmt}`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    const texBit = body.texture_count != null ? `, ${body.texture_count} tex` : "";
+    setStatus(`exported ${body.filename} (${body.mesh_count} sub${texBit})`);
+  } catch (e) {
+    setStatus(`export error: ${e?.message || e}`);
+  }
+}
+
 // ---- modal lifecycle -----------------------------------------------
 
 async function open(filename) {
@@ -1973,6 +2022,13 @@ function init() {
   });
 
   $("#modelRefreshTex").addEventListener("click", loadTexture);
+
+  // Export model (+ textures) to a Blender-friendly format. The selected
+  // format drives the POST; FBX is shown disabled in the dropdown.
+  const exportBtn = $("#modelExportBtn");
+  if (exportBtn) {
+    exportBtn.addEventListener("click", exportModel);
+  }
 
   // Debug-overlay toggle (also bound to D key when modal is focused).
   const debugToggle = $("#modelDebugToggle");

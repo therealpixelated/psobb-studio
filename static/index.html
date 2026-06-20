@@ -676,6 +676,15 @@
           debug overlay (D)
         </label>
         <button id="modelRefreshTex" class="ghost" title="reload texture from the editor">refresh texture</button>
+        <label id="modelExportWrap" title="Export the loaded model + textures to a Blender-friendly format. GLB/OBJ import into Blender; FBX is unsupported (no writer).">
+          export:
+          <select id="modelExportFmt">
+            <option value="glb">GLB (.glb)</option>
+            <option value="obj">OBJ (.zip)</option>
+            <option value="fbx" disabled title="GLB/OBJ import into Blender; FBX unsupported">FBX (unsupported)</option>
+          </select>
+          <button id="modelExportBtn" class="ghost" title="Download the model + textures">download</button>
+        </label>
         <span class="grow"></span>
         <span class="dim model-status" id="modelStatus"></span>
       </div>

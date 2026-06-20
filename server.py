@@ -4555,6 +4555,31 @@ def _make_audio_export_token(data: bytes, filename: str) -> str:
     return token
 
 
+def _make_bytes_export_token(data: bytes, filename: str) -> str:
+    """Stage arbitrary bytes under a random export token (download path).
+
+    Generalises ``_make_audio_export_token`` for any artifact type — model
+    exports (.obj/.zip/.glb) stage their bytes here and the existing
+    ``GET /api/export/<token>`` route streams them with the real filename.
+    The staged file keeps the filename's real extension so the download is
+    named/typed correctly.
+    """
+    token = secrets.token_urlsafe(24)
+    ext = Path(filename).suffix or ".bin"
+    EXPORT_DIR.mkdir(parents=True, exist_ok=True)
+    staged = EXPORT_DIR / f"{token}{ext}"
+    staged.write_bytes(data)
+    entry = {
+        "path": str(staged),
+        "filename": filename,
+        "expires_at": time.time() + EXPORT_TTL_SECONDS,
+    }
+    with _EXPORT_TOKENS_LOCK:
+        _EXPORT_TOKENS[token] = entry
+    _persist_export_token(token, entry)
+    return token
+
+
 def _audio_pcm_from_upload(upload: bytes, upload_name: str) -> bytes:
     """Decode an uploaded .wav/.ogg to PSOBB-native 22050/mono/16 PCM bytes.
 
@@ -5005,6 +5030,282 @@ def api_export(token: str, filename: Optional[str] = None):
         media_type="application/octet-stream",
         filename=download_name,
     )
+
+
+# --------------------------------------------------------------------------- #
+# Model export — OBJ / GLB (Blender-friendly) with textures
+# --------------------------------------------------------------------------- #
+def _export_default_texture_archive(base: str, inner: Optional[str]) -> Optional[str]:
+    """Mirror the frontend ``deriveTextureArchivePath`` for the export route.
+
+    For a BML/AFS inner the texture sibling is ``<base>#<inner>.xvm``; for a
+    top-level model it is the same-stem ``<stem>.xvm``.
+    """
+    if inner:
+        return f"{base}#{inner}.xvm"
+    stem = re.sub(r"\.[A-Za-z0-9]+$", "", base)
+    return f"{stem}.xvm"
+
+
+def _export_tile_png_bytes(archive_path: str, tile_idx: int) -> Optional[bytes]:
+    """Decode one texture tile to PNG bytes, reusing the tile_png pipeline.
+
+    Returns None on any failure (missing archive / tile) so the export can
+    degrade to an untextured material rather than aborting.
+    """
+    try:
+        prs = _materialize_inner_for_extract(archive_path)
+    except HTTPException:
+        return None
+    except Exception:  # pragma: no cover - defensive
+        return None
+    if not prs.exists():
+        return None
+    if tile_idx < 0 or tile_idx > MAX_TILE_INDEX:
+        return None
+    try:
+        manifest = extract_tiles(prs)
+    except Exception:
+        return None
+    tile = next((t for t in manifest["tiles"] if t["index"] == tile_idx), None)
+    if not tile:
+        return None
+    png_path = Path(manifest["tiles_dir"]) / tile["filename"]
+    if not png_path.exists():
+        return None
+    try:
+        return png_path.read_bytes()
+    except OSError:
+        return None
+
+
+def _export_resolve_binding_textures(
+    binding: list, default_archive: Optional[str],
+) -> tuple[dict, list]:
+    """Resolve a model's binding rows to ``{material_id: png_bytes}``.
+
+    Mirrors the per-row archive/tile resolution in the frontend's
+    ``fetchBoundTextures`` (in_bml / cross_bml / cross_afs). Returns
+    ``(textures_by_material_id, warnings)``. Missing tiles are recorded as
+    warnings and simply absent from the dict (the exporter emits an
+    untextured material for them).
+    """
+    textures: dict[int, bytes] = {}
+    warnings: list[str] = []
+    # Cache decoded tiles by (archive, tile) so duplicate refs decode once.
+    cache: dict[tuple[str, int], Optional[bytes]] = {}
+
+    for row in binding or []:
+        mid = int(row.get("material_id", 0))
+        source = row.get("source") or ("missing" if row.get("missing") else "in_bml")
+        archive = default_archive
+        tile = int(row.get("tile_index", 0) or 0)
+
+        if source == "cross_bml" and row.get("cross_bml"):
+            cb = row["cross_bml"]
+            if cb.get("bml") and cb.get("inner"):
+                archive = f"{cb['bml']}#{cb['inner']}.xvm"
+                tile = int(cb.get("xvr_index", 0) or 0)
+        elif source == "cross_afs" and row.get("cross_afs"):
+            ca = row["cross_afs"]
+            arc = ca.get("archive")
+            inner_index = int(ca.get("inner_index", -1))
+            if arc and inner_index >= 0:
+                stem = re.sub(r"\.afs$", "", arc, flags=re.IGNORECASE)
+                idx4 = f"{inner_index:04d}"
+                archive = f"{arc}#{idx4}_{stem}_{idx4}.xvr"
+                tile = max(0, int(ca.get("xvr_index", 0) or 0))
+        elif row.get("missing"):
+            # Unresolved row with no cross-archive fallback — skip.
+            warnings.append(f"material {mid}: no texture resolved")
+            continue
+
+        if not archive:
+            continue
+        key = (archive, tile)
+        if key not in cache:
+            cache[key] = _export_tile_png_bytes(archive, tile)
+        png = cache[key]
+        if png:
+            textures[mid] = png
+        else:
+            warnings.append(
+                f"material {mid}: texture tile {tile} in {archive} not decodable"
+            )
+    return textures, warnings
+
+
+def _export_meshes_to_export_meshes(meshes: list):
+    """Convert parsed ``XjMesh`` list to ``model_export.ExportMesh`` list.
+
+    Vertices are already world-baked, so positions are taken verbatim.
+    """
+    from formats.model_export import ExportMesh
+
+    out = []
+    for m in meshes:
+        positions = [tuple(v.pos) for v in m.vertices]
+        normals = [tuple(v.normal) for v in m.vertices]
+        uvs = [tuple(v.uv) for v in m.vertices]
+        out.append(ExportMesh(
+            positions=positions,
+            indices=list(m.indices),
+            normals=normals,
+            uvs=uvs,
+            material_id=int(getattr(m, "material_id", 0)),
+        ))
+    return out
+
+
+class ModelExportReq(BaseModel):
+    path: str
+    format: str = "glb"  # obj | glb | fbx
+    inner: Optional[str] = None
+
+
+@app.get("/api/export_model/capabilities")
+def api_export_model_capabilities():
+    """Report which model export formats are writable.
+
+    FBX has no pure-Python writer available, so it is advertised as
+    unsupported; OBJ and GLB are produced via the model_export module.
+    """
+    return {"obj": True, "glb": True, "fbx": False}
+
+
+@app.post("/api/export_model")
+def api_export_model(req: ModelExportReq):
+    """Rebuild a model's mesh + bound textures and export it for Blender.
+
+    ``format`` is ``obj`` (zip of model.obj + model.mtl + PNGs), ``glb``
+    (single self-contained binary glTF), or ``fbx`` (501 — no writer).
+
+    The mesh is rebuilt via the SAME path the 3D viewer uses
+    (``/api/model_mesh``) and the textures come from the RESOLVED binding,
+    so what you export matches what you see. Returns
+    ``{export_url, warnings[]}``; the artifact is staged under an export
+    token and streamed by ``GET /api/export/<token>``.
+    """
+    fmt = (req.format or "glb").strip().lower()
+    if fmt == "fbx":
+        raise HTTPException(
+            501, "no FBX writer available; use GLB or OBJ for Blender import"
+        )
+    if fmt not in ("obj", "glb"):
+        raise HTTPException(400, f"unsupported export format {fmt!r} (obj|glb|fbx)")
+
+    # Resolve the model exactly like /api/model_mesh.
+    base, effective_inner = _split_inner_with_query(req.path, req.inner)
+    p = _resolve_model_mesh_path(base)
+    ext = p.suffix.lower()
+    inner_ext = ""
+
+    if ext == ".bml":
+        if not effective_inner:
+            raise HTTPException(
+                400, "BML model requires '#<inner>' or inner field"
+            )
+        _validate_inner_name(effective_inner, msg="invalid inner entry name")
+        inner_ext = Path(effective_inner).suffix.lower()
+        if inner_ext == "" and len(effective_inner) == 32 and effective_inner.endswith("."):
+            inner_ext = ".nj"
+        if inner_ext not in IFF_EXTENSIONS:
+            raise HTTPException(400, f"inner must be {IFF_EXTENSIONS!r}, got {inner_ext!r}")
+        nj_bytes = _read_inner_nj_from_bml(p, effective_inner)
+    elif ext == ".afs":
+        if not effective_inner:
+            raise HTTPException(400, "AFS model requires '#NNNN_<basename>' or inner field")
+        nj_bytes, logical_inner = _read_afs_inner_nj(p, effective_inner)
+        inner_ext = Path(logical_inner).suffix.lower() or ".nj"
+    elif ext in IFF_EXTENSIONS:
+        if effective_inner:
+            raise HTTPException(400, f"'inner' not allowed for {ext} files")
+        sz = p.stat().st_size
+        if sz > ASSET_PARSE_MAX_BYTES:
+            raise HTTPException(413, f"model too large: {sz} bytes")
+        nj_bytes = p.read_bytes()
+    else:
+        raise HTTPException(
+            400, f"unsupported model extension {ext!r} (expected .nj/.xj/.bml/.afs)"
+        )
+
+    try:
+        meshes = _cached_model_parse(nj_bytes, p, ext, inner_ext, effective_inner)
+    except ValueError as e:
+        raise HTTPException(400, f"model parse failed: {e}")
+    if not meshes:
+        raise HTTPException(400, "no geometry parsed from model")
+
+    warnings: list[str] = []
+
+    # Resolve textures via the same binding the viewer uses.
+    try:
+        bd = _build_model_texture_binding_cached(p, ext, effective_inner, nj_bytes, meshes)
+        binding = bd.get("binding") or []
+    except HTTPException as e:
+        binding = []
+        warnings.append(f"texture binding unavailable: {getattr(e, 'detail', e)}")
+    except Exception as e:  # pragma: no cover - defensive
+        binding = []
+        warnings.append(f"texture binding failed: {e}")
+
+    default_arch = _export_default_texture_archive(base, effective_inner)
+    textures, tex_warnings = _export_resolve_binding_textures(binding, default_arch)
+    warnings.extend(tex_warnings)
+
+    # Skinned rest-pose: note bone count if the skinned parser is cheap to
+    # query. We don't re-parse; XjMesh carries no bone count, so we leave it
+    # 0 unless a future cheap source exists. (Rest pose is what _cached_model_parse
+    # returns: world-baked vertices.)
+    bone_count = 0
+
+    export_meshes = _export_meshes_to_export_meshes(meshes)
+    stem = re.sub(r"\.[A-Za-z0-9]+$", "", Path(base).name) or "model"
+    if effective_inner:
+        inner_stem = re.sub(r"\.[A-Za-z0-9]+$", "", Path(effective_inner).name)
+        if inner_stem:
+            stem = f"{stem}_{inner_stem}"
+
+    from formats import model_export
+
+    try:
+        if fmt == "obj":
+            bundle = model_export.build_obj_bundle(
+                export_meshes, textures, model_name=stem, bone_count=bone_count,
+            )
+            # Zip the OBJ + MTL + PNGs into one downloadable archive.
+            import io as _io
+            import zipfile
+            buf = _io.BytesIO()
+            with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+                for name, data in bundle.items():
+                    zf.writestr(name, data)
+            artifact = buf.getvalue()
+            out_name = f"{stem}.zip"
+        else:  # glb
+            artifact = model_export.build_glb_bundle(
+                export_meshes, textures, model_name=stem, bone_count=bone_count,
+            )
+            out_name = f"{stem}.glb"
+    except ValueError as e:
+        raise HTTPException(400, f"export build failed: {e}")
+    except Exception as e:  # pragma: no cover - defensive
+        log.exception("model export build error for %s", req.path)
+        raise HTTPException(500, f"export build internal error: {e}")
+
+    if not textures:
+        warnings.append("no textures resolved — exported model is untextured")
+
+    _gc_export_tokens()
+    token = _make_bytes_export_token(artifact, out_name)
+    return {
+        "export_url": f"/api/export/{token}?filename={out_name}",
+        "filename": out_name,
+        "format": fmt,
+        "mesh_count": len(export_meshes),
+        "texture_count": len(textures),
+        "warnings": warnings,
+    }
 
 
 class RestoreReq(BaseModel):

@@ -26,9 +26,14 @@ numpy==2.4.4              # mesh math + audio DSP (formats/audio_pac trim/normal
 # --- Texture codecs (optional; xvr_decode degrades w/o, used for BC1/BC3 encode) ---
 quicktex==0.3.1           # formats/xvr_decode.py — S3TC (BC1/BC3) re-encode
 
-# --- External model import (optional; import_external endpoints) ---
+# --- External model import + model export (optional) ---
+# import_external endpoints (import) + formats/model_export.py (export).
+# Model export writes OBJ + GLB only — there is NO pure-Python FBX writer,
+# so /api/export_model returns HTTP 501 for fbx (no new heavy dep added;
+# OBJ/GLB cover Blender import). The GLB writer uses trimesh; an internal
+# dependency-free fallback writer exists if trimesh is absent.
 pygltflib==1.16.5         # glTF/GLB import (formats/import_external.py)
-trimesh==4.12.1           # mesh subdivide path in server.py (lazy import)
+trimesh==4.12.1           # mesh subdivide + model export GLB (server.py lazy import)
 
 # --- Mesh decimation QEM backend (optional; formats/decimate.py) ---
 # trimesh 4.x dispatches simplify_quadric_decimation() to fast-simplification.
