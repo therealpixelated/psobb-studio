@@ -1,0 +1,911 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>PSOBB Texture Editor</title>
+<link rel="stylesheet" href="/static/style.css" />
+</head>
+<body class="unified-viewport-mode">
+  <header>
+    <h1>PSOBB Texture Editor</h1>
+    <span id="dataDir" class="dim" title="data directory"></span>
+    <span class="grow"></span>
+    <span id="selectionCount" class="pill pill-sel" hidden></span>
+    <span id="editsCount" class="pill" hidden></span>
+    <button id="btnSessionExport" class="ghost" title="save current edits + settings to a JSON file">export session</button>
+    <button id="btnDeployToGame" class="ghost" title="copy changed files from dev mirror -> live PSOBB.IO game install">deploy to game</button>
+    <button id="btnSessionImport" class="ghost" title="restore edits from a session JSON file">import session</button>
+    <input type="file" id="sessionImportInput" accept="application/json,.json" hidden />
+    <button id="btnClearEdits" class="ghost" hidden title="clear all in-memory edits (does not touch disk)">clear edits</button>
+    <button id="btnEditMode" type="button" class="ghost" title="toggle Blender-style edit-mode on the 3D viewport (Tab) — vertex selection + transform gizmo" aria-pressed="false">Edit Mode</button>
+    <button id="btnToggleFiles" type="button" title="show legacy 'editable PRS/XVM' pane (rarely needed — most workflows now flow through the asset tree)" aria-pressed="false">Editables</button>
+    <button id="btnToggleTree" type="button" class="active" title="toggle the full PSOBB.IO asset tree (primary navigation)" aria-pressed="true">All assets</button>
+    <button id="btnClassicUiToggle" type="button" class="ghost" title="switch back to the legacy modal-stack UI" aria-pressed="true">classic UI</button>
+    <span id="status" class="status">ready</span>
+  </header>
+
+  <main>
+    <aside id="fileList" aria-label="editable PRS / XVM containers">
+      <div class="pane-title dim" title="legacy pane: only files the tile editor can round-trip end-to-end">Editable PRS / XVM</div>
+      <div class="search">
+        <input type="text" id="filterBox" placeholder="filter files... (Ctrl+F)" autocomplete="off" spellcheck="false" />
+        <span id="fileCount" class="dim" title="visible / total"></span>
+      </div>
+      <ul id="files" tabindex="0"></ul>
+      <div class="legend dim">
+        <span><kbd>Ctrl</kbd>+<kbd>F</kbd> filter</span>
+        <span><kbd>U</kbd> upscale all</span>
+        <span><kbd>R</kbd> repack</span>
+      </div>
+    </aside>
+
+    <!-- 2026-04-25: primary navigation. Default visible. The header
+         "All assets" / "Editables" toggles flip body.hide-asset-tree
+         and body.hide-file-list independently. The Web Component
+         <pso-asset-tree> manages its own shadow DOM and routes clicks
+         through window.bus to the right viewer (tile editor, model
+         viewer, audio player, hex dump, etc.). -->
+    <aside id="assetTree" aria-label="full PSOBB.IO asset tree">
+      <div class="pane-title dim" title="every file from the live install + dev mirror, classified into 11 categories">All assets <span id="assetTreeCoverage" class="dim"></span></div>
+      <pso-asset-tree></pso-asset-tree>
+    </aside>
+
+    <section id="workArea">
+      <!-- 2026-04-24: unified-viewport layout. vp-tabs / vp-stage /
+           vp-inspector are the three regions of the persistent
+           workspace; perspectives.js mounts content into vp-stage and
+           vp-inspector based on the active asset. The legacy
+           #fileWorkspace block lives below; the "tile-grid"
+           perspective relocates it into vp-stage on mount. In classic
+           UI mode (body without .unified-viewport-mode) the new tabs
+           hide and the legacy layout shows in place. -->
+      <nav class="vp-tabs" id="vpTabs" aria-label="active perspective"></nav>
+      <div class="vp-body">
+        <main class="vp-stage" id="vpStage" aria-label="active perspective content">
+          <div class="vp-stage-empty" id="vpStageEmpty">
+            <div class="walkthrough">
+              <div class="wt-title">PSOBB Texture Editor</div>
+              <div class="wt-sub">Pick an asset on the left to begin. The tab strip above swaps between perspectives (tile grid, 3D view, viewport paint, etc.) without modal popups.</div>
+            </div>
+          </div>
+        </main>
+        <aside class="vp-inspector" id="vpInspector" aria-label="contextual settings">
+          <div class="vp-insp-empty dim">no asset selected</div>
+        </aside>
+      </div>
+
+      <!-- Legacy layout: kept inline for classic UI mode (body without
+           .unified-viewport-mode). The "tile-grid" perspective in
+           perspectives.js detaches #fileWorkspace into the new vp-stage
+           on mount and restores it on unmount. -->
+      <div class="placeholder dim" id="placeholder">
+        <div class="walkthrough">
+          <div class="wt-title">PSOBB Texture Editor</div>
+          <div class="wt-sub">Three steps to a deployed texture upgrade.</div>
+          <div class="wt-steps">
+            <div class="wt-step">
+              <div class="wt-num">1</div>
+              <div class="wt-step-title">Pick a file</div>
+              <div class="wt-step-body">
+                Click any <code>.prs</code> or <code>.xvm</code> on the left.
+                PRS files decompress automatically; XVM files load directly.
+                Both end up as a grid of tiles.
+              </div>
+            </div>
+            <div class="wt-step">
+              <div class="wt-num">2</div>
+              <div class="wt-step-title">Upscale</div>
+              <div class="wt-step-body">
+                Press <kbd>U</kbd> to upscale every tile, or click a single tile
+                to enter its A/B view.
+                Run external tools (e.g.&nbsp;Upscayl) and
+                <strong>drag the result onto a tile card</strong> to import.
+              </div>
+            </div>
+            <div class="wt-step">
+              <div class="wt-num">3</div>
+              <div class="wt-step-title">Repack &amp; deploy</div>
+              <div class="wt-step-body">
+                Press <kbd>R</kbd>. The editor shows a diff of what's about
+                to change, makes a timestamped backup, repacks the original
+                container, and copies it back to the live <code>data/</code>.
+              </div>
+            </div>
+          </div>
+          <div class="wt-foot dim">
+            tip: <kbd>Ctrl</kbd>+<kbd>F</kbd> filters files,
+            <kbd>/</kbd> filters tiles inside a file,
+            click+drag a tile card to A/B compare in place.
+          </div>
+        </div>
+      </div>
+      <div id="fileWorkspace" hidden>
+        <div class="toolbar">
+          <strong id="curFile"></strong>
+          <span class="dim" id="curMeta"></span>
+          <span class="tile-filter">
+            <input type="text" id="tileFilterBox"
+                   placeholder="filter tiles... (idx 5-10, dim 1024, fmt6, has-edit) (/)"
+                   title="ranges like 5-10 / 5,7,9 ; dim like 1024 or <256 ; fmt6 ; has-edit / no-edit"
+                   autocomplete="off" spellcheck="false" />
+            <span id="tileFilterCount" class="dim"></span>
+          </span>
+          <span class="grow"></span>
+          <label>model:
+            <select id="modelSel"></select>
+          </label>
+          <label>scale:
+            <select id="scaleSel"></select>
+          </label>
+          <label title="Lanczos-down to native dim - required for game">
+            <input type="checkbox" id="keepNative" checked />
+            keep native dim
+          </label>
+          <button id="btnSettingsToggle" class="ghost" title="open advanced upscale settings">settings &#x25BE;</button>
+          <label id="atlasModeWrap" class="atlas-toggle" hidden title="show this file's tiles assembled into one composite editable canvas">
+            <input type="checkbox" id="atlasModeToggle" />
+            atlas mode
+          </label>
+          <button id="btnUpscaleAll" title="upscale every tile (U)">upscale all</button>
+          <button id="btnAtlasUpscale" hidden title="upscale the assembled composite, then auto-slice back to per-tile edits">upscale composite</button>
+          <button id="btnAtlasImport" class="ghost" hidden title="import a user-supplied composite PNG (e.g. external Upscayl run)">import composite</button>
+          <input type="file" id="atlasImportInput" accept="image/png,.png" hidden />
+          <button id="btnRevertAll" class="ghost" title="revert all edited tiles in this file" disabled>revert all</button>
+          <button id="btnRepack" title="repack &amp; deploy to PSOBB.IO/data (R)">repack &amp; deploy</button>
+          <button id="btnView3D" class="ghost" title="preview the texture on a 3D primitive (sphere/cube/plane/cylinder)">view 3D</button>
+          <button id="btnViewport" class="ghost" title="open the 16:9 viewport - paint the sprite as it would render on widescreen, including the pillar that the widescreen ASI fills with white">viewport</button>
+        </div>
+        <div id="batchBar" class="batch-bar" hidden>
+          <span id="batchCount" class="dim"></span>
+          <span class="grow"></span>
+          <button id="btnBatchUpscale" title="upscale every selected tile with current settings">upscale selected</button>
+          <button id="btnBatchRevert" class="ghost" title="revert every selected tile">revert selected</button>
+          <button id="btnBatchClear" class="ghost" title="clear selection">clear selection</button>
+        </div>
+
+        <div id="advSettings" class="adv-settings" hidden>
+          <div class="adv-row">
+            <label class="adv-cell" title="Test-time augmentation (-x): higher quality, ~8x slower">
+              <input type="checkbox" id="ttaToggle" />
+              TTA mode
+            </label>
+            <label class="adv-cell" title="ncnn-vulkan tile size (-t). 0 = auto. Smaller = less VRAM but more visible seams. Larger = fewer seams but more VRAM.">
+              tile size:
+              <select id="tileSizeSel">
+                <option value="auto" selected>auto</option>
+                <option value="32">32</option>
+                <option value="64">64</option>
+                <option value="128">128</option>
+                <option value="256">256</option>
+                <option value="512">512</option>
+              </select>
+            </label>
+            <label class="adv-cell" title="-g GPU device. -1 = CPU. 0..N selects a specific GPU. auto = let the binary decide.">
+              gpu:
+              <select id="gpuSel">
+                <option value="auto" selected>auto</option>
+                <option value="-1">cpu</option>
+                <option value="0">gpu 0</option>
+                <option value="1">gpu 1</option>
+              </select>
+            </label>
+          </div>
+          <div class="adv-row" style="border-top:1px solid #2a313a; padding-top:8px;">
+            <label class="adv-cell" title="How card thumbnails fit their box">
+              fit:
+              <select id="fitSel">
+                <option value="contain" selected>contain</option>
+                <option value="cover">cover</option>
+                <option value="native">100% native</option>
+              </select>
+            </label>
+            <label class="adv-cell" title="Uniform CSS scale for the entire grid">
+              zoom:
+              <input type="range" id="zoomRange" min="0.5" max="4" step="0.1" value="1" />
+              <span id="zoomVal" class="dim">1.0&times;</span>
+            </label>
+            <label class="adv-cell adv-help dim">
+              <span id="modelInfo">&nbsp;</span>
+            </label>
+          </div>
+        </div>
+
+        <div id="progressBar" hidden><div class="bar"></div><span class="lbl"></span></div>
+
+        <div id="atlasView" class="atlas-view" hidden>
+          <div class="atlas-meta dim">
+            <span id="atlasMetaText"></span>
+          </div>
+          <div class="atlas-stage">
+            <div class="atlas-empty dim" id="atlasEmpty" hidden>
+              <div>No upscaled composite yet for this file.</div>
+              <div class="ph-hint">Click <strong>upscale composite</strong> above to run the AI on the whole image, or drop in a PNG via <strong>import composite</strong>. Showing the source on both sides until then.</div>
+            </div>
+            <div class="atlas-wrap" id="atlasWrap">
+              <img id="atlasSrc" alt="composite source" draggable="false" />
+              <img id="atlasDst" alt="composite upscaled" draggable="false" />
+              <div class="atlas-spinner" id="atlasSpinner" hidden><div class="spin"></div><span id="atlasSpinnerLabel">upscaling composite...</span></div>
+              <div class="atlas-handle" id="atlasHandle" tabindex="0" role="slider"
+                   aria-label="atlas A/B comparison slider"
+                   aria-valuemin="0" aria-valuemax="100" aria-valuenow="50"></div>
+            </div>
+            <div class="atlas-labels">
+              <span class="lbl-l">source</span>
+              <span class="grow"></span>
+              <span id="atlasLabelRight" class="lbl-r">upscaled</span>
+            </div>
+            <div class="atlas-help dim">drag to compare; the slice strip below shows per-tile boundaries (click any tile to focus it in Tile detail)</div>
+          </div>
+          <div class="atlas-strip-wrap">
+            <div class="dim atlas-strip-title">slice preview (per-tile pieces — click to open Tile detail)</div>
+            <div id="atlasStrip" class="atlas-strip"></div>
+          </div>
+        </div>
+
+        <div id="tileGrid"></div>
+      </div>
+    </section>
+  </main>
+
+  <!-- DEPRECATED: use perspectives instead.
+       The unified-viewport build (default) routes openModal() into the
+       "tile-detail" perspective in static/perspectives.js, which yanks
+       the children of #modal into vp-stage so the user never leaves
+       the persistent viewport. This wrapper is kept for the
+       classic-UI fallback (header "classic UI" toggle) and as a host
+       for the modal sub-elements in unified mode (they're re-parented
+       at runtime). Set `window.psoUseLegacyModal = true` to force the
+       modal to open visibly even in unified mode (debug only). -->
+  <div id="modal" hidden role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="modal-card">
+      <header>
+        <strong id="modalTitle"></strong>
+        <span class="grow"></span>
+        <span id="modalMeta" class="dim"></span>
+        <button id="modalUpscale" title="upscale this tile (Enter)">upscale this tile</button>
+        <button id="modalRevert" class="ghost" title="discard the upscale, keep source" disabled>revert</button>
+        <button id="modalPrev" class="ghost" title="previous tile (Left arrow)" aria-label="previous tile">&larr;</button>
+        <button id="modalNext" class="ghost" title="next tile (Right arrow)" aria-label="next tile">&rarr;</button>
+        <button id="modalClose" title="close (Esc)">close</button>
+      </header>
+      <div class="modal-tabs" role="tablist" aria-label="modal mode">
+        <button id="tabUpscale" class="modal-tab active"
+                role="tab" aria-selected="true" aria-controls="modalUpscaleBar"
+                title="realesrgan / Upscayl-equivalent path (default)">upscale</button>
+        <button id="tabAigen" class="modal-tab"
+                role="tab" aria-selected="false" aria-controls="aigenPanel"
+                title="img2img / inpaint / text2img via local AI runtime">AI generate</button>
+        <span class="grow"></span>
+        <span class="dim modal-tab-hint" id="modalTabHint">upscaling: realesrgan-ncnn-vulkan</span>
+      </div>
+      <div class="modal-upscale-bar" id="modalUpscaleBar">
+        <span class="dim">upscale:</span>
+        <label title="Model — synced with toolbar">
+          <select id="modalModelSel"></select>
+        </label>
+        <label title="Scale (>4x cascades)">
+          <select id="modalScaleSel"></select>
+        </label>
+        <label title="Keep tile at native dim — required for game">
+          <input type="checkbox" id="modalKeepNative" checked />
+          <span>native dim</span>
+        </label>
+        <label title="TTA — quality boost, ~8x slower">
+          <input type="checkbox" id="modalTtaToggle" />
+          <span>TTA</span>
+        </label>
+        <label title="Tile size — VRAM vs seam quality">
+          tile:
+          <select id="modalTileSizeSel">
+            <option value="auto" selected>auto</option>
+            <option value="32">32</option>
+            <option value="64">64</option>
+            <option value="128">128</option>
+            <option value="256">256</option>
+            <option value="512">512</option>
+          </select>
+        </label>
+        <label title="GPU device id">
+          gpu:
+          <select id="modalGpuSel">
+            <option value="auto" selected>auto</option>
+            <option value="0">0</option>
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+          </select>
+        </label>
+        <span class="grow"></span>
+        <span class="dim" id="modalUpscaleHint">changes here also update the toolbar</span>
+      </div>
+
+      <!-- AI generate panel — hidden by default; toggled by the modal-tabs above.
+           Mirrors the upscale-bar layout (toolbar across the top, A/B canvas
+           below uses the SAME #abStage as upscale so both paths feed
+           state.tileEdits identically). -->
+      <div id="aigenPanel" class="aigen-panel" hidden role="tabpanel" aria-labelledby="tabAigen">
+        <div class="aigen-bar aigen-row aigen-row-1">
+          <div class="aigen-modes" role="tablist" aria-label="generation mode">
+            <button class="aigen-mode active" data-mode="img2img" title="re-paint a tile with prompt + reference image">img2img</button>
+            <button class="aigen-mode" data-mode="inpaint" title="paint a mask over the tile, regenerate only that area">inpaint</button>
+            <button class="aigen-mode" data-mode="text2img" title="generate a tile from prompt only (no reference)">text2img</button>
+            <button class="aigen-mode" data-mode="controlnet" title="generate guided by a ControlNet (depth / canny / lineart)">controlnet</button>
+          </div>
+          <span class="grow"></span>
+          <label title="AI generation provider — only available ones are clickable">
+            <span class="dim">provider:</span>
+            <select id="aigenProviderSel"></select>
+          </label>
+          <label title="Model offered by the chosen provider">
+            <span class="dim">model:</span>
+            <select id="aigenModelSel"><option value="">(default)</option></select>
+          </label>
+          <button id="aigenRefreshBtn" class="ghost" title="re-probe providers / re-list models">refresh</button>
+        </div>
+
+        <div class="aigen-row aigen-row-2">
+          <label class="aigen-prompt-wrap" title="Prompt — describe the tile you want">
+            <span class="dim">prompt:</span>
+            <textarea id="aigenPrompt" rows="2" placeholder="cleaner SEGA logo, sharp edges, high detail" spellcheck="false"></textarea>
+          </label>
+          <label class="aigen-prompt-wrap" title="Negative prompt — describe what to avoid">
+            <span class="dim">negative:</span>
+            <textarea id="aigenNegPrompt" rows="2" placeholder="blurry, low quality, jpeg artifacts" spellcheck="false"></textarea>
+          </label>
+        </div>
+
+        <div class="aigen-row aigen-row-3">
+          <label class="aigen-slider-cell" title="Denoise strength — 0 = keep source verbatim, 1 = total repaint. Lower = subtle clean-up; higher = bigger changes.">
+            <span class="dim">denoise <span id="aigenDenoiseVal">0.60</span></span>
+            <input type="range" id="aigenDenoise" min="0" max="1" step="0.05" value="0.60" />
+          </label>
+          <label class="aigen-slider-cell" title="CFG (guidance scale) — how strictly to follow the prompt. 7 is a typical default.">
+            <span class="dim">CFG <span id="aigenCfgVal">7.0</span></span>
+            <input type="range" id="aigenCfg" min="1" max="15" step="0.5" value="7" />
+          </label>
+          <label class="aigen-slider-cell" title="Inference steps — more = better quality, slower. 30 is a reasonable default; SDXL-Lightning works at 4.">
+            <span class="dim">steps <span id="aigenStepsVal">30</span></span>
+            <input type="range" id="aigenSteps" min="4" max="100" step="1" value="30" />
+          </label>
+          <label class="aigen-cell" title="Random seed — leave at -1 to randomize each click. Set a number to reproduce a result.">
+            <span class="dim">seed:</span>
+            <input type="number" id="aigenSeed" value="-1" />
+            <button id="aigenSeedRand" class="ghost" type="button" title="randomize seed">&#x1F3B2;</button>
+          </label>
+          <span class="grow"></span>
+          <button id="aigenGenerate" title="run the generation (AI tab Enter)" disabled>generate</button>
+        </div>
+
+        <!-- Inpaint mask brush — only visible when mode=inpaint -->
+        <div class="aigen-row aigen-mask-bar" id="aigenMaskBar" hidden>
+          <span class="dim">mask brush:</span>
+          <label title="Brush radius in source-pixel units">
+            <span class="dim">size</span>
+            <input type="range" id="aigenBrushSize" min="2" max="64" step="1" value="16" />
+            <span class="dim aigen-brush-size-val" id="aigenBrushSizeVal">16</span>
+          </label>
+          <button id="aigenBrushPaint" class="aigen-tool active" title="paint mask (white = repaint)">paint</button>
+          <button id="aigenBrushErase" class="aigen-tool" title="erase mask (black = preserve)">erase</button>
+          <button id="aigenMaskClear" class="ghost" title="clear the entire mask">clear</button>
+          <button id="aigenMaskInvert" class="ghost" title="invert the mask">invert</button>
+          <span class="grow"></span>
+          <span class="dim aigen-mask-hint">click + drag on the source image to paint</span>
+        </div>
+
+        <!-- Variations strip — appears after the first successful generation.
+             Each thumbnail = one prior result for this tile; click to swap
+             into the A/B view. Capped at 8 in JS. -->
+        <div class="aigen-row aigen-vars-bar" id="aigenVarsBar" hidden>
+          <span class="dim">variations:</span>
+          <div id="aigenVarsStrip" class="aigen-vars-strip"></div>
+          <span class="grow"></span>
+          <button id="aigenVarsClear" class="ghost" title="clear all variations for this tile">clear all</button>
+        </div>
+
+        <div class="aigen-row aigen-status" id="aigenStatusRow" hidden>
+          <span id="aigenStatusText" class="dim"></span>
+        </div>
+      </div>
+
+      <div class="modal-anim-bar">
+        <label title="Toggle animation playback">
+          <input type="checkbox" id="modalAnimEnable" />
+          <span>animate</span>
+        </label>
+        <label title="Frame grid layout for the sprite atlas">
+          grid:
+          <select id="modalAnimGrid">
+            <option value="1x1">1x1</option>
+            <option value="2x1">2x1</option>
+            <option value="4x1">4x1</option>
+            <option value="1x2">1x2</option>
+            <option value="1x4">1x4</option>
+            <option value="2x2">2x2</option>
+            <option value="4x4">4x4</option>
+            <option value="8x1">8x1</option>
+            <option value="1x8">1x8</option>
+            <option value="5x3">5x3</option>
+            <option value="custom">custom</option>
+          </select>
+        </label>
+        <span id="modalAnimCustomWrap" hidden>
+          <input type="number" id="modalAnimCustomCols" min="1" max="64" value="1" title="columns" />
+          <span class="dim">x</span>
+          <input type="number" id="modalAnimCustomRows" min="1" max="64" value="1" title="rows" />
+        </span>
+        <label title="Frames per second">
+          fps:
+          <select id="modalAnimFps">
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="4">4</option>
+            <option value="6" selected>6</option>
+            <option value="8">8</option>
+            <option value="12">12</option>
+            <option value="15">15</option>
+            <option value="24">24</option>
+            <option value="30">30</option>
+            <option value="60">60</option>
+          </select>
+        </label>
+        <label title="Frame iteration order across the atlas">
+          order:
+          <select id="modalAnimOrder">
+            <option value="row-major" selected>row</option>
+            <option value="col-major">col</option>
+          </select>
+        </label>
+        <span class="dim modal-anim-info" id="modalAnimInfo"></span>
+      </div>
+      <div class="ab-stage">
+        <div class="ab-empty dim" id="abEmpty" hidden>
+          <div>No upscale yet for this tile.</div>
+          <div class="ph-hint">Click <strong>upscale this tile</strong> above, or press <kbd>Enter</kbd>. Showing the source on both sides until then.</div>
+        </div>
+        <div class="ab-wrap" id="abWrap">
+          <img id="abSrc" alt="source" draggable="false" />
+          <img id="abDst" alt="upscaled" draggable="false" />
+          <canvas id="abSrcCanvas" class="ab-canvas" hidden></canvas>
+          <canvas id="abDstCanvas" class="ab-canvas ab-canvas-dst" hidden></canvas>
+          <!-- Inpaint mask overlay — only displayed when AI tab is active
+               in inpaint mode. Drawn on top of abSrc; alpha-multiplied
+               cyan tint shows where the user has painted. -->
+          <canvas id="aigenMaskCanvas" class="aigen-mask-canvas" hidden></canvas>
+          <div class="ab-spinner" id="abSpinner" hidden><div class="spin"></div><span>upscaling...</span></div>
+          <div class="ab-handle" id="abHandle" tabindex="0" role="slider"
+               aria-label="A/B comparison slider"
+               aria-valuemin="0" aria-valuemax="100" aria-valuenow="50"></div>
+        </div>
+        <div class="ab-labels">
+          <span id="abLabelLeft" class="lbl-l">source</span>
+          <span class="grow"></span>
+          <span id="abLabelRight" class="lbl-r">upscaled</span>
+        </div>
+        <div class="ab-help dim">drag the handle, click anywhere on the image, or use <kbd>&larr;</kbd>/<kbd>&rarr;</kbd> arrow keys</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="deployModal" hidden role="dialog" aria-modal="true" aria-labelledby="deployModalTitle">
+    <div class="modal-card deploy-card">
+      <header>
+        <strong id="deployModalTitle">Deploy preview</strong>
+        <span class="grow"></span>
+        <button id="deployModalClose" class="ghost">close</button>
+      </header>
+      <div class="deploy-body" id="deployBody">
+        <div class="dim">loading...</div>
+      </div>
+      <div class="deploy-actions">
+        <button id="deployCancel" class="ghost">cancel</button>
+        <button id="deployConfirm">deploy now</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Deploy-to-game modal: dev mirror -> live PSOBB.IO data dir -->
+  <div id="promoteModal" hidden role="dialog" aria-modal="true" aria-labelledby="promoteModalTitle">
+    <div class="modal-card deploy-card promote-card">
+      <header>
+        <strong id="promoteModalTitle">Deploy to live game install</strong>
+        <span class="grow"></span>
+        <button id="promoteModalClose" class="ghost">close</button>
+      </header>
+      <div class="deploy-body" id="promoteBody">
+        <div class="dim">loading...</div>
+      </div>
+      <div class="deploy-actions">
+        <label class="promote-backup-label" title="write a .pre_promote_<TS> copy of each replaced live file">
+          <input type="checkbox" id="promoteCreateBackup" checked />
+          create backup of replaced live file(s)
+        </label>
+        <span class="grow"></span>
+        <button id="promoteSelectChanged" class="ghost" title="check every &lsquo;changed&rsquo; file">select all changed</button>
+        <button id="promoteSelectNone" class="ghost" title="uncheck everything">select none</button>
+        <button id="promoteCancel" class="ghost">cancel</button>
+        <button id="promoteConfirm">promote selected</button>
+      </div>
+    </div>
+  </div>
+
+  <input type="file" id="cardImportInput" accept="image/png,.png" hidden />
+  <div id="toastStack" class="toast-stack" aria-live="polite"></div>
+  <div id="dropOverlay" class="drop-overlay" hidden>
+    <div class="drop-overlay-inner">
+      <div class="drop-overlay-title">drop a PNG to import as upscaled</div>
+      <div class="drop-overlay-sub dim">release on a tile card to import that tile</div>
+    </div>
+  </div>
+
+  <!-- Generic asset viewer modal (audio / hex / text / JSON / metadata).
+       Hosts whichever sub-panel matches the manifest category. The model
+       category routes to #modelModal instead, and texture/container route
+       to the existing tile editor. -->
+  <div id="assetModal" hidden role="dialog" aria-modal="true" aria-labelledby="assetModalTitle">
+    <div class="asset-modal-card">
+      <header>
+        <strong id="assetModalTitle">Asset preview</strong>
+        <span class="grow"></span>
+        <span id="assetModalMeta" class="dim"></span>
+        <a id="assetDownloadLink" class="ghost" href="#" download title="download raw bytes">download</a>
+        <button id="assetClose" title="close (Esc)">close</button>
+      </header>
+      <div class="asset-stage">
+        <!-- Audio panel: HTML5 audio element fed by /api/raw/<path>. -->
+        <div id="assetAudio" class="asset-panel" hidden>
+          <audio id="assetAudioEl" controls preload="metadata" style="width:100%"></audio>
+          <div class="dim asset-help">streamed via /api/raw — Ogg Vorbis is the only audio format PSOBB ships</div>
+        </div>
+        <!-- Hex / text panel: monospace pre with the file contents. -->
+        <div id="assetHex" class="asset-panel" hidden>
+          <div class="asset-hex-bar">
+            <label>view: <select id="assetHexMode">
+              <option value="hex">hex+ascii</option>
+              <option value="text">text</option>
+            </select></label>
+            <span class="grow"></span>
+            <span id="assetHexInfo" class="dim"></span>
+          </div>
+          <pre id="assetHexBody" class="asset-hex-body"></pre>
+        </div>
+        <!-- JSON panel: pretty-printed JSON for metadata files. -->
+        <div id="assetJson" class="asset-panel" hidden>
+          <pre id="assetJsonBody" class="asset-json-body"></pre>
+        </div>
+        <!-- Generic info panel: file path, size, classification (used as
+             fallback for cinematics + any unhandled type). -->
+        <div id="assetInfo" class="asset-panel" hidden>
+          <dl id="assetInfoBody" class="asset-info-body"></dl>
+          <div class="dim asset-help">no inline preview for this format yet — the asset is downloadable above</div>
+        </div>
+        <div id="assetError" class="asset-panel" hidden>
+          <div class="asset-error-msg" id="assetErrorMsg"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3D model preview modal (Phase 1: primitive-based) -->
+  <div id="modelModal" hidden role="dialog" aria-modal="true" aria-labelledby="modelModalTitle">
+    <div class="model-modal-card">
+      <header>
+        <strong id="modelModalTitle">3D Preview</strong>
+        <span class="grow"></span>
+        <span id="modelModalMeta" class="dim"></span>
+        <button id="modelClose" title="close (Esc)">close</button>
+      </header>
+      <div class="model-bar">
+        <label title="Choose a 3D primitive to preview the texture on">
+          shape:
+          <select id="modelShapeSel">
+            <option value="sphere">sphere</option>
+            <option value="cube">cube</option>
+            <option value="plane">plane</option>
+            <option value="cylinder">cylinder</option>
+          </select>
+        </label>
+        <label title="Pick which tile to apply as the texture">
+          tile:
+          <select id="modelTileSel"></select>
+        </label>
+        <label id="modelTexOverrideWrap" title="When the asset tree opens a model, this dropdown lists all matched textures (highest confidence first). Switching here overrides the auto-bound texture." hidden>
+          texture:
+          <select id="modelTexOverride"></select>
+        </label>
+        <label id="modelInnerPickWrap" title="A multi-part BML (boss with body + helm + fins, etc.) packs each part as a separate inner .nj. 'All parts' composites every part into one scene; pick a single part to inspect it in isolation." hidden>
+          part:
+          <select id="modelInnerPick"></select>
+        </label>
+        <label title="Use the upscaled tile if available, otherwise the source">
+          <input type="checkbox" id="modelUseUpscaled" checked />
+          use upscaled (when available)
+        </label>
+        <label title="Auto-rotate the model">
+          <input type="checkbox" id="modelAutoRotate" checked />
+          auto-rotate
+        </label>
+        <label title="Wireframe overlay">
+          <input type="checkbox" id="modelWireframe" />
+          wireframe
+        </label>
+        <label id="modelSkeletonWrap" title="Visualize the bone hierarchy as wireframe spheres + parent-child lines. Read-only — bones cannot be moved." hidden>
+          <input type="checkbox" id="modelSkeletonToggle" />
+          show skeleton (<span id="modelBoneCount">0</span>)
+        </label>
+        <label title="Debug-mode overlay: tints each sub-mesh with a unique color, lets you hover for stats and click in the sidebar to highlight. Useful for tracking down 'which mesh is that floating triangle' bugs.">
+          <input type="checkbox" id="modelDebugToggle" />
+          debug overlay (D)
+        </label>
+        <button id="modelRefreshTex" class="ghost" title="reload texture from the editor">refresh texture</button>
+        <span class="grow"></span>
+        <span class="dim model-status" id="modelStatus"></span>
+      </div>
+      <!-- Animation bar (2026-04-24): NJM motion playback. Hidden until
+           model_viewer.js detects a model with NJM siblings; populated
+           by populateAnimationPanel() after /api/animations resolves. -->
+      <div class="model-bar model-anim-bar" id="modelAnimBar" hidden>
+        <label title="Choose which NJM motion to play. Walk auto-detected when present; falls back to idle/stand if no walk.">
+          motion:
+          <select id="modelAnimSel"></select>
+        </label>
+        <button id="modelAnimPlayPause" class="ghost" title="Play / pause animation playback (Space)">pause</button>
+        <label class="model-anim-scrub" title="Drag to scrub through the animation timeline">
+          frame:
+          <input type="range" id="modelAnimScrub" min="0" max="0" step="1" value="0" />
+          <span id="modelAnimTime" class="dim">0/0</span>
+        </label>
+        <label title="Frames-per-second playback rate. PSOBB BB simulates at 30 Hz; lower = slow-motion preview.">
+          fps:
+          <select id="modelAnimFps">
+            <option value="1">1</option>
+            <option value="6">6</option>
+            <option value="12">12</option>
+            <option value="15">15</option>
+            <option value="24">24</option>
+            <option value="30" selected>30</option>
+            <option value="60">60</option>
+          </select>
+        </label>
+        <label title="Loop the animation when it reaches the end (default on)">
+          <input type="checkbox" id="modelAnimLoop" checked />
+          loop
+        </label>
+        <button id="modelAnimReset" class="ghost" title="Restore the bind-pose mesh (no animation applied)">reset to bind pose</button>
+        <span class="grow"></span>
+        <span class="dim model-status" id="modelAnimStatus"></span>
+      </div>
+      <div class="model-stage">
+        <canvas id="modelCanvas"></canvas>
+        <div class="model-overlay" id="modelOverlay">
+          <div id="modelHint" class="model-hint dim"></div>
+          <div id="modelMeshStats" class="model-mesh-stats dim" hidden></div>
+        </div>
+        <!-- Debug-mode tooltip + sidebar (model_viewer.js manages
+             show/hide). Default hidden; the "debug overlay" checkbox
+             above (or the D key when the modal is focused) toggles. -->
+        <div class="model-debug-tooltip" id="modelDebugTooltip" hidden></div>
+        <aside class="model-debug-sidebar" id="modelDebugSidebar" hidden aria-label="sub-mesh inspector">
+          <header class="model-debug-sidebar-header">
+            <strong>sub-meshes</strong>
+            <span id="modelDebugCount" class="dim"></span>
+          </header>
+          <input type="text" id="modelDebugFilter" class="model-debug-filter" placeholder="filter by index or position..." />
+          <div class="model-debug-list" id="modelDebugList"></div>
+        </aside>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modding-suite sidecar modules (Phase A, Agent 5).
+       bus.js MUST load before any consumer; manifest.js + tree.js
+       attach themselves to window. Order also matters for the
+       inline <script> below which assumes window.bus exists. -->
+  <script src="/static/bus.js"></script>
+  <!-- Asset lifecycle / abort coordinator (Wave 7, 2026-04-26).
+       Owns the shared AbortController for "the asset the user is
+       currently looking at" so rapid-clicks abort prior in-flight
+       fetches instead of stacking on the uvicorn worker queue.
+       MUST load before any panel that fetches per-asset data. -->
+  <script src="/static/asset_lifecycle.js"></script>
+  <!-- Live-reload SSE bridge (v5 polish, 2026-04-25).
+       Connects to /api/events and rebroadcasts cache.changed onto
+       window.bus so every panel can subscribe. Mounts a small
+       connection-state badge in the header. Loads right after bus.js
+       so it can publish; consumers below can register listeners
+       independently of load order (bus is sticky). -->
+  <script src="/static/live_reload.js"></script>
+  <script src="/static/manifest.js"></script>
+  <script src="/static/tree.js"></script>
+  <script src="/static/app.js"></script>
+  <!-- Editor v4: per-map engine fog/light table (auto-generated from
+       <install>/data/fogentry.dat + lightentry.bin via
+       formats/psobb_engine_tables.py). Loaded before model_viewer.js
+       so the v4 environment-application path can find
+       window.PSOBB_ENGINE_DATA at first use. -->
+  <script src="/static/psobb_engine_data.js"></script>
+  <script type="module" src="/static/model_viewer.js"></script>
+  <script src="/static/viewport.js"></script>
+
+  <!-- Asset router (Agent asset coverage, 2026-04-25).
+       Replaces the original "show-asset-tree" toggle with two
+       independently-toggleable panes (default both visible) and routes
+       bus.asset.opened to the right viewer based on the manifest entry's
+       category:
+         texture/container → existing tile editor (window.openFile)
+         model             → 3D model viewer (window.psoOpenModelByPath)
+         audio             → assetModal audio panel
+         script/quest/unknown → assetModal hex panel
+         metadata          → assetModal JSON panel (or text)
+         cinematic         → assetModal info panel
+       The existing model-viewer code (model_viewer.js) defines its own
+       UI; this router calls window.psoOpenModelByPath if present, else
+       falls back to opening the modal directly. -->
+  <script src="/static/asset_router.js"></script>
+
+  <!-- Unified viewport perspectives (2026-04-24).
+       When body has .unified-viewport-mode (default), this script
+       takes over the central work area: a tab strip swaps between
+       perspectives (tile-grid / 3d-view / viewport-paint / aigen /
+       atlas-composite / audio / hex / json / asset-info / deploy-diff)
+       without modal popups. Each perspective relocates the relevant
+       legacy DOM (e.g. the model viewer's canvas) into vp-stage and
+       restores it on unmount, so existing wiring keeps working.
+       Toggle off via header "classic UI" button. -->
+  <script src="/static/perspectives.js"></script>
+
+  <!-- In-viewport texture + subdivide panel (2026-04-25).
+       Mounts a docked sidebar inside the 3D-view's .model-stage that
+       lists every bound texture (with thumbnail + dim + per-tile
+       upscale/replace buttons) and the Loop-subdivide controls. Reads
+       model state via the public window.pso* exports surfaced by
+       model_viewer.js and asset_router.js. -->
+  <script src="/static/texture_panel.js"></script>
+
+  <!-- Sculpt panel (2026-04-25).
+       Adds a "Sculpt" tab to the texture-panel tab strip with brush-
+       painted vertex-displacement tools (push / pull / inflate / smooth
+       / pinch / flatten / decimate). Reads camera + meshGroup from
+       model_viewer's additive psoGetSculptMeshGroup() export and writes
+       per-stroke deltas into the live BufferAttribute arrays. Saves
+       sculpts via /api/sculpt/save (cache/sculpted_meshes/). Pointer
+       handlers gated by sculpt-mode toggle so left-click doesn't fight
+       orbit. Mirrors the formats/sculpt.py wire format. -->
+  <script src="/static/sculpt_panel.js"></script>
+
+  <!-- Material Inspector / Editor (v5 polish, 2026-04-25).
+       Adds a "Material" tab to the texture-panel tab strip with per-
+       submesh diffuse RGBA / alpha-test / blend-mode / two-sided /
+       depth-test/write controls plus a shipping-value preset chooser
+       (player skin, hair/fur, glass/energy, standard solid).
+       Decodes Ninja material chunks 17-23 server-side via formats/
+       material.py; live-previews edits through window.psoUpdateMaterial.
+       Save POSTs /api/material/<bml> and stages cache/bml_export/. -->
+  <script src="/static/material_panel.js"></script>
+
+  <!-- Live Mod-Test shared module (2026-04-25).
+       Exposes window.PSOLiveTest with triggerLiveTest() + ensureLiveButton()
+       for any panel to call. Mounts "Live Test" buttons + status pips
+       into each authoring panel; on click pushes the staged edit into the
+       running game / newserv via /api/live_test. Loaded BEFORE the panels
+       below so they can call PSOLiveTest.ensureLiveButton() at render time. -->
+  <script src="/static/live_test.js"></script>
+
+  <!-- Battle Params editor (2026-04-25).
+       Adds a "Battle Params" header button + a dedicated perspective
+       for editing newserv BattleParamEntry*.dat (96 mob slots, 4
+       difficulties, stats/attacks/resists/movement). Talks to
+       /api/battle_param/* on the server; staged exports land in
+       cache/battle_param_export/ and are deployed to the configured
+       newserv path on user confirmation. -->
+  <script src="/static/battle_param_panel.js"></script>
+  <!-- Item PMT editor (2026-04-25).
+       Adds an "Item PMT" header button + a dedicated perspective for
+       editing newserv ItemPMT-bb-v4.prs (weapons / armors / shields /
+       units / mags / tools / specials / mag-feed / combinations).
+       Talks to /api/itempmt/* on the server; staged exports land in
+       cache/itempmt_export/ as PRS-compressed .prs and are deployed
+       to the configured newserv path on user confirmation. -->
+  <script src="/static/itempmt_panel.js"></script>
+
+  <!-- Mob AI Authoring (Tier 1) — semantic layer over BattleParamEntry
+       (2026-04-25). Adds a "Mob AI" header button + perspective with
+       per-slot named fields (walk_speed, tech_cast_chance_pct, ...)
+       grouped semantically (Movement / Combat / AI Behavior / Resists
+       / Stats), kind-aware editors (degrees/seconds/percentages), and
+       shippable JSON presets in data/mob_presets/. /api/mob_dsl/*
+       endpoints; compile path pipes through the existing battle_param
+       deploy chain. -->
+  <script src="/static/mob_dsl_panel.js"></script>
+
+  <!-- Texture Paint MVP (2026-04-25).
+       Adds a "Paint" tab to the in-viewport texture panel's tab strip
+       (Textures / Layers / Motions / Subdivide / Paint) and surfaces a
+       UV-aware brush directly on the 3D viewport. Click + drag on the
+       model -> raycast (face, uv) -> stamp on the bound texture's
+       CanvasTexture -> live re-upload to the GPU. Talks to
+       /api/paint/{save,build_archive,deploy,active} for persistence.
+       Loads AFTER texture_panel.js so its DOM is present at install. -->
+  <script src="/static/paint_panel.js"></script>
+
+  <!-- Rig panel (2026-04-25).
+       Adds a "Rig" tab to the texture-panel tab strip with three modes:
+       Skeleton (drag bones, edit TRS), Weight Paint (brush per-vertex
+       bone weights with heatmap), and IK (drag a target marker, FABRIK
+       solver pins the chain). Talks to /api/rig/{save,auto_skin,
+       build_archive} on the server; per-vertex weights + bone-pose
+       overrides go through the additive psoSetBonePoseOverride /
+       psoSetVertexWeights / psoApplyRigBake exports on
+       model_viewer.js. -->
+  <script src="/static/rig_panel.js"></script>
+
+  <!-- Anim Editor panel (2026-04-25).
+       Adds an "Anim Editor" tab to the texture-panel tab strip with a
+       timeline scrubber + per-bone TRS keyframe inspector + per-frame
+       insert/delete/save buttons. Talks to /api/anim_keyframe/{load,
+       save,insert,delete} on the server; staged motions land in
+       cache/njm_export/ and can be spliced into a target BML via the
+       existing /api/import/animation/swap endpoint. Loads AFTER
+       texture_panel.js so its tab-registration hooks are present.
+       Doubles as the missing UI surface for the build_njm endpoint. -->
+  <script src="/static/anim_editor_panel.js"></script>
+
+  <!-- Anim Library panel (v5 polish, 2026-04-25).
+       Adds an "Anim Library" header button + a global perspective that
+       browses every imported animation in cache/njm_export/ across all
+       target models. Bulk delete / rename / export-as-zip / re-retarget.
+       Talks to /api/anim_library/{list,delete,rename,zip} and subscribes
+       to the live-reload bus so the grid auto-refreshes when a file
+       changes on disk. -->
+  <script src="/static/anim_library_panel.js"></script>
+
+  <!-- Map Editor perspective (2026-04-25).
+       Adds a "Map Editor" header button + a dedicated perspective for
+       loading PSOBB scene/map_* terrain (every NJ/XJ for one floor in
+       parallel) and dropping spawns / waypoints. Reuses model_viewer.js
+       via additive psoScene* exports — no fork of the renderer.
+       Persists edits to /api/map/edits as JSON sidecars under
+       cache/map_edits/; future quest-script editor reads the same. -->
+  <script src="/static/map_panel.js"></script>
+
+  <!-- External 3D-model import (2026-04-25).
+       Adds a top-level drop-zone overlay + "Import 3D" header button
+       that accepts .obj / .gltf / .glb files from Blender / Maya /
+       3ds Max / Unity. Server-side parse (formats/import_external.py)
+       returns an ImportedModel JSON which the panel renders into the
+       model viewer via psoApplyMeshPayload, then the user picks a
+       target skeleton template + scale + axis-flip and ships the
+       converted .nj through /api/import/build_nj into cache/nj_export.
+       Optional in-modal "Replace target..." flow stages a BML by
+       substituting the imported NJ for an inner mesh of an existing
+       PSOBB BML (e.g. plAbdy00). -->
+  <script src="/static/import_panel.js"></script>
+
+  <!-- ====================================================================
+       Cross-tool UX maturity layer (2026-04-25).
+       Order matters: undo_bus -> multi_select -> workspace -> hotkeys ->
+       quicksearch. hotkeys binds Ctrl+P which calls into psoQuickSearch,
+       so quicksearch loads after hotkeys advertises bindings (ok because
+       the binding closures defer their lookups to call time).
+       ==================================================================== -->
+  <script src="/static/undo_bus.js"></script>
+  <script src="/static/multi_select.js"></script>
+  <script src="/static/workspace.js"></script>
+  <script src="/static/hotkeys.js"></script>
+  <script src="/static/quicksearch.js"></script>
+
+  <!-- ====================================================================
+       Pro-tools edit layer (2026-04-26).
+       Adds Blender-style edit-mode to the 3D viewport: vertex selection,
+       transform gizmo, UV viewer, and a discoverable bone hierarchy.
+       Order: transform_gizmo (loads TransformControls dynamically) ->
+       edit_panel (the Edit tab, drives the gizmo) ->
+       skeleton_panel + uv_panel (independent tabs).
+       Each panel registers itself via psoTexturePanelRegisterTab so it
+       auto-mounts in the existing texture-panel tab strip.
+       ==================================================================== -->
+  <script src="/static/transform_gizmo.js"></script>
+  <script src="/static/edit_panel.js"></script>
+  <script src="/static/skeleton_panel.js"></script>
+  <script src="/static/uv_panel.js"></script>
+</body>
+</html>

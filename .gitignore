@@ -1,0 +1,104 @@
+# ============================================================================
+# .gitignore — PSOBB texture/model editor (Python backend + JS frontend)
+# This repo is PUBLIC. Keep copyrighted game assets and game-derived data OUT.
+# Only first-party source (server.py, manifest.py, atlas_layouts.py, formats/,
+# static/, scripts/, tests/, aigen/, requirements.txt, package.json, run.bat)
+# plus the single README.md should be tracked.
+# ============================================================================
+
+# ---------------------------------------------------------------------------
+# Internal design / research / audit / planning notes — LOCAL ONLY.
+# The public repo carries exactly one doc: README.md. Everything else
+# (ARCHITECTURE, API_REFERENCE, AUDIT_*, RESEARCH_*, SESSION_*, ROADMAP, the
+# MASTER_PLAN/ planning dir, etc.) stays on disk but out of the repo.
+# ---------------------------------------------------------------------------
+/*.md
+!/README.md
+/MASTER_PLAN/
+
+# ---------------------------------------------------------------------------
+# Copyrighted game assets / game-derived data
+# ---------------------------------------------------------------------------
+# The entire data/ tree is game-derived, EXCEPT the clearly-licensed sample
+# assets under data/test_assets (Kenney CC0, Khronos sample glTF, etc.).
+# NOTE: ignore the *contents* of data/ (data/*) rather than the directory
+# itself, so git can still descend into data/test_assets via the negation.
+data/*
+!data/test_assets/
+
+# Generated / extracted / packaged game-asset working dirs
+cache/
+exports/
+dist/
+zip_staging/
+zip_verify/
+model_audit/
+render_compare/
+_reports/
+_scene_smoke/
+_e2e_work/
+
+# Packaged archives (asset bundles)
+*.zip
+
+# ---------------------------------------------------------------------------
+# Third-party reference repositories (each carries its own license; huge)
+# ---------------------------------------------------------------------------
+_reference/
+
+# ---------------------------------------------------------------------------
+# Logs
+# ---------------------------------------------------------------------------
+*.log
+server*.log
+sidecar*.log
+
+# ---------------------------------------------------------------------------
+# Huge generated coverage CSVs
+# ---------------------------------------------------------------------------
+MODEL_COVERAGE.csv
+TEXTURE_COVERAGE.csv
+
+# ---------------------------------------------------------------------------
+# Scratch / investigation / benchmark files (leading underscore convention)
+# ---------------------------------------------------------------------------
+_*.py
+_*.json
+_*.bin
+_investigate.py
+_testjob.py
+_bench_*.py
+# Scratch working directories (leading-underscore convention)
+_*/
+
+# ---------------------------------------------------------------------------
+# Python caches / virtualenvs
+# ---------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+env/
+
+# ---------------------------------------------------------------------------
+# Node
+# ---------------------------------------------------------------------------
+node_modules/
+
+# ---------------------------------------------------------------------------
+# Editor / tooling local config
+# ---------------------------------------------------------------------------
+.claude/
+.vscode/
+.idea/
+
+# ---------------------------------------------------------------------------
+# OS cruft
+# ---------------------------------------------------------------------------
+.DS_Store
+Thumbs.db
+desktop.ini

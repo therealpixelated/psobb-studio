@@ -1,0 +1,31 @@
+# PSO asset web tool — runtime Python dependencies
+# Pinned to the versions verified installed on 2026-06-19 (Python 3.11.0).
+# Regenerate with: pip freeze | grep -E '<pkg>'
+#
+# Derived from imports across server.py + formats/ + aigen/.
+# stdlib-only modules (struct, json, asyncio, hashlib, ...) are NOT listed.
+
+# --- Web framework / ASGI server (required) ---
+fastapi==0.136.1
+uvicorn==0.44.0
+pydantic==2.13.0
+starlette==1.0.0          # pulled in by fastapi; pinned for reproducibility
+anyio==4.13.0             # pulled in by starlette/fastapi
+python-multipart==0.0.26  # required for FastAPI Form()/UploadFile() endpoints
+
+# --- Core asset processing (required) ---
+pillow==12.2.0            # imported as PIL — texture decode/encode, PNG I/O
+numpy==2.4.4              # mesh math (formats/import_external, fbx_reader, rigging, sculpt)
+
+# --- Texture codecs (optional; xvr_decode degrades w/o, used for BC1/BC3 encode) ---
+quicktex==0.3.1           # formats/xvr_decode.py — S3TC (BC1/BC3) re-encode
+
+# --- External model import (optional; import_external endpoints) ---
+pygltflib==1.16.5         # glTF/GLB import (formats/import_external.py)
+trimesh==4.12.1           # mesh subdivide path in server.py (lazy import)
+
+# --- Optional AI-generation providers (heavy; lazy-imported, NOT required to run) ---
+# Uncomment only if using /api/aigen/* with the local diffusers provider:
+# torch
+# diffusers
+# transformers

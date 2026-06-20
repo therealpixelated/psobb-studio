@@ -1,0 +1,4508 @@
+/* ─────────────────────────────────────────────────────────────────
+ * PSOBB Modding Suite — Design Tokens
+ *
+ * Extracted from https://psobb.io/css/style.css (v=1777106557)
+ * on 2026-04-24. Mirrors psobb.io's visual identity so the editor
+ * looks like part of the same product.
+ *
+ * NOTE (Agent 5, Phase A→F bridge): tokens coexist with the
+ * existing dark-theme rules below for one cycle. A future agent
+ * will reskin the editor to use these directly. Until then the
+ * cosmic backdrop + scan-lines are gated behind <body class=
+ * "theme-psobb">; new components (asset tree, sidebar) opt in to
+ * the --tk-* vars while the rest of the editor stays unchanged.
+ *
+ * Originating source: not explicitly licensed; CSS color values are
+ * not copyrightable. Mirror with attribution in LICENSES.md.
+ * ────────────────────────────────────────────────────────────── */
+
+:root {
+  /* ── Brand palette (lifted verbatim from psobb.io) ──────────── */
+  --tk-blue:        #00ffff;        /* primary cyan, "PSO blue" */
+  --tk-purple:      #9d4edd;        /* secondary, logo cosmic purple */
+  --tk-orange:      #ffaa00;        /* accent / warnings / "Bounty Board" */
+  --tk-green:       #00ff88;        /* "active event" success */
+  --tk-online:      #00ff00;        /* server status online */
+  --tk-discord:     #5865F2;        /* Discord brand */
+  --tk-discord-hov: #4752C4;
+  --tk-gold-1:      #ffd700;        /* hunter's license gradient stop 1 */
+  --tk-gold-2:      #b8860b;        /* hunter's license border */
+
+  /* ── Surface palette ────────────────────────────────────────── */
+  --tk-bg:          #0a0a10;        /* page background base */
+  --tk-bg-1:        #050a14;        /* radial-grad mid stop */
+  --tk-bg-2:        #1a0b2e;        /* radial-grad top (cosmic) */
+  --tk-bg-3:        #000000;        /* radial-grad far edge */
+  --tk-panel:       rgba(0, 20, 40, 0.9);
+  --tk-panel-2:     linear-gradient(135deg, rgba(0,20,40,0.95), rgba(0,40,80,0.95));
+  --tk-overlay:     rgba(0, 0, 0, 0.8);
+
+  /* The cosmic page backdrop (apply to <body>) */
+  --tk-backdrop:    radial-gradient(circle at top center,
+                                    var(--tk-bg-2) 0%,
+                                    var(--tk-bg-1) 60%,
+                                    var(--tk-bg-3) 100%);
+
+  /* ── Text ──────────────────────────────────────────────────── */
+  --tk-text:        #e0f0ff;        /* primary body text */
+  --tk-text-strong: #ffffff;
+  --tk-text-mute:   rgba(224, 240, 255, 0.7);
+  --tk-text-dim:    rgba(224, 240, 255, 0.5);
+
+  /* ── Borders / lines ───────────────────────────────────────── */
+  --tk-line:        rgba(0, 255, 255, 0.3);
+  --tk-line-strong: var(--tk-blue);
+  --tk-line-purple: var(--tk-purple);
+
+  /* ── Glows (drop-shadow / text-shadow common values) ───────── */
+  --tk-glow-blue:   0 0 10px var(--tk-blue);
+  --tk-glow-blue-l: 0 0 30px var(--tk-blue);
+  --tk-glow-purple: 0 0 5px var(--tk-purple);
+  --tk-glow-orange: 0 0 8px var(--tk-orange);
+  --tk-glow-green:  0 0 5px var(--tk-online);
+  --tk-glow-card:   0 0 20px rgba(0, 255, 255, 0.2),
+                    inset 0 0 30px rgba(0, 0, 0, 0.8);
+
+  /* ── Typography stack ──────────────────────────────────────── */
+  --tk-font-body:   'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  --tk-font-mono:   'Share Tech Mono', 'Consolas', 'Segoe UI', monospace;
+  --tk-font-h:      var(--tk-font-body);  /* psobb.io uses Segoe UI for headings; "Share Tech Mono" only for the License card */
+
+  /* Sizes (rem-based, observed) */
+  --tk-fs-h1:       3.5rem;
+  --tk-fs-h1-lg:    4.5rem;          /* hero brand */
+  --tk-fs-h2:       2rem;
+  --tk-fs-h3:       1.4rem;
+  --tk-fs-body:     1rem;
+  --tk-fs-sm:       0.9rem;
+  --tk-fs-xs:       0.8rem;
+  --tk-fs-tiny:     0.6em;            /* used in mobile nav-shrink */
+  --tk-fs-logo:     1.5rem;           /* "PSOBB.IO" header logo */
+
+  /* Weights */
+  --tk-fw-normal:   400;
+  --tk-fw-medium:   500;
+  --tk-fw-bold:     700;
+  --tk-fw-heavy:    900;
+
+  /* Line heights */
+  --tk-lh-h:        1.2;
+  --tk-lh-body:     1.6;
+
+  /* Letter spacing */
+  --tk-ls-logo:     2px;             /* PSOBB.IO logo */
+  --tk-ls-button:   normal;
+
+  /* ── Spacing scale (psobb.io uses ad-hoc rem; harmonized here) */
+  --tk-sp-0:        0;
+  --tk-sp-1:        0.25rem;          /* 4px  */
+  --tk-sp-2:        0.5rem;           /* 8px  */
+  --tk-sp-3:        0.75rem;          /* 12px */
+  --tk-sp-4:        1rem;             /* 16px */
+  --tk-sp-5:        1.5rem;           /* 24px */
+  --tk-sp-6:        2rem;             /* 32px */
+  --tk-sp-7:        3rem;             /* 48px */
+  --tk-sp-8:        4rem;             /* 64px */
+
+  /* ── Corner radii ─────────────────────────────────────────── */
+  --tk-rad-1:       4px;              /* tight (buttons, inputs, nav links) */
+  --tk-rad-2:       8px;              /* cards inner */
+  --tk-rad-3:       12px;             /* hero cards (hunter's license) */
+
+  /* ── Borders ──────────────────────────────────────────────── */
+  --tk-border:      1px solid var(--tk-line-strong);
+  --tk-border-mute: 1px solid var(--tk-line);
+  --tk-border-dash: 1px dashed var(--tk-blue);
+
+  /* ── Shadows ──────────────────────────────────────────────── */
+  --tk-shadow-1:    0 2px 10px rgba(0, 0, 0, 0.4);
+  --tk-shadow-card: 0 0 20px rgba(0, 255, 255, 0.2);
+
+  /* ── Animation tokens ─────────────────────────────────────── */
+  --tk-d-1:         0.2s;             /* hover micro */
+  --tk-d-2:         0.3s;             /* common */
+  --tk-d-3:         0.4s;             /* card hover */
+  --tk-d-4:         0.8s;             /* hero fade-in */
+  --tk-d-5:         6s;               /* float */
+  --tk-d-6:         13.3s;            /* light-up loop */
+
+  --tk-ease:        ease;
+  --tk-ease-in:     ease-in;
+  --tk-ease-out:    ease-out;
+  --tk-ease-inout:  ease-in-out;
+  --tk-ease-bounce: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+
+  /* ── Z-index layers ───────────────────────────────────────── */
+  --tk-z-bg:         -1;
+  --tk-z-content:    1;
+  --tk-z-header:     1000;
+  --tk-z-modal:      2000;
+  --tk-z-toast:      3000;
+  --tk-z-scan-lines: 9999;
+
+  /* ── Header ───────────────────────────────────────────────── */
+  --tk-header-bg:   var(--tk-overlay);
+  --tk-header-blur: blur(10px);
+  --tk-header-pad:  1rem 2rem;
+
+  /* ── Backdrops ────────────────────────────────────────────── */
+  --tk-scan-lines:  repeating-linear-gradient(
+                      to bottom,
+                      transparent 0,
+                      transparent 2px,
+                      rgba(0, 255, 255, 0.025) 3px,
+                      transparent 4px
+                    );
+}
+
+/* ─────────────────────────────────────────────────────────────────
+ * Cosmic backdrop + scan-line overlay — OPT-IN via body.theme-psobb
+ *
+ * The default editor theme remains the existing #0e1116 dark slate
+ * (defined further down). When a user (or a future reskin agent)
+ * adds the `theme-psobb` class to <body>, the cosmic radial backdrop
+ * and a fixed scan-line overlay activate without touching the rest
+ * of the layout.
+ * ────────────────────────────────────────────────────────────── */
+
+body.theme-psobb {
+  background-color: var(--tk-bg);
+  background-image: var(--tk-backdrop);
+  color: var(--tk-text);
+  font-family: var(--tk-font-body);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+body.theme-psobb a {
+  color: var(--tk-blue);
+  text-decoration: none;
+  transition: color var(--tk-d-2);
+}
+
+body.theme-psobb a:hover {
+  color: var(--tk-purple);
+  text-shadow: var(--tk-glow-purple);
+}
+
+/* The fixed scan-line overlay element (added by JS only when the
+   theme is active). pointer-events:none keeps it inert. */
+body.theme-psobb .tk-scan-lines {
+  position: fixed;
+  inset: 0;
+  background: var(--tk-scan-lines);
+  pointer-events: none;
+  z-index: var(--tk-z-scan-lines);
+  animation: tk-scanline 13.3s linear infinite;
+}
+
+/* ─────────────────────────────────────────────────────────────────
+ * Reusable token-driven component classes
+ *
+ * These are theme-agnostic — they read --tk-* and produce the
+ * psobb.io look. Used by the new asset tree (Agent 5) and any
+ * future component that wants the cosmic style without waiting
+ * for the full reskin.
+ * ────────────────────────────────────────────────────────────── */
+
+.tk-panel {
+  background: var(--tk-panel);
+  border: var(--tk-border);
+  border-radius: var(--tk-rad-2);
+  box-shadow: var(--tk-shadow-card);
+}
+
+.tk-card-cosmic {
+  background: var(--tk-panel-2);
+  border: var(--tk-border);
+  border-radius: var(--tk-rad-3);
+  box-shadow: var(--tk-glow-card);
+  overflow: hidden;
+  position: relative;
+}
+
+.tk-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 40px;
+  padding: 8px 16px;
+  border: 1px solid transparent;
+  border-radius: var(--tk-rad-1);
+  background: transparent;
+  color: var(--tk-text-strong);
+  font-weight: var(--tk-fw-medium);
+  cursor: pointer;
+  transition: all var(--tk-d-2) var(--tk-ease);
+  white-space: nowrap;
+}
+
+.tk-btn-primary {
+  border-color: var(--tk-blue);
+  color: var(--tk-blue);
+}
+.tk-btn-primary:hover {
+  background: var(--tk-blue);
+  color: #000;
+  box-shadow: var(--tk-glow-blue);
+}
+
+.tk-btn-secondary {
+  border-color: var(--tk-purple);
+  color: var(--tk-purple);
+}
+.tk-btn-secondary:hover {
+  background: rgba(157, 78, 221, 0.1);
+  box-shadow: var(--tk-glow-purple);
+}
+
+.tk-btn-warn {
+  border-color: var(--tk-orange);
+  color: var(--tk-orange);
+}
+.tk-btn-warn:hover {
+  background: var(--tk-orange);
+  color: #000;
+  box-shadow: var(--tk-glow-orange);
+}
+
+.tk-input {
+  background: rgba(0, 0, 0, 0.3);
+  border: var(--tk-border-mute);
+  border-radius: var(--tk-rad-1);
+  color: var(--tk-text);
+  padding: 8px 12px;
+  font-family: var(--tk-font-body);
+  transition: border-color var(--tk-d-2), box-shadow var(--tk-d-2);
+}
+.tk-input:focus {
+  outline: none;
+  border-color: var(--tk-blue);
+  box-shadow: var(--tk-glow-blue);
+}
+
+.tk-h1 {
+  font-size: var(--tk-fs-h1);
+  font-weight: var(--tk-fw-bold);
+  line-height: var(--tk-lh-h);
+  color: var(--tk-text-strong);
+}
+.tk-h2 {
+  font-size: var(--tk-fs-h2);
+  font-weight: var(--tk-fw-bold);
+  color: var(--tk-blue);
+  text-shadow: var(--tk-glow-blue);
+}
+.tk-h3 {
+  font-size: var(--tk-fs-h3);
+  font-weight: var(--tk-fw-bold);
+  color: var(--tk-purple);
+  border-bottom: 1px solid var(--tk-purple);
+  padding-bottom: var(--tk-sp-2);
+}
+
+.tk-mono {
+  font-family: var(--tk-font-mono);
+}
+
+/* ─────────────────────────────────────────────────────────────────
+ * Animations
+ * ────────────────────────────────────────────────────────────── */
+
+@keyframes tk-fade-in-up {
+  from { opacity: 0; transform: translateY(30px); }
+  to   { opacity: 1; transform: translateY(0);   }
+}
+
+@keyframes tk-float {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-15px); }
+}
+
+@keyframes tk-scanline {
+  from { background-position: 0 0;   }
+  to   { background-position: 0 100%; }
+}
+
+.tk-animate-fade-in    { animation: tk-fade-in-up var(--tk-d-4) var(--tk-ease-out) forwards; }
+.tk-animate-float      { animation: tk-float var(--tk-d-5) var(--tk-ease-inout) infinite; }
+.tk-animate-delay-1    { animation-delay: 0.2s; }
+.tk-animate-delay-2    { animation-delay: 0.4s; }
+.tk-animate-delay-3    { animation-delay: 0.6s; }
+
+/* ─────────────────────────────────────────────────────────────────
+ * Asset tree sidebar (Agent 5) — token-driven, no hardcoded colors
+ *
+ * Layout: a 320px-wide PRIMARY navigation sidebar that sits between
+ * #fileList and #workArea. Default visible; either pane is independently
+ * dismissable via body.hide-asset-tree / body.hide-file-list set by
+ * the header toggle buttons. Hosts <pso-asset-tree>.
+ * ────────────────────────────────────────────────────────────── */
+
+aside#assetTree {
+  width: 320px;
+  flex-shrink: 0;
+  border-right: var(--tk-border-mute);
+  background: var(--tk-panel);
+  /* 2026-04-25 (Agent asset coverage): primary nav. The full manifest
+     is the user's main entry point now; the legacy #fileList becomes a
+     narrower "Editable PRS/XVM" pane. We default both visible. */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  color: var(--tk-text);
+  font-family: var(--tk-font-body);
+}
+
+body.hide-asset-tree aside#assetTree { display: none; }
+body.hide-file-list  aside#fileList  { display: none; }
+/* Hide legacy "Editable PRS/XVM" pane by default — asset tree is the
+   primary nav. User can still toggle the legacy pane on via the
+   "Editables" button if they want the narrower file-only view. */
+body:not(.show-file-list) aside#fileList { display: none; }
+
+/* Pane title - small banner above each sidebar. Same shape on both. */
+aside .pane-title {
+  padding: 6px 12px;
+  border-bottom: 1px solid #2a313a;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--tk-blue);
+  background: rgba(0, 20, 40, 0.6);
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+aside .pane-title #assetTreeCoverage {
+  font-weight: 400;
+  font-size: 10px;
+  letter-spacing: normal;
+  color: var(--tk-text-mute);
+  text-transform: none;
+}
+
+/* Header toggles: pressed = pane visible. The buttons share visual
+   language; their pressed state mirrors the pane visibility. */
+#btnToggleTree, #btnToggleFiles {
+  background: transparent;
+  border: 1px solid var(--tk-line);
+  color: var(--tk-blue);
+  border-radius: var(--tk-rad-1);
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background-color var(--tk-d-2), box-shadow var(--tk-d-2), color var(--tk-d-2);
+}
+#btnToggleTree:hover, #btnToggleFiles:hover {
+  background: rgba(0, 255, 255, 0.08);
+  box-shadow: var(--tk-glow-blue);
+}
+#btnToggleTree.active, #btnToggleFiles.active {
+  background: var(--tk-blue);
+  color: #000;
+}
+
+/* Inside the Web Component everything is shadow-DOM-scoped via
+   :host styles in tree.js, so the rules here only target the
+   light-DOM wrapper <aside>. */
+
+/* ────────────────────────────────────────────────────────────── */
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; height: 100%; }
+body {
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: #0e1116;
+  color: #e6e8eb;
+  display: flex;
+  flex-direction: column;
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+}
+
+[hidden] { display: none !important; }
+
+/* ---------- shared bits ---------- */
+.dim { color: #7a8290; font-size: 12px; }
+.grow { flex: 1; min-width: 0; }
+kbd {
+  background: #232a35;
+  border: 1px solid #2a313a;
+  border-bottom-width: 2px;
+  border-radius: 3px;
+  padding: 0 4px;
+  font: inherit;
+  font-size: 10px;
+  color: #c8ced9;
+}
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #1f3a23;
+  color: #4ade80;
+  border: 1px solid #16a34a55;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+}
+.pill.pill-sel {
+  background: #1c2531;
+  color: #93c5fd;
+  border-color: #2563eb88;
+}
+
+/* ---------- header ---------- */
+header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  background: #181d24;
+  border-bottom: 1px solid #2a313a;
+}
+header h1 { margin: 0; font-size: 15px; font-weight: 600; }
+header #dataDir { max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.status {
+  font-size: 12px;
+  color: #7a8290;
+  padding: 3px 8px;
+  border-radius: 3px;
+  background: transparent;
+  border: 1px solid transparent;
+  transition: background-color 0.18s, border-color 0.18s, color 0.18s;
+  max-width: 480px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.status.info  { color: #7a8290; }
+.status.ok    { color: #34d399; background: #14241c; border-color: #16a34a55; }
+.status.err   { color: #f87171; background: #2c1518; border-color: #ef444455; }
+.status.busy  { color: #fbbf24; background: #261f0f; border-color: #f59e0b55; }
+.status.busy::before {
+  content: "";
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  margin-right: 6px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  vertical-align: -1px;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---------- layout ---------- */
+main {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+aside#fileList {
+  width: 280px;
+  border-right: 1px solid #2a313a;
+  display: flex;
+  flex-direction: column;
+  background: #131820;
+}
+.search {
+  padding: 8px;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  border-bottom: 1px solid #2a313a;
+}
+.search input {
+  flex: 1;
+  background: #0e1116;
+  border: 1px solid #2a313a;
+  color: #e6e8eb;
+  padding: 4px 7px;
+  border-radius: 3px;
+  font: inherit;
+  font-size: 12px;
+}
+.search input:focus { outline: none; border-color: #2563eb; }
+ul#files {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  flex: 1;
+}
+ul#files:focus { outline: none; }
+ul#files li {
+  padding: 6px 10px;
+  cursor: pointer;
+  border-bottom: 1px solid #1c2129;
+  font-size: 12px;
+  word-break: break-all;
+}
+ul#files li:hover { background: #1c2531; }
+ul#files li.active { background: #233248; color: #fff; }
+ul#files li.has-edits::before {
+  content: "\2022";
+  color: #4ade80;
+  margin-right: 4px;
+}
+ul#files li small { color: #7a8290; display: block; margin-top: 2px; font-size: 10px; }
+.legend {
+  padding: 6px 8px;
+  border-top: 1px solid #2a313a;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 10px;
+}
+.legend span { white-space: nowrap; }
+
+/* ---------- workspace ---------- */
+section#workArea {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+}
+.placeholder {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  overflow-y: auto;
+  text-align: center;
+}
+.placeholder-inner { max-width: 380px; }
+.ph-title { font-size: 16px; color: #c8ced9; margin-bottom: 6px; }
+.ph-hint { font-size: 12px; color: #7a8290; line-height: 1.4; }
+
+/* ---------- walkthrough card (first-run / no file selected) ---------- */
+.walkthrough {
+  max-width: 920px;
+  width: 100%;
+  margin: auto;
+  text-align: left;
+  color: #c8ced9;
+}
+.walkthrough .wt-title {
+  font-size: 22px;
+  font-weight: 600;
+  color: #fff;
+  margin-bottom: 4px;
+  text-align: center;
+}
+.walkthrough .wt-sub {
+  font-size: 13px;
+  color: #7a8290;
+  margin-bottom: 22px;
+  text-align: center;
+}
+.walkthrough .wt-steps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.walkthrough .wt-step {
+  background: #181d24;
+  border: 1px solid #2a313a;
+  border-radius: 6px;
+  padding: 14px;
+  position: relative;
+}
+.walkthrough .wt-num {
+  position: absolute;
+  top: -10px;
+  left: 12px;
+  background: #2563eb;
+  color: #fff;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 14px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.45);
+}
+.walkthrough .wt-step-title {
+  font-size: 14px;
+  color: #fff;
+  font-weight: 600;
+  margin: 4px 0 6px 0;
+}
+.walkthrough .wt-step-body {
+  font-size: 12px;
+  color: #c8ced9;
+  line-height: 1.5;
+}
+.walkthrough .wt-step-body code {
+  background: #0e1116;
+  border: 1px solid #2a313a;
+  border-radius: 3px;
+  padding: 0 4px;
+  font-size: 11px;
+  color: #4ade80;
+}
+.walkthrough .wt-foot {
+  text-align: center;
+  font-size: 11px;
+  padding-top: 6px;
+}
+
+#fileWorkspace {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: #181d24;
+  border-bottom: 1px solid #2a313a;
+  flex-wrap: wrap;
+  font-size: 12px;
+}
+.toolbar select, .toolbar input[type="checkbox"] {
+  background: #0e1116;
+  color: #e6e8eb;
+  border: 1px solid #2a313a;
+  padding: 3px 5px;
+  font: inherit;
+  font-size: 12px;
+  border-radius: 3px;
+}
+.toolbar select:focus { outline: none; border-color: #2563eb; }
+
+button {
+  background: #2563eb;
+  color: #fff;
+  border: 0;
+  padding: 5px 11px;
+  border-radius: 4px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  transition: background-color 0.12s, transform 0.06s;
+}
+button:hover:not(:disabled) { background: #3b75ee; }
+button:active:not(:disabled) { transform: translateY(1px); }
+button:disabled { background: #2a313a; color: #5a6471; cursor: not-allowed; }
+button.ghost {
+  background: transparent;
+  color: #c8ced9;
+  border: 1px solid #2a313a;
+}
+button.ghost:hover:not(:disabled) { background: #1c2531; border-color: #3a4452; }
+button.ghost:disabled { color: #4a5260; border-color: #1c2129; background: transparent; }
+
+#btnRepack { background: #16a34a; }
+#btnRepack:hover:not(:disabled) { background: #22b352; }
+
+/* ---------- advanced settings panel ---------- */
+.adv-settings {
+  background: #131820;
+  border-bottom: 1px solid #2a313a;
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 12px;
+}
+.adv-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+}
+.adv-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.adv-cell select, .adv-cell input[type="number"], .adv-cell input[type="range"] {
+  background: #0e1116;
+  color: #e6e8eb;
+  border: 1px solid #2a313a;
+  padding: 3px 5px;
+  font: inherit;
+  font-size: 12px;
+  border-radius: 3px;
+}
+.adv-cell input[type="range"] {
+  padding: 0;
+  width: 130px;
+}
+.adv-cell input[type="checkbox"] {
+  background: #0e1116;
+  border: 1px solid #2a313a;
+}
+.adv-help { flex: 1; min-width: 200px; font-size: 11px; }
+
+/* progress bar */
+#progressBar {
+  position: relative;
+  height: 4px;
+  background: #181d24;
+  border-bottom: 1px solid #2a313a;
+}
+#progressBar .bar {
+  height: 100%;
+  background: linear-gradient(90deg, #2563eb, #4ade80);
+  width: 0%;
+  transition: width 0.18s ease;
+}
+#progressBar .lbl {
+  position: absolute;
+  right: 12px;
+  top: -18px;
+  font-size: 11px;
+  color: #7a8290;
+}
+
+/* ---------- tile grid ---------- */
+#tileGrid {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(calc(180px * var(--grid-zoom, 1)), 1fr));
+  gap: 12px;
+  align-content: start;
+}
+#tileGrid > .grid-msg {
+  grid-column: 1 / -1;
+  padding: 24px;
+  text-align: center;
+  color: #7a8290;
+}
+#tileGrid > .grid-msg.err { color: #f87171; }
+
+.tile-card {
+  background: #181d24;
+  border: 1px solid #2a313a;
+  border-radius: 6px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  transition: border-color 0.12s;
+  position: relative;
+}
+.tile-card:hover { border-color: #3a4452; }
+.tile-card.has-up { border-color: #16a34a55; }
+.tile-card.busy   { border-color: #f59e0b55; }
+
+/* CORE FIX: use the source's actual aspect ratio, not a forced square. */
+.tile-card .pic {
+  position: relative;
+  width: 100%;
+  aspect-ratio: var(--tile-aspect, 1);
+  background:
+    linear-gradient(45deg, #1c2129 25%, transparent 25%, transparent 75%, #1c2129 75%, #1c2129) 0 0 / 16px 16px,
+    linear-gradient(45deg, #1c2129 25%, transparent 25%, transparent 75%, #1c2129 75%, #1c2129) 8px 8px / 16px 16px,
+    #0e1116;
+  cursor: zoom-in;
+  overflow: hidden;
+}
+.tile-card .pic img,
+.tile-card .pic canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;  /* fallback */
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+/* Fit modes (default contain) */
+.tile-card.fit-contain .pic img { object-fit: contain; }
+.tile-card.fit-cover   .pic img { object-fit: cover; }
+.tile-card.fit-native  .pic img {
+  object-fit: none;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
+  margin: auto;
+  inset: 0;
+}
+
+/* Inline A/B slider on cards (only when has-up). The dst img is clipped from
+   the LEFT, revealing source first. */
+.tile-card .pic .pic-up {
+  z-index: 2;
+  clip-path: inset(0 0 0 50%);
+  pointer-events: none;
+}
+.tile-card.has-up .pic { cursor: ew-resize; }
+.tile-card .pic .card-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: #f59e0b;
+  z-index: 4;
+  pointer-events: none;
+  opacity: 0.0;
+  transition: opacity 0.15s;
+  transform: translateX(-1px);
+}
+.tile-card .pic .card-handle::after {
+  content: "\2194";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  background: #f59e0b;
+  color: #000;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: bold;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.45);
+  border: 1px solid #fff;
+}
+.tile-card.has-up .pic:hover .card-handle,
+.tile-card.has-up.dragging .pic .card-handle {
+  opacity: 1;
+}
+.tile-card .pic .card-tip {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  background: rgba(14, 17, 22, 0.85);
+  color: #c8ced9;
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  z-index: 5;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.tile-card.has-up .pic:hover .card-tip,
+.tile-card.has-up.dragging .pic .card-tip {
+  opacity: 1;
+}
+
+/* canvas (animation) sits above the still image when active */
+.tile-card .pic canvas {
+  z-index: 3;
+  background: transparent;
+}
+
+.tile-card .pic .badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background: #16a34a;
+  color: #fff;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: bold;
+  line-height: 1;
+  z-index: 5;
+}
+.tile-card .pic .busy-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(14, 17, 22, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 8px;
+  color: #fbbf24;
+  font-size: 11px;
+  z-index: 6;
+}
+.tile-card .pic .busy-overlay .spin {
+  width: 22px;
+  height: 22px;
+  border: 3px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+.tile-card .meta {
+  padding: 6px 8px;
+  font-size: 11px;
+  color: #c8ced9;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+}
+.tile-card .meta strong { color: #fff; }
+.tile-card .meta .model-tag {
+  font-size: 10px;
+  color: #4ade80;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+.tile-card .meta .badge-mini {
+  display: inline-block;
+  font-size: 9px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  margin-left: 4px;
+  background: #234;
+  color: #4ade80;
+  border: 1px solid #16a34a55;
+}
+
+/* per-card animation control row */
+.tile-card .anim-bar {
+  display: flex;
+  gap: 4px;
+  padding: 4px 6px;
+  border-top: 1px solid #2a313a;
+  font-size: 10px;
+  color: #7a8290;
+  align-items: center;
+  flex-wrap: nowrap;
+  overflow: hidden;
+}
+.tile-card .anim-bar select,
+.tile-card .anim-bar button {
+  background: #0e1116;
+  color: #c8ced9;
+  border: 1px solid #2a313a;
+  padding: 1px 4px;
+  font: inherit;
+  font-size: 10px;
+  border-radius: 3px;
+  height: 20px;
+  line-height: 18px;
+  min-width: 0;
+  flex-shrink: 1;
+}
+.tile-card .anim-bar button { cursor: pointer; }
+.tile-card .anim-bar button.playing { background: #f59e0b; color: #000; border-color: #f59e0b; }
+.tile-card .anim-bar select { padding: 0 18px 0 4px; }
+.tile-card .anim-bar .anim-spacer { flex: 1; min-width: 0; }
+
+.tile-card .actions {
+  display: flex;
+  border-top: 1px solid #2a313a;
+}
+.tile-card .actions button {
+  flex: 1;
+  background: transparent;
+  color: #c8ced9;
+  padding: 5px 4px;
+  font-size: 11px;
+  border-radius: 0;
+  border: 0;
+}
+.tile-card .actions button + button { border-left: 1px solid #2a313a; }
+.tile-card .actions button:hover:not(:disabled) { background: #1c2531; color: #fff; }
+.tile-card .actions button:disabled { color: #4a5260; }
+.tile-card .actions button.danger:hover:not(:disabled) { color: #f87171; background: #2c1518; }
+
+/* ============================================================
+   Modal A/B slider
+   ============================================================ */
+#modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.78);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 16px;
+}
+.modal-card {
+  background: #131820;
+  border: 1px solid #2a313a;
+  border-radius: 8px;
+  width: min(96vw, 1200px);
+  max-height: 96vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 20px 80px rgba(0,0,0,0.5);
+}
+.modal-card > header {
+  background: #181d24;
+  border-bottom: 1px solid #2a313a;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+}
+.modal-card > header strong { font-size: 13px; color: #fff; word-break: break-all; }
+.modal-card > header button#modalClose { background: #2a313a; }
+.modal-card > header button#modalClose:hover:not(:disabled) { background: #3a4452; }
+
+.modal-upscale-bar,
+.modal-anim-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  padding: 6px 12px;
+  background: #0f141b;
+  border-bottom: 1px solid #2a313a;
+  font-size: 11px;
+  color: #c8ced9;
+}
+.modal-upscale-bar { background: #11161e; border-bottom-color: #1c2129; }
+.modal-upscale-bar label { display: inline-flex; align-items: center; gap: 4px; }
+.modal-upscale-bar select {
+  background: #0e1116;
+  color: #e6e8eb;
+  border: 1px solid #2a313a;
+  padding: 2px 5px;
+  font: inherit;
+  font-size: 11px;
+  border-radius: 3px;
+}
+.modal-upscale-bar input[type="checkbox"] {
+  background: #0e1116;
+  border: 1px solid #2a313a;
+}
+#modalUpscaleHint { font-size: 10px; }
+.modal-anim-bar label { display: inline-flex; align-items: center; gap: 4px; }
+.modal-anim-bar select,
+.modal-anim-bar input[type="number"] {
+  background: #0e1116;
+  color: #e6e8eb;
+  border: 1px solid #2a313a;
+  padding: 2px 5px;
+  font: inherit;
+  font-size: 11px;
+  border-radius: 3px;
+}
+.modal-anim-bar input[type="number"] { width: 50px; }
+.modal-anim-info { font-size: 10px; }
+
+/* ============================================================
+   Modal tabs (upscale | AI generate)
+   ============================================================ */
+.modal-tabs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  background: #0a0e14;
+  border-bottom: 1px solid #1c2129;
+}
+.modal-tab {
+  background: transparent;
+  color: #8e96a3;
+  border: 1px solid transparent;
+  border-bottom: 2px solid transparent;
+  padding: 4px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: 0;
+}
+.modal-tab:hover { color: #c8ced9; background: #11161e; }
+.modal-tab.active {
+  color: #00ffff;
+  background: #11161e;
+  border-bottom-color: #00ffff;
+  text-shadow: 0 0 6px rgba(0, 255, 255, 0.4);
+}
+.modal-tab-hint { font-size: 10px; }
+
+/* ============================================================
+   AI generate panel
+   ============================================================ */
+.aigen-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 12px 6px;
+  background: #0e1218;
+  border-bottom: 1px solid #1c2129;
+  font-size: 11px;
+  color: #c8ced9;
+}
+.aigen-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.aigen-row label { display: inline-flex; align-items: center; gap: 4px; }
+.aigen-row select,
+.aigen-row input[type="number"],
+.aigen-row textarea {
+  background: #0e1116;
+  color: #e6e8eb;
+  border: 1px solid #2a313a;
+  padding: 3px 6px;
+  font: inherit;
+  font-size: 11px;
+  border-radius: 3px;
+}
+.aigen-row textarea {
+  resize: vertical;
+  min-height: 24px;
+  max-height: 200px;
+  flex: 1 1 200px;
+  font-family: var(--tk-font-mono, 'Consolas', monospace);
+}
+.aigen-row input[type="number"] { width: 70px; }
+.aigen-row input[type="range"] {
+  height: 14px;
+  accent-color: #00ffff;
+}
+.aigen-row button {
+  font-size: 11px;
+  padding: 3px 10px;
+}
+
+.aigen-modes {
+  display: inline-flex;
+  border: 1px solid #2a313a;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.aigen-mode {
+  background: #0e1116;
+  color: #8e96a3;
+  border: none;
+  border-right: 1px solid #2a313a;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.aigen-mode:last-child { border-right: none; }
+.aigen-mode:hover:not(:disabled) { color: #e6e8eb; background: #131820; }
+.aigen-mode.active {
+  background: #1a2230;
+  color: #00ffff;
+  text-shadow: 0 0 4px rgba(0, 255, 255, 0.3);
+}
+.aigen-mode:disabled {
+  color: #444a55;
+  cursor: not-allowed;
+  background: #0a0e14;
+}
+
+.aigen-prompt-wrap {
+  flex: 1 1 280px;
+  display: flex;
+  align-items: stretch !important;
+  gap: 6px;
+}
+.aigen-prompt-wrap > .dim {
+  align-self: flex-start;
+  padding-top: 4px;
+  white-space: nowrap;
+}
+.aigen-slider-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+.aigen-slider-cell input[type="range"] { width: 110px; }
+.aigen-cell { display: inline-flex; align-items: center; gap: 4px; }
+
+/* The big "generate" button — slightly emphasized vs ghost */
+#aigenGenerate {
+  background: #154a4a;
+  color: #00ffff;
+  border: 1px solid #00ffff;
+  font-weight: 700;
+  text-shadow: 0 0 4px rgba(0, 255, 255, 0.4);
+}
+#aigenGenerate:hover:not(:disabled) {
+  background: #1d6868;
+  box-shadow: 0 0 10px rgba(0, 255, 255, 0.3);
+}
+#aigenGenerate:disabled {
+  background: #1a1f28;
+  color: #444a55;
+  border-color: #2a313a;
+  text-shadow: none;
+  cursor: not-allowed;
+}
+
+/* Mask brush bar — appears only in inpaint mode */
+.aigen-mask-bar { background: #11161e; padding: 4px 8px; border-radius: 3px; }
+.aigen-mask-bar .aigen-tool {
+  background: #0e1116;
+  color: #8e96a3;
+  border: 1px solid #2a313a;
+  padding: 3px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  border-radius: 3px;
+}
+.aigen-mask-bar .aigen-tool.active {
+  color: #00ffff;
+  border-color: #00ffff;
+  background: #1a2230;
+}
+.aigen-brush-size-val { font-family: var(--tk-font-mono, 'Consolas', monospace); }
+
+/* Variations strip */
+.aigen-vars-bar { background: #11161e; padding: 4px 8px; border-radius: 3px; }
+.aigen-vars-strip {
+  display: flex;
+  gap: 4px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  flex: 1;
+  align-items: center;
+}
+.aigen-var-thumb {
+  flex: 0 0 auto;
+  width: 48px;
+  height: 48px;
+  border: 1px solid #2a313a;
+  border-radius: 3px;
+  cursor: pointer;
+  background-size: cover;
+  background-position: center;
+  position: relative;
+}
+.aigen-var-thumb:hover { border-color: #00ffff; }
+.aigen-var-thumb.active {
+  border-color: #00ffff;
+  box-shadow: 0 0 6px rgba(0, 255, 255, 0.4);
+}
+.aigen-var-thumb .var-label {
+  position: absolute;
+  bottom: 1px;
+  right: 2px;
+  font-size: 9px;
+  font-weight: 700;
+  color: #00ffff;
+  text-shadow: 0 0 4px rgba(0, 0, 0, 0.9);
+  pointer-events: none;
+}
+
+/* Status row — appears during generation, shows elapsed / errors */
+.aigen-status {
+  font-size: 10px;
+  background: #11161e;
+  padding: 3px 8px;
+  border-radius: 3px;
+}
+.aigen-status .err { color: #ff6464; }
+.aigen-status .ok { color: #64ff96; }
+.aigen-status .warn { color: #ffaa00; }
+
+/* Mask canvas overlay — sits on top of #abSrc, pointer-events enabled
+   only when the inpaint tool is active. */
+.aigen-mask-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  mix-blend-mode: screen;
+  opacity: 0.65;
+  z-index: 5;
+}
+.ab-wrap.aigen-inpainting .aigen-mask-canvas {
+  pointer-events: auto;
+  cursor: crosshair;
+}
+.ab-wrap.aigen-inpainting { cursor: crosshair; }
+.ab-wrap.aigen-inpainting #abHandle { display: none; }
+.ab-wrap.aigen-inpainting #abDst,
+.ab-wrap.aigen-inpainting #abDstCanvas { display: none; }
+
+.ab-stage {
+  flex: 1;
+  padding: 14px;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.ab-empty {
+  text-align: center;
+  padding: 14px;
+  margin-bottom: 10px;
+  border: 1px dashed #2a313a;
+  border-radius: 6px;
+  background: #0e1116;
+}
+.ab-empty .ph-hint { margin-top: 4px; }
+
+/* The CORE FIX:
+   - .ab-wrap is the size the source dictates: width:100% width-driven, with
+     aspect-ratio set per modal-open from the loaded source dim.
+   - .ab-src is rendered at width:100% of the wrap.
+   - .ab-dst is positioned absolutely, width:100% - so its pixels line up 1:1.
+   - Slider clipping uses `clip-path: inset(0 0 0 X%)` on .ab-dst to hide the
+     left X% of the upscaled image, revealing source on the LEFT, upscaled on
+     the RIGHT.
+   - Animation canvases are positioned identically and replace the imgs when
+     animation is enabled (img is hidden).                                       */
+.ab-wrap {
+  position: relative;
+  width: 100%;
+  max-width: 1024px;
+  aspect-ratio: var(--tile-aspect, 1);
+  margin: 0 auto;
+  background:
+    linear-gradient(45deg, #1c2129 25%, transparent 25%, transparent 75%, #1c2129 75%, #1c2129) 0 0 / 24px 24px,
+    linear-gradient(45deg, #1c2129 25%, transparent 25%, transparent 75%, #1c2129 75%, #1c2129) 12px 12px / 24px 24px,
+    #0e1116;
+  user-select: none;
+  touch-action: none;
+  border: 1px solid #2a313a;
+  border-radius: 4px;
+  overflow: hidden;
+  cursor: ew-resize;
+}
+.ab-wrap img,
+.ab-wrap canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  pointer-events: none;
+  object-fit: contain;
+}
+#abSrc { z-index: 1; }
+#abDst {
+  z-index: 2;
+  /* Convention: source on LEFT, upscaled on RIGHT. Hide LEFT 50% by default. */
+  clip-path: inset(0 0 0 50%);
+}
+.ab-canvas { z-index: 3; }
+.ab-canvas-dst { z-index: 4; clip-path: inset(0 0 0 50%); }
+
+.ab-spinner {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  background: rgba(14, 17, 22, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 10px;
+  color: #fbbf24;
+  font-size: 13px;
+}
+.ab-spinner .spin {
+  width: 36px;
+  height: 36px;
+  border: 4px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+.ab-handle {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 2px;
+  height: 100%;
+  background: #f59e0b;
+  cursor: ew-resize;
+  transform: translateX(-1px);
+  z-index: 5;
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.4);
+}
+.ab-handle::after {
+  content: "\2194";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  background: #f59e0b;
+  color: #000;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: bold;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.45);
+  border: 2px solid #fff;
+}
+.ab-handle:focus { outline: none; }
+.ab-handle:focus::after {
+  box-shadow: 0 0 0 3px #2563eb88, 0 2px 6px rgba(0,0,0,0.45);
+}
+
+.ab-labels {
+  display: flex;
+  margin-top: 8px;
+  font-size: 11px;
+  color: #7a8290;
+}
+.ab-labels .lbl-l { color: #c8ced9; }
+.ab-labels .lbl-r { color: #4ade80; }
+.ab-labels .lbl-r.dim-mode { color: #7a8290; }
+
+.ab-help {
+  margin-top: 4px;
+  font-size: 11px;
+  text-align: center;
+}
+
+/* ============================================================
+   Tile filter input (toolbar)
+   ============================================================ */
+.tile-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.tile-filter input {
+  width: 320px;
+  background: #0e1116;
+  border: 1px solid #2a313a;
+  color: #e6e8eb;
+  padding: 4px 7px;
+  border-radius: 3px;
+  font: inherit;
+  font-size: 12px;
+}
+.tile-filter input:focus { outline: none; border-color: #2563eb; }
+.tile-filter input.bad { border-color: #f87171; }
+
+/* ============================================================
+   Batch operation bar
+   ============================================================ */
+.batch-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: #11161e;
+  border-bottom: 1px solid #2a313a;
+  font-size: 12px;
+}
+.batch-bar #batchCount { color: #93c5fd; }
+
+/* ============================================================
+   Tile card selection state + drag-drop highlight + import btn
+   ============================================================ */
+.tile-card.selected {
+  border-color: #2563eb !important;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.45);
+}
+.tile-card.dropping {
+  outline: 2px dashed #4ade80;
+  outline-offset: -2px;
+  background: #11241a;
+}
+.tile-card .pic .import-btn {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(14, 17, 22, 0.78);
+  color: #c8ced9;
+  border-radius: 4px;
+  font-size: 13px;
+  z-index: 5;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.15s;
+  border: 1px solid #2a313a;
+}
+.tile-card:hover .pic .import-btn { opacity: 1; }
+.tile-card .pic .import-btn:hover { background: #2a313a; color: #fff; }
+
+/* ============================================================
+   Drop overlay (drag a PNG from desktop)
+   ============================================================ */
+.drop-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(14, 17, 22, 0.78);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+.drop-overlay-inner {
+  border: 3px dashed #4ade80;
+  background: #11241a;
+  color: #fff;
+  padding: 30px 50px;
+  border-radius: 12px;
+  text-align: center;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+}
+.drop-overlay-title {
+  font-size: 20px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.drop-overlay-sub { font-size: 13px; }
+
+/* ============================================================
+   Toast stack (top-right, fading auto-dismiss)
+   ============================================================ */
+.toast-stack {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 2000;
+  pointer-events: none;
+  max-width: 360px;
+}
+.toast {
+  background: #181d24;
+  border: 1px solid #2a313a;
+  border-left-width: 4px;
+  border-radius: 4px;
+  padding: 8px 10px 8px 12px;
+  color: #e6e8eb;
+  font-size: 12px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  pointer-events: auto;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.35);
+  animation: toastIn 0.18s ease-out;
+}
+.toast.toast-info { border-left-color: #2563eb; }
+.toast.toast-ok   { border-left-color: #16a34a; }
+.toast.toast-err  { border-left-color: #ef4444; }
+.toast.fading { opacity: 0; transition: opacity 0.4s ease-out; }
+.toast .toast-msg { flex: 1; word-break: break-word; }
+.toast .toast-x {
+  cursor: pointer;
+  color: #7a8290;
+  font-size: 14px;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 3px;
+}
+.toast .toast-x:hover { color: #fff; background: #2a313a; }
+@keyframes toastIn {
+  from { transform: translateX(20px); opacity: 0; }
+  to   { transform: translateX(0); opacity: 1; }
+}
+
+/* ============================================================
+   Atlas mode (composite editing)
+   ============================================================ */
+.atlas-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: #1c2531;
+  border: 1px solid #2a313a;
+  color: #c8ced9;
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+}
+.atlas-toggle:hover { background: #233248; border-color: #3a4452; }
+.atlas-toggle input { margin: 0; }
+.atlas-toggle.atlas-active {
+  background: #14241c;
+  border-color: #16a34a55;
+  color: #4ade80;
+}
+
+#btnAtlasUpscale { background: #7c3aed; }
+#btnAtlasUpscale:hover:not(:disabled) { background: #8b4eff; }
+
+.atlas-view {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 12px;
+  overflow-y: auto;
+  gap: 10px;
+  min-height: 0;
+}
+.atlas-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+}
+.atlas-stage {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.atlas-empty {
+  text-align: center;
+  padding: 12px;
+  margin-bottom: 10px;
+  border: 1px dashed #2a313a;
+  border-radius: 6px;
+  background: #0e1116;
+  font-size: 12px;
+}
+.atlas-empty .ph-hint { margin-top: 4px; }
+
+/* Same shape as .ab-wrap from the per-tile modal — A/B slider, but
+   for the assembled composite. Width drives layout, aspect-ratio
+   keeps source/upscaled aligned 1:1. */
+.atlas-wrap {
+  position: relative;
+  width: 100%;
+  max-width: 1200px;
+  aspect-ratio: var(--atlas-aspect, 1);
+  margin: 0 auto;
+  background:
+    linear-gradient(45deg, #1c2129 25%, transparent 25%, transparent 75%, #1c2129 75%, #1c2129) 0 0 / 24px 24px,
+    linear-gradient(45deg, #1c2129 25%, transparent 25%, transparent 75%, #1c2129 75%, #1c2129) 12px 12px / 24px 24px,
+    #0e1116;
+  user-select: none;
+  touch-action: none;
+  border: 1px solid #2a313a;
+  border-radius: 4px;
+  overflow: hidden;
+  cursor: ew-resize;
+}
+.atlas-wrap img {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  pointer-events: none;
+  object-fit: contain;
+}
+#atlasSrc { z-index: 1; }
+#atlasDst {
+  z-index: 2;
+  clip-path: inset(0 0 0 50%);
+}
+
+.atlas-spinner {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  background: rgba(14, 17, 22, 0.78);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 10px;
+  color: #fbbf24;
+  font-size: 13px;
+}
+.atlas-spinner .spin {
+  width: 36px;
+  height: 36px;
+  border: 4px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+.atlas-handle {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 2px;
+  height: 100%;
+  background: #f59e0b;
+  cursor: ew-resize;
+  transform: translateX(-1px);
+  z-index: 5;
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.4);
+}
+.atlas-handle::after {
+  content: "\2194";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  background: #f59e0b;
+  color: #000;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: bold;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.45);
+  border: 2px solid #fff;
+}
+.atlas-handle:focus { outline: none; }
+.atlas-handle:focus::after {
+  box-shadow: 0 0 0 3px #2563eb88, 0 2px 6px rgba(0,0,0,0.45);
+}
+
+.atlas-labels {
+  display: flex;
+  margin-top: 8px;
+  font-size: 11px;
+  color: #7a8290;
+}
+.atlas-labels .lbl-l { color: #c8ced9; }
+.atlas-labels .lbl-r { color: #4ade80; }
+.atlas-labels .lbl-r.dim-mode { color: #7a8290; }
+.atlas-help {
+  margin-top: 4px;
+  font-size: 11px;
+  text-align: center;
+}
+
+/* The slice preview strip — one mini tile per placement, plus skipped tiles
+   listed at the right. Clicking opens the per-tile modal. */
+.atlas-strip-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 10px;
+  border-top: 1px solid #2a313a;
+}
+.atlas-strip-title { font-size: 11px; }
+.atlas-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: flex-start;
+}
+.atlas-strip .strip-card {
+  background: #181d24;
+  border: 1px solid #2a313a;
+  border-radius: 4px;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 92px;
+  cursor: zoom-in;
+  transition: border-color 0.12s;
+}
+.atlas-strip .strip-card:hover { border-color: #3a4452; }
+.atlas-strip .strip-card.has-up { border-color: #16a34a55; }
+.atlas-strip .strip-card.skipped { opacity: 0.55; cursor: default; }
+.atlas-strip .strip-card.skipped:hover { border-color: #2a313a; }
+.atlas-strip .strip-card .strip-pic {
+  width: 80px;
+  height: 80px;
+  position: relative;
+  background:
+    linear-gradient(45deg, #1c2129 25%, transparent 25%, transparent 75%, #1c2129 75%, #1c2129) 0 0 / 12px 12px,
+    linear-gradient(45deg, #1c2129 25%, transparent 25%, transparent 75%, #1c2129 75%, #1c2129) 6px 6px / 12px 12px,
+    #0e1116;
+  border-radius: 3px;
+  overflow: hidden;
+}
+.atlas-strip .strip-card .strip-pic img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+.atlas-strip .strip-card .strip-meta {
+  font-size: 10px;
+  color: #c8ced9;
+  margin-top: 4px;
+  text-align: center;
+  line-height: 1.2;
+}
+.atlas-strip .strip-card .strip-meta strong { color: #fff; font-size: 11px; }
+.atlas-strip .strip-card .strip-meta .skip-tag { color: #7a8290; font-style: italic; }
+.atlas-strip .strip-card .strip-meta .has-up-tag { color: #4ade80; }
+
+/* ============================================================
+   Deploy diff modal
+   ============================================================ */
+#deployModal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.78);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  padding: 16px;
+}
+.deploy-card {
+  width: min(640px, 96vw);
+  max-height: 96vh;
+}
+.deploy-body {
+  padding: 14px 18px;
+  overflow-y: auto;
+  flex: 1;
+  font-size: 12px;
+  color: #c8ced9;
+  line-height: 1.5;
+}
+.deploy-body .deploy-summary {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 12px;
+  margin-bottom: 14px;
+}
+.deploy-body .deploy-summary dt { color: #7a8290; }
+.deploy-body .deploy-summary dd { margin: 0; color: #fff; word-break: break-all; }
+.deploy-body .changed-list {
+  background: #0f141b;
+  border: 1px solid #2a313a;
+  border-radius: 4px;
+  padding: 8px 10px;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 11px;
+}
+.deploy-body .changed-list .row { display: flex; gap: 8px; padding: 2px 0; }
+.deploy-body .changed-list .row .idx { color: #4ade80; min-width: 50px; }
+.deploy-body .changed-list .row .meta { color: #c8ced9; }
+.deploy-body .deploy-warning {
+  color: #fbbf24;
+  background: #261f0f;
+  border: 1px solid #f59e0b55;
+  border-radius: 4px;
+  padding: 8px 10px;
+  margin-top: 12px;
+  font-size: 11px;
+}
+.deploy-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 10px 14px;
+  border-top: 1px solid #2a313a;
+  background: #11161e;
+}
+#deployConfirm { background: #16a34a; }
+#deployConfirm:hover:not(:disabled) { background: #22b352; }
+
+/* ============================================================
+   Deploy-to-game (dev -> live) modal
+   ============================================================ */
+#promoteModal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.78);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  padding: 16px;
+}
+.promote-card {
+  width: min(820px, 96vw);
+  max-height: 96vh;
+}
+#promoteConfirm { background: #16a34a; }
+#promoteConfirm:hover:not(:disabled) { background: #22b352; }
+#promoteConfirm:disabled { background: #2a313a; color: #7a8290; cursor: not-allowed; }
+
+.promote-source-arrow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  background: #0f141b;
+  border: 1px solid #2a313a;
+  border-radius: 4px;
+  padding: 8px 10px;
+  margin-bottom: 12px;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 11px;
+}
+.promote-source-arrow .lbl { color: #7a8290; }
+.promote-source-arrow .dev-path { color: #93c5fd; word-break: break-all; }
+.promote-source-arrow .live-path { color: #fbbf24; word-break: break-all; }
+.promote-source-arrow .arrow { color: #7a8290; }
+
+.promote-section {
+  margin-top: 14px;
+}
+.promote-section-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #7a8290;
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.promote-section-title .count {
+  background: #1c2531;
+  color: #93c5fd;
+  border: 1px solid #2563eb88;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 10px;
+}
+.promote-list {
+  background: #0f141b;
+  border: 1px solid #2a313a;
+  border-radius: 4px;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 11px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.promote-list .row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 10px;
+  border-bottom: 1px solid #1c2129;
+}
+.promote-list .row:last-child { border-bottom: none; }
+.promote-list .row:hover { background: #161d27; }
+.promote-list .row label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  flex: 1;
+  min-width: 0;
+}
+.promote-list .row .name {
+  color: #e6e8eb;
+  word-break: break-all;
+  flex: 1;
+  min-width: 0;
+}
+.promote-list .row .meta { color: #7a8290; font-size: 10px; white-space: nowrap; }
+.promote-list .row.changed .name { color: #fbbf24; }
+.promote-list .row.dev-only .name { color: #4ade80; }
+.promote-list .row.live-only .name { color: #93c5fd; }
+.promote-list .row.live-only label { cursor: default; }
+.promote-list .empty { padding: 8px 10px; color: #7a8290; font-style: italic; }
+
+.promote-result-list .row.ok { color: #4ade80; }
+.promote-result-list .row.fail { color: #f87171; }
+
+.promote-backup-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #c8ced9;
+  cursor: pointer;
+}
+.promote-backup-label input { margin: 0; }
+
+.promote-warning {
+  color: #fbbf24;
+  background: #261f0f;
+  border: 1px solid #f59e0b55;
+  border-radius: 4px;
+  padding: 8px 10px;
+  margin-top: 12px;
+  font-size: 11px;
+}
+
+/* =====================================================================
+   3D model preview modal (model_viewer.js)
+   ===================================================================== */
+#modelModal {
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 11, 16, 0.85);
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.model-modal-card {
+  background: #0f141b;
+  border: 1px solid #2a313a;
+  border-radius: 6px;
+  width: min(1200px, 100%);
+  height: min(800px, 100%);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.model-modal-card > header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid #2a313a;
+  background: #11161e;
+}
+.model-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 14px;
+  border-bottom: 1px solid #2a313a;
+  font-size: 12px;
+  flex-wrap: wrap;
+}
+.model-bar label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.model-bar select {
+  background: #0a0e13;
+  color: #d6dee7;
+  border: 1px solid #2a313a;
+  border-radius: 3px;
+  padding: 2px 6px;
+}
+.model-status {
+  font-size: 11px;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+.model-stage {
+  position: relative;
+  flex: 1;
+  background: #050709;
+  overflow: hidden;
+}
+#modelCanvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.model-overlay {
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
+  right: 8px;
+  pointer-events: none;
+}
+.model-hint {
+  background: rgba(15, 20, 27, 0.85);
+  border: 1px solid #2a313a;
+  border-radius: 3px;
+  padding: 6px 10px;
+  font-size: 11px;
+  display: inline-block;
+}
+.model-mesh-stats {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: rgba(15, 20, 27, 0.85);
+  border: 1px solid #2a313a;
+  border-radius: 3px;
+  padding: 6px 10px;
+  font-size: 11px;
+  font-family: var(--font-mono, monospace);
+  pointer-events: none;
+}
+/* Distinguish the "fallback" state — the overlay slot is reused, but
+   the colour swap makes it impossible to mistake a primitive cube for
+   a real loaded mesh. */
+.model-mesh-stats.model-mesh-fallback {
+  border-color: #b03a3a;
+  background: rgba(40, 12, 12, 0.92);
+  color: #ffb1b1;
+}
+
+/* ============================================================
+   Debug-mode overlay (2026-04-24, AGENT_MODEL_DEEP_DEBUG_REPORT).
+   The "debug overlay" checkbox in the toolbar tints each sub-mesh
+   with a distinct color and exposes a sidebar with per-mesh stats.
+   When you hover the canvas, the closest sub-mesh under the cursor
+   shows a tooltip; clicking a sidebar row highlights it in white.
+   ============================================================ */
+.model-debug-tooltip {
+  position: absolute;
+  pointer-events: none;
+  background: rgba(15, 20, 27, 0.95);
+  border: 1px solid #4a90e2;
+  border-radius: 3px;
+  padding: 6px 10px;
+  font-size: 11px;
+  font-family: var(--font-mono, monospace);
+  color: #e0e8f0;
+  white-space: pre;
+  z-index: 6;
+  max-width: 360px;
+  /* hidden by default — model_viewer.js toggles via .hidden */
+}
+.model-debug-sidebar {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  bottom: 8px;
+  width: 260px;
+  background: rgba(10, 14, 19, 0.92);
+  border: 1px solid #2a313a;
+  border-radius: 3px;
+  display: flex;
+  flex-direction: column;
+  font-size: 11px;
+  font-family: var(--font-mono, monospace);
+  z-index: 5;
+}
+.model-debug-sidebar-header {
+  padding: 6px 8px;
+  border-bottom: 1px solid #2a313a;
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+.model-debug-filter {
+  margin: 4px 6px;
+  background: #0a0e13;
+  border: 1px solid #2a313a;
+  color: #e0e8f0;
+  padding: 4px 6px;
+  border-radius: 2px;
+  font: inherit;
+}
+.model-debug-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+.model-debug-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  cursor: pointer;
+  border-left: 3px solid transparent;
+  white-space: nowrap;
+}
+.model-debug-row:hover { background: rgba(74, 144, 226, 0.12); }
+.model-debug-row.active {
+  background: rgba(74, 144, 226, 0.25);
+  border-left-color: #4a90e2;
+}
+.model-debug-row.hidden-row { display: none; }
+.model-debug-swatch {
+  flex: 0 0 12px;
+  height: 12px;
+  width: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 2px;
+}
+.model-debug-row-text {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.model-debug-row-stats {
+  flex: 0 0 auto;
+  color: #99a4b3;
+}
+/* When the debug sidebar is shown, scoot the mesh-stats banner so
+   they don't overlap. */
+.model-debug-sidebar:not([hidden]) ~ .model-mesh-stats,
+.model-stage:has(.model-debug-sidebar:not([hidden])) .model-mesh-stats {
+  right: 280px;
+}
+
+/* ============================================================
+   Generic asset preview modal (audio / hex / text / JSON / info).
+   2026-04-25: introduced by the asset-coverage agent so the manifest
+   tree's audio / quest / script / cinematic categories can preview
+   inline instead of dead-ending at "no decoder".
+   ============================================================ */
+#assetModal {
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 11, 16, 0.85);
+  z-index: 210;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.asset-modal-card {
+  background: #0f141b;
+  border: 1px solid #2a313a;
+  border-radius: 6px;
+  width: min(1000px, 100%);
+  height: min(720px, 100%);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.asset-modal-card > header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid #2a313a;
+  background: #11161e;
+}
+.asset-modal-card > header strong {
+  font-size: 13px;
+  color: #fff;
+  word-break: break-all;
+  font-weight: 600;
+}
+.asset-modal-card > header .ghost,
+.asset-modal-card > header button#assetClose,
+.asset-modal-card > header a#assetDownloadLink {
+  background: #2a313a;
+  color: #d6dee7;
+  border: 1px solid #2a313a;
+  border-radius: 3px;
+  padding: 4px 10px;
+  font-size: 12px;
+  text-decoration: none;
+  cursor: pointer;
+}
+.asset-modal-card > header a#assetDownloadLink:hover {
+  background: #3a4452;
+}
+.asset-stage {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.asset-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 14px;
+}
+.asset-help {
+  margin-top: 8px;
+  font-size: 11px;
+}
+.asset-hex-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 0 8px 0;
+  font-size: 12px;
+}
+.asset-hex-bar select {
+  background: #0a0e13;
+  color: #d6dee7;
+  border: 1px solid #2a313a;
+  border-radius: 3px;
+  padding: 2px 6px;
+}
+.asset-hex-body,
+.asset-json-body {
+  flex: 1;
+  overflow: auto;
+  background: #050709;
+  border: 1px solid #2a313a;
+  border-radius: 3px;
+  padding: 10px 12px;
+  margin: 0;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #c5cdd6;
+  white-space: pre;
+}
+.asset-json-body { color: #a6dbe5; white-space: pre-wrap; word-break: break-word; }
+.asset-info-body {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  gap: 6px 14px;
+  margin: 0;
+  font-size: 12px;
+}
+.asset-info-body dt {
+  color: #7a8290;
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  padding-top: 2px;
+}
+.asset-info-body dd {
+  margin: 0;
+  color: #d6dee7;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 11px;
+}
+.asset-error-msg {
+  color: #f87171;
+  font-size: 12px;
+  padding: 10px;
+  background: #2c1518;
+  border: 1px solid #ef444455;
+  border-radius: 3px;
+}
+
+/* =====================================================================
+   Unified viewport (2026-04-24)
+
+   When body.unified-viewport-mode is set:
+     - the legacy modals (#modal, #modelModal, #assetModal, #deployModal,
+       #promoteModal, <pso-viewport-canvas>) are hidden by default
+     - the new vp-tabs / vp-stage / vp-inspector layout takes over the
+       central work area
+     - the existing #fileWorkspace block is pulled INTO vp-stage by the
+       "tile-grid" perspective (perspectives.js), so the toolbar +
+       tile grid + atlas view continue to work unchanged
+
+   In classic UI mode (body without the class) the modals are shown
+   normally and the new vp-* containers stay empty.
+   ===================================================================== */
+
+/* New layout containers — visible only in unified-viewport-mode */
+section#workArea > .vp-tabs,
+section#workArea > .vp-body { display: none; }
+body.unified-viewport-mode section#workArea > .vp-tabs,
+body.unified-viewport-mode section#workArea > .vp-body { display: flex; }
+body.unified-viewport-mode section#workArea > .placeholder { display: none; }
+/* In classic mode, the legacy #fileWorkspace shows in place. In
+   unified mode, the "tile-grid" perspective relocates it into the
+   stage; while it's NOT relocated (no asset selected) we keep it
+   hidden. */
+body.unified-viewport-mode section#workArea > #fileWorkspace { display: none; }
+
+/* Tabs bar — pill-style perspective switcher */
+section#workArea > .vp-tabs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: #11161e;
+  border-bottom: 1px solid #2a313a;
+  flex-wrap: wrap;
+  min-height: 36px;
+}
+.vp-tab {
+  position: relative;
+  background: #0e1116;
+  color: #c8ced9;
+  border: 1px solid #2a313a;
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  letter-spacing: 0.02em;
+  transition: background-color 0.12s, border-color 0.12s, color 0.12s;
+}
+.vp-tab:hover { background: #1c2531; border-color: #3a4452; color: #fff; }
+.vp-tab.active {
+  background: #1a2230;
+  color: #00ffff;
+  border-color: #00ffff;
+  box-shadow: 0 0 6px rgba(0, 255, 255, 0.25);
+}
+.vp-tab .vp-tab-num {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 5px;
+  font-size: 9px;
+  border-radius: 3px;
+  background: #2a313a;
+  color: #7a8290;
+}
+.vp-tab.active .vp-tab-num { background: #00ffff22; color: #00ffff; }
+.vp-tab-empty { font-size: 11px; padding: 4px 4px; }
+
+/* Body: stage + inspector side-by-side */
+section#workArea > .vp-body {
+  flex: 1;
+  display: flex;
+  flex-direction: row;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Center stage — perspective renders here */
+.vp-stage {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #0e1116;
+  position: relative;
+}
+.vp-stage.vp-stage-fade-in {
+  animation: vpStageFadeIn 0.2s ease-out;
+}
+@keyframes vpStageFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.vp-stage-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #7a8290;
+  text-align: center;
+  padding: 40px;
+}
+.vp-stage-empty .walkthrough { max-width: 600px; }
+
+/* When a perspective hosts the legacy #fileWorkspace inside vp-stage
+   it should fill the available space without nested scrollbars. */
+.vp-stage > #fileWorkspace {
+  flex: 1;
+  min-height: 0;
+}
+.vp-stage > #fileWorkspace[hidden] { display: none; }
+
+/* Right inspector — collapsible side panel */
+.vp-inspector {
+  width: 280px;
+  flex-shrink: 0;
+  border-left: 1px solid #2a313a;
+  background: #131820;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  padding: 12px;
+  font-size: 12px;
+  color: #c8ced9;
+}
+body.vp-inspector-collapsed .vp-inspector { display: none; }
+.vp-insp-empty { padding: 8px 4px; }
+.vp-insp-title {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--tk-blue, #00ffff);
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.vp-insp-help {
+  line-height: 1.5;
+  font-size: 11px;
+  margin-bottom: 12px;
+}
+.vp-insp-section {
+  border-top: 1px solid #2a313a;
+  padding-top: 8px;
+  margin-top: 8px;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.vp-insp-section:first-of-type {
+  border-top: 0;
+  padding-top: 0;
+  margin-top: 0;
+}
+.vp-insp-row { font-size: 11px; line-height: 1.4; word-break: break-word; }
+.vp-insp-row code {
+  background: #0e1116;
+  border: 1px solid #2a313a;
+  border-radius: 3px;
+  padding: 0 4px;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 10px;
+  color: #4ade80;
+}
+
+/* Generic stage cards (audio / hex / json / asset-info) */
+.vp-stage-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 18px;
+  overflow: auto;
+}
+.vp-stage-card-title {
+  font-weight: 600;
+  margin-bottom: 12px;
+  word-break: break-all;
+  color: #fff;
+}
+
+/* Hex / JSON */
+.vp-hex-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+.vp-hex-bar select {
+  background: #0a0e13;
+  color: #d6dee7;
+  border: 1px solid #2a313a;
+  border-radius: 3px;
+  padding: 2px 6px;
+}
+.vp-hex-body, .vp-json-body {
+  flex: 1;
+  overflow: auto;
+  background: #050709;
+  border: 1px solid #2a313a;
+  border-radius: 3px;
+  padding: 10px 12px;
+  margin: 0;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #c5cdd6;
+  white-space: pre;
+}
+.vp-json-body { color: #a6dbe5; white-space: pre-wrap; word-break: break-word; }
+
+/* Asset info dl */
+.vp-info-body {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  gap: 6px 14px;
+  margin: 0;
+  font-size: 12px;
+}
+.vp-info-body dt {
+  color: #7a8290;
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  padding-top: 2px;
+}
+.vp-info-body dd {
+  margin: 0;
+  color: #d6dee7;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 11px;
+}
+
+/* Deploy diff in a stage card (fed by #deployBody) */
+.vp-stage-deploy {
+  padding: 0;
+}
+.vp-deploy-host {
+  flex: 1;
+  overflow: auto;
+  padding: 14px 18px;
+}
+.vp-deploy-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 10px 14px;
+  border-top: 1px solid #2a313a;
+  background: #11161e;
+}
+.vp-stage-deploy #vpDeployConfirm {
+  background: #16a34a;
+}
+.vp-stage-deploy #vpDeployConfirm:hover:not(:disabled) {
+  background: #22b352;
+}
+
+/* 3D / aigen wrappers — tiny shells; the real content is moved in. */
+.vp-stage-3d, .vp-stage-aigen {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.vp-stage-3d > .model-bar,
+.vp-stage-aigen > .modal-upscale-bar,
+.vp-stage-aigen > .aigen-panel {
+  flex-shrink: 0;
+}
+.vp-stage-3d > .model-stage,
+.vp-stage-aigen > .ab-stage {
+  flex: 1;
+  min-height: 0;
+}
+/* Override the modal-card's hidden defaults — these were children of
+   #modelModal which is now hidden in unified mode. Make them visible
+   when they live inside the stage. */
+body.unified-viewport-mode .vp-stage .model-bar,
+body.unified-viewport-mode .vp-stage .model-stage,
+body.unified-viewport-mode .vp-stage .modal-upscale-bar,
+body.unified-viewport-mode .vp-stage .aigen-panel,
+body.unified-viewport-mode .vp-stage .ab-stage {
+  display: flex;
+}
+body.unified-viewport-mode .vp-stage .model-bar { flex-direction: row; }
+body.unified-viewport-mode .vp-stage .modal-upscale-bar { flex-direction: row; flex-wrap: wrap; }
+body.unified-viewport-mode .vp-stage .aigen-panel { flex-direction: column; }
+body.unified-viewport-mode .vp-stage .ab-stage { flex-direction: column; }
+/* 2026-04-25 (regression-fix-modal-vs-viewport): tile-detail
+   perspective relocates .modal-tabs (the upscale|AI generate switcher)
+   alongside .modal-upscale-bar, .aigen-panel, .modal-anim-bar, .ab-stage.
+   Reuse the .vp-stage-aigen wrapper styles + ensure the bars appear in
+   their intended order. */
+body.unified-viewport-mode .vp-stage .modal-tabs { display: flex; flex-shrink: 0; }
+body.unified-viewport-mode .vp-stage .modal-anim-bar { display: flex; flex-shrink: 0; flex-direction: row; flex-wrap: wrap; }
+.vp-stage-tile-detail > .modal-tabs,
+.vp-stage-tile-detail > .modal-upscale-bar,
+.vp-stage-tile-detail > .aigen-panel,
+.vp-stage-tile-detail > .modal-anim-bar { flex-shrink: 0; }
+.vp-stage-tile-detail > .ab-stage { flex: 1; min-height: 0; }
+
+/* Viewport (paint) overlay — when relocated into vp-stage we strip the
+   fixed positioning so the canvas wrap fills the stage. The Web
+   Component's shadow DOM hardcodes :host{position:fixed;inset:0} so
+   we override here with !important. */
+pso-viewport-canvas.vp-as-stage-content {
+  position: relative !important;
+  inset: auto !important;
+  top: auto !important;
+  left: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+  width: 100% !important;
+  height: 100% !important;
+  flex: 1 !important;
+  z-index: 1 !important;
+  background: transparent !important;
+  display: block !important;
+}
+
+/* =====================================================================
+   Hide legacy modals + overlays when unified viewport is active.
+
+   We use display:none with !important to outrank whatever modal-show
+   logic app.js / model_viewer.js / viewport.js perform via .hidden
+   property — those scripts continue to flip .hidden, but the modal
+   never renders. Their internal lifecycle still runs (state, opens,
+   keyboard, etc.) so existing behaviour is preserved when we DO want
+   to surface a modal's content (we move the children into vp-stage).
+   ===================================================================== */
+body.unified-viewport-mode #modal { display: none !important; }
+body.unified-viewport-mode #assetModal { display: none !important; }
+body.unified-viewport-mode #modelModal { display: none !important; }
+/* 2026-04-25 (regression-fix-modal-vs-viewport): #deployModal and
+   #promoteModal are GENUINELY-MODAL flows (preview-then-confirm with
+   destructive side effects). They stay hidden when the deploy-diff
+   perspective is active (the perspective relocates #deployBody into
+   vp-stage and provides its own confirm button). They are SHOWN when
+   the user opens them via the header buttons (deploy to game,
+   etc.) — the body.psoModalAllowDeploy class is added by app.js right
+   before showDeployToGame()/showDeployDiff() is called from the
+   header, and removed when the modal closes. This gives us a single
+   confirm-modal experience for true destructive flows without the
+   wrapper showing up beside the inline perspective. */
+body.unified-viewport-mode #deployModal { display: none !important; }
+body.unified-viewport-mode #promoteModal { display: none !important; }
+body.unified-viewport-mode.pso-modal-allow-deploy #deployModal:not([hidden]) {
+  display: flex !important;
+}
+body.unified-viewport-mode.pso-modal-allow-deploy #promoteModal:not([hidden]) {
+  display: flex !important;
+}
+/* viewport.js attaches <pso-viewport-canvas> as a fixed overlay on body —
+   keep that hidden in unified mode unless relocated into the stage. */
+body.unified-viewport-mode pso-viewport-canvas:not(.vp-as-stage-content) {
+  display: none !important;
+}
+
+/* Header toggle button — show as pressed/active when unified mode is on. */
+#btnClassicUiToggle {
+  background: transparent;
+  border: 1px solid var(--tk-line, rgba(0,255,255,0.3));
+  color: var(--tk-blue, #00ffff);
+  border-radius: var(--tk-rad-1, 4px);
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background-color 0.18s, color 0.18s, box-shadow 0.18s;
+}
+#btnClassicUiToggle:hover {
+  background: rgba(0, 255, 255, 0.08);
+  box-shadow: 0 0 6px rgba(0, 255, 255, 0.3);
+}
+body.unified-viewport-mode #btnClassicUiToggle {
+  background: var(--tk-blue, #00ffff);
+  color: #000;
+}
+
+/* Inspector resize: keep sensible widths on small screens. */
+@media (max-width: 1100px) {
+  .vp-inspector { width: 220px; padding: 8px; }
+}
+@media (max-width: 900px) {
+  .vp-inspector { display: none; }
+}
+
+/* ────────────────────────────────────────────────────────────────────
+   2026-04-25 (finishing-line, Item 3): texture panel z-index/overlap.
+   The `.pso-tex-panel` (inlined CSS lives in static/texture_panel.js)
+   is `position: absolute; left: 8px; width: 280px; z-index: 6` on top
+   of the model canvas. At narrow viewports (≤1280×720) it consumes a
+   substantial fraction of the viewport and the 92% opaque background
+   visually obscures the model.
+
+   The panel's own CSS lives in an injected <style> tag added when
+   texture_panel.js runs — that <style> appends AFTER style.css in
+   the cascade, so we have to bump specificity here (`#psoTexturePanel`
+   is the panel's id; selector specificity 1-id beats the panel's own
+   1-class rule) to win the override at equal source-order.
+
+   Two changes:
+   1. Drop z-index from 6 → 4 so per-mesh debug overlays + variant
+      strip (also at z:6) stay above the texture panel, matching the
+      mental model that "data overlays" should not be obscured by a
+      side panel.
+   2. Auto-collapse the panel to 40 px below 1280 px viewport width.
+      Replicates what `.pso-tex-panel.collapsed` already does, but
+      triggered by viewport width instead of an explicit user toggle.
+      The user can still click the header to expand back.
+   ──────────────────────────────────────────────────────────────────── */
+#psoTexturePanel.pso-tex-panel {
+  z-index: 4;
+}
+@media (max-width: 1280px) {
+  #psoTexturePanel.pso-tex-panel {
+    width: 40px;
+  }
+  #psoTexturePanel.pso-tex-panel > *:not(.pso-tex-panel-header) { display: none; }
+  #psoTexturePanel.pso-tex-panel .pso-tex-panel-header strong,
+  #psoTexturePanel.pso-tex-panel .pso-tex-panel-header .grow { display: none; }
+}
+
+/* Inspector buttons + selects — reuse the existing button styles but
+   stack them tidily with consistent spacing. */
+.vp-inspector button { font-size: 12px; padding: 4px 10px; }
+.vp-inspector label { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; }
+.vp-inspector select {
+  background: #0e1116;
+  color: #e6e8eb;
+  border: 1px solid #2a313a;
+  padding: 2px 6px;
+  font: inherit;
+  font-size: 12px;
+  border-radius: 3px;
+}
+.vp-inspector kbd {
+  background: #0a0e13;
+  border: 1px solid #444;
+  border-radius: 2px;
+  padding: 1px 4px;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 10px;
+  color: #c8ced9;
+}
+.vp-inspector a.ghost {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+  color: #c8ced9;
+  background: transparent;
+  border: 1px solid #2a313a;
+  border-radius: 3px;
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.vp-inspector a.ghost:hover { background: #1c2531; border-color: #3a4452; color: #fff; }
+
+
+/* ------------------------------------------------------------- */
+/* Battle Params perspective (2026-04-25)                       */
+/* ------------------------------------------------------------- */
+.bp-perspective {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  height: 100%;
+  overflow: auto;
+}
+
+.bp-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: #1a2030;
+  border: 1px solid #2a3142;
+  border-radius: 4px;
+  font-size: 12px;
+}
+.bp-toolbar label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #aab1bd;
+}
+.bp-toolbar select {
+  background: #0e1320;
+  color: #e2e6ee;
+  border: 1px solid #2a3142;
+  border-radius: 3px;
+  padding: 4px 6px;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 11px;
+  min-width: 140px;
+}
+.bp-toolbar button {
+  background: #2a3148;
+  color: #fff;
+  border: 1px solid #3a4458;
+  border-radius: 3px;
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.bp-toolbar button:hover { background: #3a4458; }
+.bp-toolbar button.warn { background: #5e3030; border-color: #7d3a3a; }
+.bp-toolbar button.warn:hover { background: #7d3a3a; }
+.bp-toolbar button.ghost { background: transparent; }
+#bpStatus { margin-left: auto; }
+#bpStatus.err { color: #ee7878; }
+
+.bp-mob-header {
+  font-size: 16px;
+  margin-bottom: 8px;
+  padding: 4px 0;
+  border-bottom: 1px solid #2a3142;
+}
+.bp-mob-slot {
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  color: #889;
+}
+.bp-mob-name { color: #fff; font-weight: 600; }
+
+.bp-group {
+  margin-bottom: 14px;
+  background: #14192a;
+  border: 1px solid #232b3e;
+  border-radius: 4px;
+  padding: 8px;
+}
+.bp-group-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: #889;
+  margin-bottom: 6px;
+}
+.bp-group-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 6px;
+}
+
+.bp-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  padding: 3px 4px;
+  border-radius: 3px;
+  position: relative;
+}
+.bp-field.changed { background: #2c2410; }
+.bp-field-label {
+  flex: 1;
+  color: #aab1bd;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.bp-field input {
+  width: 90px;
+  background: #0e1320;
+  color: #e2e6ee;
+  border: 1px solid #2a3142;
+  border-radius: 3px;
+  padding: 2px 5px;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 11px;
+}
+.bp-field.changed input { border-color: #c89d3a; }
+.bp-orig {
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 10px;
+  color: #889;
+}
+
+.bp-meta { font-size: 11px; }
+.bp-meta dt { color: #889; }
+.bp-meta dd { color: #e2e6ee; margin: 0 0 6px 0; }
+.bp-meta .wrap { word-break: break-all; }
+
+.bp-changes-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: #889;
+  margin-bottom: 4px;
+}
+.bp-changes {
+  list-style: none;
+  margin: 0; padding: 0;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 10px;
+  color: #c89d3a;
+  max-height: 360px;
+  overflow: auto;
+}
+.bp-changes li { padding: 2px 0; }
+
+
+/* =====================================================================
+   Item PMT perspective (2026-04-25)
+   Mirrors the bp-* visual language (toolbar / groups / fields / diff
+   highlight) so the editor reads consistently between Battle Params
+   and Item PMT screens.
+   ===================================================================== */
+.ipmt-perspective { display: flex; flex-direction: column; gap: 10px; }
+
+.ipmt-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: #1a2030;
+  border: 1px solid #2a3142;
+  border-radius: 4px;
+  font-size: 12px;
+}
+.ipmt-toolbar label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #aab1bd;
+}
+.ipmt-toolbar select {
+  background: #0e1320;
+  color: #e2e6ee;
+  border: 1px solid #2a3142;
+  border-radius: 3px;
+  padding: 4px 6px;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 11px;
+  min-width: 140px;
+  max-width: 320px;
+}
+.ipmt-toolbar button {
+  background: #2a3148;
+  color: #fff;
+  border: 1px solid #3a4458;
+  border-radius: 3px;
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.ipmt-toolbar button:hover { background: #3a4458; }
+.ipmt-toolbar button.warn  { background: #5e3030; border-color: #7d3a3a; }
+.ipmt-toolbar button.warn:hover  { background: #7d3a3a; }
+.ipmt-toolbar button.ghost { background: transparent; }
+#ipmtStatus { margin-left: auto; }
+#ipmtStatus.err { color: #ee7878; }
+
+.ipmt-entry-header {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  font-size: 14px;
+  margin-bottom: 8px;
+  padding: 4px 0;
+  border-bottom: 1px solid #2a3142;
+}
+.ipmt-entry-slot {
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  color: #889;
+}
+.ipmt-entry-id {
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  color: #c8b06b;
+}
+
+.ipmt-group {
+  margin-bottom: 14px;
+  background: #14192a;
+  border: 1px solid #232b3e;
+  border-radius: 4px;
+  padding: 8px;
+}
+.ipmt-group-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: #889;
+  margin-bottom: 6px;
+}
+.ipmt-group-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 6px;
+}
+
+.ipmt-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  padding: 3px 4px;
+  border-radius: 3px;
+  position: relative;
+}
+.ipmt-field.changed { background: #2c2410; }
+.ipmt-field-label {
+  flex: 1;
+  color: #aab1bd;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ipmt-field input {
+  width: 110px;
+  background: #0e1320;
+  color: #e2e6ee;
+  border: 1px solid #2a3142;
+  border-radius: 3px;
+  padding: 2px 5px;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 11px;
+}
+.ipmt-field.changed input { border-color: #c89d3a; }
+.ipmt-orig {
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 10px;
+  color: #889;
+}
+.ipmt-array { display: flex; gap: 3px; flex-wrap: wrap; }
+.ipmt-arr-cell {
+  width: 60px;
+  background: #0e1320;
+  color: #e2e6ee;
+  border: 1px solid #2a3142;
+  border-radius: 3px;
+  padding: 2px 5px;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 11px;
+}
+.ipmt-arr-cell.changed { border-color: #c89d3a; }
+
+.ipmt-meta { font-size: 11px; }
+.ipmt-meta dt { color: #889; }
+.ipmt-meta dd { color: #e2e6ee; margin: 0 0 6px 0; }
+.ipmt-meta .wrap { word-break: break-all; }
+
+.ipmt-changes-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: #889;
+  margin-bottom: 4px;
+}
+.ipmt-changes {
+  list-style: none;
+  margin: 0; padding: 0;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 10px;
+  color: #c89d3a;
+  max-height: 400px;
+  overflow: auto;
+}
+.ipmt-changes li { padding: 2px 0; }
+
+
+/* ------------------------------------------------------------- */
+/* Mob AI Authoring (Tier 1) perspective (2026-04-25)             */
+/* ------------------------------------------------------------- */
+.mdsl-perspective {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  height: 100%;
+  overflow: auto;
+}
+
+.mdsl-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: #1a2030;
+  border: 1px solid #2a3142;
+  border-radius: 4px;
+  font-size: 12px;
+}
+.mdsl-toolbar label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #aab1bd;
+}
+.mdsl-toolbar select {
+  background: #0e1320;
+  color: #e2e6ee;
+  border: 1px solid #2a3142;
+  border-radius: 3px;
+  padding: 4px 6px;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 11px;
+  min-width: 140px;
+}
+.mdsl-toolbar .mdsl-preset-cell select { min-width: 220px; }
+.mdsl-toolbar button {
+  background: #2a3148;
+  color: #fff;
+  border: 1px solid #3a4458;
+  border-radius: 3px;
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.mdsl-toolbar button:hover { background: #3a4458; }
+.mdsl-toolbar button.warn { background: #5e3030; border-color: #7d3a3a; }
+.mdsl-toolbar button.warn:hover { background: #7d3a3a; }
+.mdsl-toolbar button.ghost { background: transparent; }
+.mdsl-toolbar .mdsl-status { margin-left: auto; }
+.mdsl-toolbar .mdsl-status.err { color: #ee7878; }
+
+.mdsl-mob-header {
+  font-size: 16px;
+  margin-bottom: 8px;
+  padding: 4px 0;
+  border-bottom: 1px solid #2a3142;
+}
+.mdsl-mob-slot {
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  color: #889;
+}
+.mdsl-mob-name { color: #fff; font-weight: 600; }
+.mdsl-mob-diff { margin-left: 8px; font-size: 12px; }
+.mdsl-mob-notes {
+  font-size: 11px;
+  margin-top: 4px;
+  font-style: italic;
+}
+
+.mdsl-group {
+  margin-bottom: 14px;
+  background: #14192a;
+  border: 1px solid #232b3e;
+  border-radius: 4px;
+  padding: 8px;
+}
+.mdsl-group-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: #889;
+  margin-bottom: 6px;
+}
+.mdsl-group-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 6px;
+}
+
+.mdsl-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  padding: 3px 4px;
+  border-radius: 3px;
+  position: relative;
+}
+.mdsl-field.changed { background: #2c2410; }
+.mdsl-field-label {
+  flex: 1;
+  color: #aab1bd;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mdsl-field-binary {
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 9px;
+  color: #5a6478;
+  white-space: nowrap;
+}
+.mdsl-field input {
+  width: 100px;
+  background: #0e1320;
+  color: #e2e6ee;
+  border: 1px solid #2a3142;
+  border-radius: 3px;
+  padding: 2px 5px;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 11px;
+}
+.mdsl-field.changed input { border-color: #c89d3a; }
+.mdsl-field-suffix {
+  font-size: 10px;
+  color: #889;
+  min-width: 22px;
+}
+.mdsl-field-revert {
+  background: transparent;
+  color: #ee7878;
+  border: 1px solid #553030;
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-size: 10px;
+  cursor: pointer;
+}
+.mdsl-field-revert:hover { background: #3a1a1a; }
+
+.mdsl-meta { font-size: 11px; }
+.mdsl-meta dt { color: #889; }
+.mdsl-meta dd { color: #e2e6ee; margin: 0 0 6px 0; }
+
+.mdsl-changes-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: #889;
+  margin-bottom: 4px;
+  margin-top: 8px;
+}
+.mdsl-changes {
+  list-style: none;
+  margin: 0; padding: 0;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 10px;
+  color: #c89d3a;
+  max-height: 320px;
+  overflow: auto;
+}
+.mdsl-changes li { padding: 2px 0; }
+.mdsl-changes li ul {
+  list-style: none;
+  margin: 0; padding-left: 12px;
+  color: #aab1bd;
+}
+.mdsl-changes li ul li { padding: 1px 0; }
+.mdsl-val { color: #c89d3a; }
+.mdsl-dsl-source {
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 10px;
+  color: #889;
+  background: #0e1320;
+  border: 1px solid #2a3142;
+  border-radius: 3px;
+  padding: 6px 8px;
+  max-height: 240px;
+  overflow: auto;
+  margin: 4px 0 0 0;
+}
+.mdsl-source-block { margin-top: 8px; }
+
+/* ===================================================================
+   Texture Paint MVP (2026-04-25).
+   The paint_panel.js module injects its own <style> block on first
+   mount (see ensureStyle() in static/paint_panel.js). The rules below
+   are user-overridable hooks: anything declared here wins by virtue
+   of being in the main stylesheet, which loads BEFORE the JS-injected
+   block. Override only — do not duplicate paint_panel.js's defaults.
+
+   Class names:
+     .pso-paint-mode-on   body class flipped while paint mode is active
+     .pso-paint-cursor    floating brush-radius ring on the viewport
+     .pso-paint-block     panel body container
+     .pso-paint-tools     7-button tool grid (B/E/I/F/S/T/G — v5 added clone+gradient)
+     .pso-paint-row       horizontal strip (size / opacity / hardness)
+     .pso-paint-slider    slider + numeric readout
+     .pso-paint-active    currently-painted-texture badge
+     .pso-paint-tex-row   per-texture picker row (highlight on hover)
+     .pso-paint-actions   Save / Reset / Build & Deploy / Live test
+     .pso-paint-status    transient state line (idle / busy / ok / err)
+
+   v5 (2026-04-25) layer classes; defined inline in paint_panel.js's
+   ensureStyle(). They are anchored here so theme variants can target
+   them without re-implementing the defaults:
+     .pso-paint-layers-block      layer-panel container
+     .pso-paint-layers-head       header strip (+/duplicate/merge/×)
+     .pso-paint-layer-list        column-reverse list of layer rows
+     .pso-paint-layer-row         single layer (eye + name + blend + alpha)
+     .pso-paint-layer-context     right-click context menu
+     .pso-paint-tool-options      per-tool config strip (clone/gradient)
+     .pso-paint-grad-stops        gradient-tool stops list
+     .pso-paint-grad-preview      drag-preview line on the WebGL canvas
+     .pso-paint-clone-source-pip  Alt+click clone-source marker dot
+   ================================================================= */
+
+/* =================================================================
+   Live Mod-Test (2026-04-25). PSOLiveTest in static/live_test.js.
+
+   Class names:
+     .lt-live-button      "Live Test" button (red dot + label)
+     .lt-live-dot         pulsing red indicator inside the button
+     .lt-live-label       "Live Test" text
+     .lt-status-pip       per-panel status pip (idle / preparing /
+                          applying / live / failed)
+     .lt-log-list         per-panel last-3-actions list
+     .lt-log-row          single action-log row (timestamp + badge)
+     .lt-log-badge        ok / warn / err inline pill
+   ================================================================= */
+.lt-live-button {
+  background: #4a1f24;
+  border: 1px solid #8b2e36;
+  color: #ffd6d8;
+  border-radius: 3px;
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.lt-live-button:hover { background: #6a2c33; border-color: #b03c46; }
+.lt-live-button:disabled { opacity: 0.6; cursor: progress; }
+.lt-live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ff4458;
+  box-shadow: 0 0 6px #ff4458aa;
+  animation: lt-pulse 1.6s ease-in-out infinite;
+}
+.lt-live-button:disabled .lt-live-dot { animation: none; opacity: 0.5; }
+@keyframes lt-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.55; transform: scale(0.8); }
+}
+
+.lt-status-pip {
+  display: inline-block;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: #2a3148;
+  color: #99a4b3;
+  border: 1px solid #3a4458;
+  white-space: nowrap;
+  margin-left: 6px;
+}
+.lt-status-pip[data-state="idle"]      { background: #232a3a; color: #6c7585; }
+.lt-status-pip[data-state="preparing"] { background: #2a3148; color: #d9b96e; }
+.lt-status-pip[data-state="applying"]  { background: #3a3a1a; color: #ffe082; }
+.lt-status-pip[data-state="live"]      { background: #1f3a24; color: #8fe0a3; border-color: #2f5a3a; }
+/* `staged` = on disk but ASI consumer (mod_live_replace) hasn't pulled
+   the override yet. Distinct from `live` (full success) and from
+   `failed`/error states. Cool blue tone with low saturation reads as
+   "neutral / waiting" without alarming the user. */
+.lt-status-pip[data-state="staged"]    { background: #1d2a3a; color: #88b5e0; border-color: #325370; }
+.lt-status-pip[data-state="failed"]    { background: #3a1f24; color: #ee7878; border-color: #6a2f36; }
+
+.lt-log-list {
+  margin-top: 4px;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-width: 100%;
+  color: #889;
+}
+.lt-log-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: #1a2030;
+}
+.lt-log-row:hover { background: #232a3a; }
+.lt-log-ts { color: #6a7585; }
+.lt-log-kind { color: #b9c4d3; }
+.lt-log-target { color: #889; max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lt-log-badge {
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 8px;
+  background: #2a3148;
+  color: #99a4b3;
+}
+.lt-log-badge.ok   { background: #1f3a24; color: #8fe0a3; }
+.lt-log-badge.warn { background: #3a3a1a; color: #ffe082; }
+.lt-log-badge.err  { background: #3a1f24; color: #ee7878; }
+
+/* =====================================================================
+   UX maturity layer (2026-04-25). Five new modules append rules here:
+     ub-*  undo bus (status pill + history flyout)
+     ms-*  multi-select (batch toolbars)
+     ws-*  workspace persistence (header buttons + recent menu)
+     hk-*  hotkey help overlay
+     qs-*  quick search (Ctrl+P) overlay
+   No existing rules are touched.
+   ===================================================================== */
+
+/* ---- undo bus status pill ----------------------------------------- */
+.ub-status {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  margin-left: 8px;
+  padding: 0 4px;
+  z-index: 30;
+}
+.ub-pill {
+  background: #1a2030;
+  border: 1px solid #2a313a;
+  border-radius: 12px;
+  color: #b9c4d3;
+  padding: 2px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 280px;
+}
+.ub-pill:hover { border-color: #3a4148; color: #e0f0ff; }
+.ub-pill[hidden] { display: none; }
+.ub-pill-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px;
+}
+.ub-pill-caret { color: #6a7585; font-size: 9px; }
+.ub-history {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  min-width: 320px;
+  max-width: 480px;
+  background: #14191f;
+  border: 1px solid #2a313a;
+  border-radius: 6px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+  padding: 6px 0;
+  font-size: 11px;
+  z-index: 1000;
+}
+.ub-history-title {
+  padding: 4px 10px 6px;
+  color: #b9c4d3;
+  font-weight: 600;
+  border-bottom: 1px solid #2a313a;
+}
+.ub-history-empty { padding: 12px; text-align: center; }
+.ub-history-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px 0;
+  max-height: 360px;
+  overflow-y: auto;
+}
+.ub-history-item {
+  padding: 4px 10px;
+  display: grid;
+  grid-template-columns: 80px 1fr 60px;
+  gap: 6px;
+  align-items: center;
+  color: #c4cdd6;
+}
+.ub-history-item:hover { background: #1a2030; }
+.ub-history-panel {
+  background: #2a3148;
+  border-radius: 8px;
+  padding: 1px 6px;
+  font-size: 9px;
+  color: #99a4b3;
+  text-align: center;
+}
+.ub-history-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ub-history-ago { font-size: 10px; text-align: right; }
+.ub-history-more { padding: 6px 10px; text-align: center; font-size: 10px; }
+
+/* ---- multi-select batch toolbars (when consumers want them) ------- */
+.ms-batch-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: #1a2030;
+  border: 1px solid #2a313a;
+  border-radius: 4px;
+  margin: 6px 0;
+  font-size: 11px;
+}
+.ms-batch-bar .ms-batch-count {
+  background: #2a3148;
+  color: #d9b96e;
+  border-radius: 8px;
+  padding: 1px 8px;
+  font-weight: 600;
+}
+.ms-batch-bar button {
+  background: transparent;
+  border: 1px solid #2a313a;
+  color: #b9c4d3;
+  padding: 3px 10px;
+  border-radius: 3px;
+  cursor: pointer;
+  font: inherit;
+}
+.ms-batch-bar button:hover { border-color: #4a5158; color: #e0f0ff; }
+.ms-batch-bar button.primary { border-color: #2a5a8a; background: #1f2f44; color: #cfe4ff; }
+.ms-batch-bar button.primary:hover { background: #2a3a55; }
+
+/* Header pill that shows total selection count (id="selectionCount"
+   already exists in index.html; we just style if class gets applied
+   via multi_select.js). */
+.pill-sel {
+  background: #2a3148;
+  color: #d9b96e;
+  border-radius: 10px;
+  padding: 2px 10px;
+  font-size: 11px;
+  cursor: pointer;
+  border: 1px solid #3a4158;
+}
+.pill-sel:hover { background: #3a4158; }
+
+/* ---- workspace header buttons + recent menu ----------------------- */
+.ws-header {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 6px;
+}
+.ws-header button {
+  font-size: 11px;
+}
+.ws-recent-menu {
+  background: #14191f;
+  border: 1px solid #2a313a;
+  border-radius: 6px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+  min-width: 200px;
+  max-width: 320px;
+  padding: 4px 0;
+  z-index: 2000;
+  font-size: 11px;
+}
+.ws-recent-title {
+  padding: 4px 10px 6px;
+  color: #99a4b3;
+  border-bottom: 1px solid #2a313a;
+  font-weight: 600;
+}
+.ws-recent-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  color: #c4cdd6;
+  padding: 5px 10px;
+  cursor: pointer;
+  font: inherit;
+}
+.ws-recent-item:hover { background: #1f2731; color: #e0f0ff; }
+
+/* ---- hotkey help overlay ----------------------------------------- */
+.hk-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  z-index: 4000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.hk-card {
+  background: #14191f;
+  border: 1px solid #2a313a;
+  border-radius: 8px;
+  width: 720px;
+  max-width: 90vw;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  color: #e0f0ff;
+  box-shadow: 0 16px 60px rgba(0,0,0,0.7);
+}
+.hk-card > header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 14px;
+  border-bottom: 1px solid #2a313a;
+}
+.hk-card > header strong { font-size: 14px; }
+.hk-card > header .grow { flex: 1; }
+.hk-card > header button { font-size: 11px; }
+.hk-body {
+  padding: 10px 14px;
+  overflow-y: auto;
+  flex: 1;
+}
+.hk-foot {
+  padding: 8px 14px;
+  border-top: 1px solid #2a313a;
+  font-size: 11px;
+}
+.hk-group { margin-bottom: 14px; }
+.hk-group-title {
+  text-transform: uppercase;
+  font-size: 10px;
+  color: #6a7585;
+  letter-spacing: 1px;
+  margin-bottom: 4px;
+}
+.hk-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.hk-table td {
+  padding: 4px 6px;
+  border-bottom: 1px solid #1a2030;
+}
+.hk-label { color: #c4cdd6; }
+.hk-combo { width: 220px; }
+.hk-combo-btn {
+  background: #1a2030;
+  border: 1px solid #2a313a;
+  color: #d9b96e;
+  border-radius: 3px;
+  padding: 2px 8px;
+  font: inherit;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  cursor: pointer;
+  min-width: 120px;
+  text-align: left;
+}
+.hk-combo-btn:hover { border-color: #4a5158; }
+.hk-combo-btn.hk-overridden { color: #8fe0a3; }
+.hk-combo-btn.hk-rebinding { background: #3a3a1a; color: #ffe082; }
+.hk-reset-btn {
+  margin-left: 4px;
+  background: transparent;
+  border: 1px solid #2a313a;
+  color: #99a4b3;
+  border-radius: 3px;
+  padding: 1px 6px;
+  font-size: 11px;
+  cursor: pointer;
+}
+.hk-reset-btn:hover { border-color: #4a5158; color: #e0f0ff; }
+
+/* ---- quick search overlay ---------------------------------------- */
+.qs-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  z-index: 5000;
+  display: none;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 12vh;
+}
+.qs-card {
+  background: #14191f;
+  border: 1px solid #2a313a;
+  border-radius: 8px;
+  width: 680px;
+  max-width: 92vw;
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 16px 60px rgba(0,0,0,0.7);
+  color: #e0f0ff;
+}
+.qs-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid #2a313a;
+}
+.qs-input {
+  flex: 1;
+  background: transparent;
+  border: 0;
+  color: #e0f0ff;
+  font-size: 16px;
+  outline: none;
+  font-family: inherit;
+}
+.qs-input::placeholder { color: #6a7585; }
+.qs-count {
+  font-size: 11px;
+  color: #6a7585;
+  white-space: nowrap;
+}
+.qs-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px 0;
+  overflow-y: auto;
+  flex: 1;
+}
+.qs-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  cursor: pointer;
+  color: #c4cdd6;
+  font-size: 12px;
+}
+.qs-item:hover, .qs-item.qs-active {
+  background: #1f2f44;
+  color: #e0f0ff;
+}
+.qs-pin {
+  width: 18px;
+  text-align: center;
+  color: #6a7585;
+  cursor: pointer;
+  user-select: none;
+}
+.qs-pin:hover { color: #d9b96e; }
+.qs-path {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+}
+.qs-mark {
+  background: #3a3a1a;
+  color: #ffe082;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+.qs-cat {
+  background: #2a3148;
+  color: #99a4b3;
+  border-radius: 8px;
+  padding: 1px 8px;
+  font-size: 10px;
+}
+.qs-badge {
+  background: #1f3a24;
+  color: #8fe0a3;
+  border-radius: 8px;
+  padding: 1px 8px;
+  font-size: 10px;
+}
+.qs-empty { padding: 16px; text-align: center; }
+.qs-foot {
+  padding: 8px 14px;
+  border-top: 1px solid #2a313a;
+  font-size: 11px;
+}
+
+/* ---- multi-select highlight on tree items ------------------------ */
+/* The tree lives in a shadow DOM, so the per-item highlight is added
+   inside tree.js's STYLE block (search for ".item.ms-selected"). For
+   the legacy file list (#files li) we add a direct rule. */
+#files li.ms-selected {
+  outline: 1px solid #d9b96e;
+  background: #2a3148;
+}
+
+/* =====================================================================
+ * Map Editor perspective (2026-04-25)
+ * ================================================================== */
+.map-perspective {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.map-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  background: #131820;
+  border-bottom: 1px solid #2a313a;
+  font-size: 12px;
+  color: #c8ced9;
+}
+.map-toolbar label { display: inline-flex; align-items: center; gap: 4px; }
+.map-toolbar select {
+  background: #0e1116;
+  color: #c8ced9;
+  border: 1px solid #2a313a;
+  padding: 2px 5px;
+  font-size: 12px;
+}
+.map-toolbar .grow { flex: 1; }
+.map-toolbar #mapToolbarStatus {
+  font-size: 11px;
+  font-style: italic;
+  color: #7a8290;
+  max-width: 240px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.map-toolbar #mapToolbarStatus.err { color: #ff8888; }
+.map-grid-toggle { font-size: 11px; }
+
+.map-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.map-side {
+  width: 240px;
+  flex-shrink: 0;
+  background: #0e1116;
+  border-right: 1px solid #2a313a;
+  overflow-y: auto;
+  padding: 8px;
+  font-size: 12px;
+  color: #c8ced9;
+}
+.map-side-right {
+  border-right: 0;
+  border-left: 1px solid #2a313a;
+}
+.map-viewport {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+  background: #0a0e13;
+}
+.map-viewport > .model-stage,
+.map-viewport > .model-stage > canvas {
+  width: 100% !important;
+  height: 100% !important;
+  display: block;
+}
+
+/* Scene tree */
+.map-tree-title,
+.map-spawn-title,
+.map-wp-title {
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--tk-blue, #00ffff);
+  font-size: 11px;
+  margin: 6px 2px 4px 2px;
+}
+.map-tree-list,
+.map-spawn-list,
+.map-wp-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.map-tree-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 0;
+  font-size: 11px;
+  border-bottom: 1px solid #1c2027;
+}
+.map-tree-vis input { transform: scale(0.85); }
+.map-tree-name {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.map-tree-stat {
+  font-size: 10px;
+  flex-shrink: 0;
+}
+.map-tree-actions {
+  margin-top: 8px;
+  display: flex;
+  gap: 4px;
+}
+.map-tag {
+  background: #2c3e50;
+  color: #87cefa;
+  font-size: 9px;
+  padding: 0 4px;
+  border-radius: 3px;
+}
+
+/* Spawn/waypoint sidebar */
+.map-spawn-actions,
+.map-tree-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin-bottom: 6px;
+}
+.map-spawn-actions button.ghost {
+  font-size: 10px;
+  padding: 2px 6px;
+}
+.map-spawn-actions button.active {
+  background: #244;
+  color: #00ffff;
+  border-color: #00ffff;
+}
+.map-spawn-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 4px;
+  font-size: 11px;
+  border-radius: 3px;
+  cursor: pointer;
+}
+.map-spawn-row:hover { background: #1c2531; }
+.map-spawn-row.selected { background: #2a3148; outline: 1px solid #00ffff; }
+.map-spawn-id { font-weight: 600; min-width: 30px; }
+.map-spawn-type { color: #c8ced9; font-style: italic; }
+.map-spawn-coord { font-size: 10px; flex: 1; }
+.map-spawn-pip {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: #ffffff;
+  flex-shrink: 0;
+}
+.map-spawn-mob    .map-spawn-pip { background: #ff5555; }
+.map-spawn-npc    .map-spawn-pip { background: #55ff88; }
+.map-spawn-chest  .map-spawn-pip { background: #ffd24a; }
+.map-spawn-switch .map-spawn-pip { background: #a855f7; }
+.map-spawn-teleport .map-spawn-pip { background: #00ddff; }
+.map-spawn-del,
+.map-wp-del {
+  font-size: 10px;
+  padding: 0 6px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: #7a8290;
+  cursor: pointer;
+}
+.map-spawn-del:hover,
+.map-wp-del:hover {
+  color: #ff8888;
+  border-color: #ff8888;
+}
+.map-spawn-empty,
+.map-wp-empty {
+  padding: 4px;
+  font-size: 11px;
+  font-style: italic;
+}
+.map-wp-row {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  font-size: 11px;
+  padding: 2px 0;
+}
+.map-wp-pair {
+  flex: 1;
+  font-family: monospace;
+}
+.map-wp-style {
+  font-size: 10px;
+  background: #0e1116;
+  color: #c8ced9;
+  border: 1px solid #2a313a;
+}
+.map-wp-speed {
+  width: 50px;
+  font-size: 10px;
+  background: #0e1116;
+  color: #c8ced9;
+  border: 1px solid #2a313a;
+  padding: 0 4px;
+}
+
+/* Footer */
+.map-footer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: #131820;
+  border-top: 1px solid #2a313a;
+  font-size: 12px;
+}
+.map-footer button { font-size: 11px; padding: 4px 10px; }
+#mapCoordReadout {
+  font-family: monospace;
+  font-size: 11px;
+  color: #7a8290;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Inspector edits */
+.map-insp-title {
+  font-weight: 600;
+  margin-bottom: 4px;
+  font-size: 12px;
+}
+.vp-insp-section label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 3px 0;
+  font-size: 11px;
+}
+.vp-insp-section input,
+.vp-insp-section select {
+  flex: 1;
+  background: #0e1116;
+  color: #c8ced9;
+  border: 1px solid #2a313a;
+  padding: 2px 4px;
+  font-size: 11px;
+}
+
+/* ============================================================
+   External-format import panel (drag .obj/.gltf/.glb)
+   2026-04-25
+   The full styling lives in static/import_panel.js's
+   ensureStyleInjected() block (matches sculpt_panel.js + paint_panel.js
+   convention). The rules below provide overrides for editor-wide
+   integration: drag-cursor while a drop is in flight, header button
+   spacing, and toast-stack hand-off if ever needed.
+   ============================================================ */
+body.imp-dragging * { cursor: copy !important; }
+header button.imp-header-btn { margin-right: 4px; }
+.imp-modal-backdrop { font-family: inherit; }
+.imp-section .imp-warn:first-of-type { margin-top: 6px; }
+
+/* ============================================================
+   Anim Editor panel (2026-04-25)
+   The bulk of the styling lives in
+   static/anim_editor_panel.js's ensureStyleInjected() block.
+   These rules layer integration tweaks on top of the inline
+   defaults so the panel sizes correctly when the texture-panel
+   collapses/expands and when perspectives.js relocates the
+   model-stage between the modal and the unified viewport.
+   ============================================================ */
+.ake-block { box-sizing: border-box; }
+.ake-block .ake-section + .ake-section { margin-top: 4px; }
+.ake-timeline canvas { image-rendering: pixelated; }
+#psoTexturePanel.collapsed .ake-block { display: none; }
+
+/* Anim Editor v3 polish — bone tree + curve editor + multi-select.
+   These rules are mirrored in the panel's style-injection block (so
+   the panel works even if style.css is unloaded), but having them
+   here means the layout is also stable during early-page paint and
+   plays nice with the rest of the texture-panel theme. */
+.ake-tree-host { display: flex; gap: 4px; align-items: stretch; }
+.ake-tree-side { flex: 0 0 220px; max-width: 280px; display: flex; flex-direction: column; gap: 3px; }
+.ake-tree-list { max-height: 280px; overflow-y: auto; }
+.ake-tree-row { user-select: none; }
+.ake-tree-row.active { outline: 1px solid #00ffff; }
+.ake-tree-search { font-family: inherit; }
+.ake-curve-host { position: relative; }
+.ake-curve-host canvas { display: block; width: 100%; }
+.ake-marquee { pointer-events: none; }
+.ake-ctx-menu { user-select: none; }
+.ake-keyframe-row.selected { background: rgba(255, 200, 80, 0.16); }
+
+/* Anim Editor v4 polish — multi-channel curve overlay + cross-bone marquee.
+   Mirrors the panel's style-injection block. */
+.ake-curve-overlay-modes { display: inline-flex; gap: 2px; }
+.ake-curve-overlay-modes .ake-btn { padding: 1px 6px; font-size: 10px; }
+.ake-curve-legend {
+  display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+  padding: 2px 4px; font-size: 10px; color: #99a4b3;
+}
+.ake-curve-legend-item {
+  display: inline-flex; align-items: center; gap: 3px;
+  cursor: pointer;
+  padding: 1px 4px;
+  border-radius: 2px;
+}
+.ake-curve-legend-item:hover { color: #c7d8ec; background: rgba(74,144,226,0.10); }
+.ake-curve-legend-item.active { color: #c7d8ec; outline: 1px solid #00ffff; }
+.ake-curve-legend-swatch {
+  display: inline-block;
+  width: 10px; height: 10px;
+  border-radius: 2px;
+}
+.ake-marquee-mode { display: inline-flex; gap: 2px; }
+.ake-marquee-mode .ake-btn { padding: 1px 6px; font-size: 10px; }
+.ake-keyframe-row .bone-tag {
+  color: #6c7785;
+  font-size: 9px;
+  margin-right: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ============================================================
+   Live-reload connection badge (v5 polish, 2026-04-25).
+   Header pill showing SSE state. Click to force-rescan.
+   ============================================================ */
+.live-reload-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  margin-left: 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  line-height: 1.4;
+  background: rgba(36, 42, 51, 0.6);
+  border: 1px solid #30363d;
+  color: #aab2bd;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.18s, border-color 0.18s, color 0.18s;
+}
+.live-reload-badge:hover {
+  background: rgba(74, 88, 110, 0.5);
+  color: #e0e6ed;
+}
+.live-reload-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #888;
+  box-shadow: 0 0 0 2px rgba(0,0,0,0);
+}
+.live-reload-label { font-variant-numeric: tabular-nums; }
+.live-reload-connecting .live-reload-dot {
+  background: #ffaa00;
+  animation: lr-pulse 1.1s infinite ease-in-out;
+}
+.live-reload-connected .live-reload-dot {
+  background: #44dd66;
+  animation: lr-pulse 2.0s infinite ease-in-out;
+}
+.live-reload-disconnected {
+  border-color: #5a2a2a;
+  color: #ffb0b0;
+}
+.live-reload-disconnected .live-reload-dot {
+  background: #cc4444;
+}
+.live-reload-flash .live-reload-dot {
+  background: #ffd000 !important;
+  box-shadow: 0 0 6px 2px rgba(255, 208, 0, 0.5);
+  animation: none;
+}
+@keyframes lr-pulse {
+  0%   { box-shadow: 0 0 0 0   rgba(68, 221, 102, 0.5); }
+  60%  { box-shadow: 0 0 0 5px rgba(68, 221, 102, 0); }
+  100% { box-shadow: 0 0 0 0   rgba(68, 221, 102, 0); }
+}
+
+/* ============================================================
+   Anim Library perspective (v5 polish, 2026-04-25).
+   Global cross-model browser of every staged animation.
+   ============================================================ */
+.anim-lib-perspective {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 100%;
+  min-height: 0;
+}
+.anim-lib-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  background: #1c2026;
+  border-bottom: 1px solid #2a313a;
+  flex: 0 0 auto;
+}
+.anim-lib-toolbar .anim-lib-search {
+  flex: 1 1 240px;
+  min-width: 160px;
+  padding: 4px 8px;
+  background: #0e1116;
+  color: #e0e6ed;
+  border: 1px solid #2a313a;
+  border-radius: 3px;
+  font-size: 12px;
+}
+.anim-lib-toolbar .anim-lib-target-sel {
+  padding: 4px 6px;
+  background: #0e1116;
+  color: #e0e6ed;
+  border: 1px solid #2a313a;
+  border-radius: 3px;
+  font-size: 12px;
+  max-width: 220px;
+}
+.anim-lib-btn {
+  padding: 4px 10px;
+  background: #2a3038;
+  color: #d0d8e0;
+  border: 1px solid #3a4250;
+  border-radius: 3px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.anim-lib-btn:hover {
+  background: #3a4250;
+  color: #e0e6ed;
+}
+.anim-lib-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.anim-lib-btn.danger { border-color: #5a2a2a; }
+.anim-lib-btn.danger:hover { background: #4a2020; }
+.anim-lib-count {
+  font-variant-numeric: tabular-nums;
+}
+.anim-lib-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  gap: 10px;
+  padding: 10px;
+  overflow-y: auto;
+  flex: 1 1 auto;
+  min-height: 0;
+  align-content: start;
+}
+.anim-lib-empty {
+  grid-column: 1 / -1;
+  padding: 30px 14px;
+  color: #8a92a0;
+  text-align: center;
+  font-size: 13px;
+  background: #1a1d22;
+  border: 1px dashed #2a313a;
+  border-radius: 6px;
+}
+.anim-lib-card {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  padding: 8px 10px;
+  background: #1a1d22;
+  border: 1px solid #2a313a;
+  border-radius: 5px;
+  transition: border-color 0.15s, background 0.15s;
+  min-width: 0;
+}
+.anim-lib-card:hover {
+  background: #21262d;
+  border-color: #3a4250;
+}
+.anim-lib-card.selected {
+  background: #1f2935;
+  border-color: #4488dd;
+  box-shadow: inset 0 0 0 1px rgba(68, 136, 221, 0.3);
+}
+.anim-lib-card-check {
+  display: flex;
+  align-items: flex-start;
+  padding-top: 2px;
+}
+.anim-lib-card-body {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  cursor: pointer;
+}
+.anim-lib-card-name {
+  font-weight: 600;
+  font-size: 13px;
+  color: #e0e6ed;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.anim-lib-card-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 11px;
+}
+.anim-lib-card-row > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.anim-lib-tag-warn {
+  display: inline-block;
+  padding: 0 5px;
+  background: #4a3a1c;
+  color: #ffd690;
+  border-radius: 2px;
+  font-size: 10px;
+}
+.anim-lib-card-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 0 0 auto;
+}
+.anim-lib-card-actions .anim-lib-btn {
+  padding: 2px 8px;
+  font-size: 11px;
+}
+.anim-lib-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 6px 10px;
+  background: #15181d;
+  border-radius: 4px;
+  border: 1px solid #2a313a;
+  font-size: 11px;
+}
+.anim-lib-stats b { color: #d0e0f0; }
+.anim-lib-bulk {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.anim-lib-bulk .anim-lib-btn {
+  text-align: left;
+  padding: 6px 10px;
+}
+
+/* ============================================================
+   Sculpt panel v5 polish — three new brushes (smudge / twist /
+   layer / retopo) + axis-mirror dropdown + twist-rate slider.
+   The bulk of styling lives in static/sculpt_panel.js's
+   ensureStyleInjected() block (4-col grid, brush button states,
+   etc.). The rules below add v5-specific accents:
+     - Smudge / twist / layer / retopo buttons get a subtle
+       "v5" accent line under the label so the user can tell
+       at a glance which brushes are new in this build.
+     - The mirror-axis dropdown highlights when the selected
+       axis is ON (anything other than "off") so the user has a
+       persistent reminder mid-stroke.
+   ============================================================ */
+.pso-sculpt-brush[data-brush="smudge"],
+.pso-sculpt-brush[data-brush="twist"],
+.pso-sculpt-brush[data-brush="layer"],
+.pso-sculpt-brush[data-brush="retopo"] {
+  border-bottom: 2px solid rgba(255, 144, 0, 0.45);
+}
+.pso-sculpt-brush[data-brush="smudge"].active,
+.pso-sculpt-brush[data-brush="twist"].active,
+.pso-sculpt-brush[data-brush="layer"].active,
+.pso-sculpt-brush[data-brush="retopo"].active {
+  border-bottom-color: #ffaa00;
+}
+.pso-sculpt-block select[data-knob="mirrorAxis"] {
+  background: rgba(0, 0, 0, 0.25);
+  color: #c7d8ec;
+  border: 1px solid #2a313a;
+  border-radius: 2px;
+  padding: 1px 4px;
+  font: inherit;
+  font-size: 10px;
+}
+.pso-sculpt-block select[data-knob="mirrorAxis"]:hover {
+  border-color: #4a90e2;
+}
+/* Highlight the dropdown when mirror is engaged. We can't read
+   <select>'s value via :checked, so the panel's onKnobChange
+   toggles a class on the parent <label> when axis != "off". */
+.pso-sculpt-block label.mirror-active select[data-knob="mirrorAxis"] {
+  border-color: #ffaa00;
+  color: #ffaa00;
+}
+
+/* ============================================================
+   Material Inspector / Editor — v5 polish, 2026-04-25
+   ============================================================
+   Most layout lives inline in material_panel.js (#psoMaterialPanelStyle
+   <style> tag) so the panel ships self-contained. The rules below add
+   project-level tweaks that integrate with the editor's dark theme
+   variables (--bg-2, --bd-color, --accent) — they apply when the panel
+   is loaded inside the texture-panel tab strip, where the inline
+   styles use CSS variables that resolve via the global theme. */
+.mat-inspector-active .pso-tex-panel-tabs button[data-tab="material"] {
+  border-bottom: 2px solid var(--accent, #3d7be4);
+}
+/* Reduce visual noise when the row carries no edits — the dirty-dot
+   is the primary "I have unsaved changes" indicator. */
+.pso-mat-list-row.multi {
+  outline: 1px dashed var(--accent, #3d7be4);
+  outline-offset: -1px;
+}
+.pso-mat-list-row .dirty-dot {
+  box-shadow: 0 0 4px rgba(238, 145, 51, 0.6);
+}
+/* Color picker normalization — Chrome/Edge render the swatch
+   differently from Firefox. Force a consistent narrow visual. */
+.pso-mat-detail input[type=color]::-webkit-color-swatch-wrapper { padding: 0; }
+.pso-mat-detail input[type=color]::-webkit-color-swatch { border: none; }
+.pso-mat-detail input[type=color] { cursor: pointer; }
+/* Slider track — match the rest of the app. */
+.pso-mat-detail input[type=range] {
+  appearance: none;
+  height: 4px;
+  background: var(--bg-3, #2a2a2a);
+  border-radius: 2px;
+}
+.pso-mat-detail input[type=range]::-webkit-slider-thumb {
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--accent, #3d7be4);
+  cursor: pointer;
+  border: none;
+}
+.pso-mat-detail input[type=range]:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+/* Preset row hover feedback. */
+.pso-mat-presets button:hover {
+  background: var(--accent, #3d7be4);
+  color: #fff;
+  border-color: var(--accent, #3d7be4);
+}
