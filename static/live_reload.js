@@ -128,7 +128,21 @@
   // ------------------------------------------------------------------
   // Badge
   // ------------------------------------------------------------------
+  function _devBadgesEnabled() {
+    // The live-reload badge is a DEVELOPER hot-reload status light, not a
+    // user-facing control — it reads as cryptic ("live"?) to end users.
+    // Hidden by default; opt in with ?dev in the URL or localStorage
+    // 'pso.devBadges'='1'. The SSE auto-reload itself still runs silently.
+    try {
+      if (new URLSearchParams(location.search).has("dev")) return true;
+      return localStorage.getItem("pso.devBadges") === "1";
+    } catch (_e) {
+      return false;
+    }
+  }
+
   function ensureBadge() {
+    if (!_devBadgesEnabled()) return null;
     if (state.badge && state.badge.isConnected) return state.badge;
     // Find the header. The dataDir span is a stable anchor sitting at
     // the very left of the header.

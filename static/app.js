@@ -1524,6 +1524,8 @@ function refreshModalImages() {
     $("#abEmpty").hidden = true;
     $("#modalRevert").disabled = false;
     $("#modalUpscale").textContent = "re-upscale";
+    // There's an upscale to compare against -> show the compare slider.
+    $("#abHandle").style.display = "";
   } else {
     $("#abDst").src = t.src_png_b64;
     $("#abLabelLeft").textContent = "source";
@@ -1532,6 +1534,8 @@ function refreshModalImages() {
     $("#abEmpty").hidden = false;
     $("#modalRevert").disabled = true;
     $("#modalUpscale").textContent = "upscale this tile";
+    // Nothing to compare yet (both sides are the source) -> hide the slider.
+    $("#abHandle").style.display = "none";
   }
 
   // Restart any running modal anim, since underlying images may have changed
