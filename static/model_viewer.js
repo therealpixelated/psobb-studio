@@ -1073,6 +1073,63 @@ function loadTileTexture(archivePath, tileIdx) {
  * Either way, the combined group AABB is computed in world space so
  * the camera-fit logic still reaches the right zoom level.
  */
+
+/**
+ * Apply a payload mesh's per-submesh render-state flags (Phase 3,
+ * 2026-06-20) onto a freshly-built three.js material, IN PLACE.
+ *
+ * Backend (server.py) surfaces, per mesh:
+ *   - blend_mode: "none" | "blend" | "additive" | "multiply" | "screen"
+ *   - two_sided:  bool
+ *   - alpha_test: {enabled: bool, threshold: 0..255} | null
+ *   - alpha_blend:{src, dst} | null  (raw factor pair; informational)
+ *
+ * Mapping (matches the Material Inspector's live edits in
+ * applyMaterialState, and psov2's blend handling):
+ *   - "additive"  -> THREE.AdditiveBlending + transparent + depthWrite
+ *                    false (glow/energy/particles must not occlude).
+ *   - alpha_test  -> transparent + alphaTest = threshold/255 (mask cut).
+ *   - two_sided   -> DoubleSide, else FrontSide. (When NO flag info is
+ *                    present we leave the caller's DoubleSide default —
+ *                    see the per-builder comments on reverse-faced
+ *                    PSOBB strips — by only narrowing to FrontSide when
+ *                    the payload explicitly carries flags.)
+ *
+ * ``hasFlags`` guards the side narrowing: legacy payloads (no
+ * blend_mode key) keep the conservative DoubleSide default so we don't
+ * silently drop reverse-faced strips on models the backend didn't tag.
+ */
+function applyPsoMaterialFlags(mat, m) {
+  if (!mat || !m) return mat;
+  const hasFlags = (m.blend_mode !== undefined) || (m.two_sided !== undefined)
+    || (m.alpha_test !== undefined);
+  // Side: respect explicit two_sided when the payload carries flags.
+  if (hasFlags) {
+    mat.side = m.two_sided ? THREE.DoubleSide : THREE.FrontSide;
+  }
+  // Additive blend (glow / energy / FX): AdditiveBlending, no depth
+  // write so the glow stacks instead of z-fighting.
+  if (m.blend_mode === "additive") {
+    mat.blending = THREE.AdditiveBlending;
+    mat.transparent = true;
+    mat.depthWrite = false;
+  } else if (m.blend_mode === "blend" && m.alpha_blend) {
+    // Standard premultiplied alpha blend (water / smoke / decals):
+    // transparent, depth test on, depth write off so the blend reads
+    // the framebuffer behind it.
+    mat.transparent = true;
+    mat.depthWrite = false;
+  }
+  // Alpha test (masked cut-out, e.g. hair / foliage / skin edges):
+  // transparent + alphaTest threshold (0..1).
+  const at = m.alpha_test;
+  if (at && at.enabled) {
+    mat.transparent = true;
+    mat.alphaTest = (Number(at.threshold) || 0) / 255;
+  }
+  return mat;
+}
+
 function buildMeshGroupFromPayload(payload, boundTextures) {
   const group = new THREE.Group();
   let totalVerts = 0;
@@ -1113,8 +1170,12 @@ function buildMeshGroupFromPayload(payload, boundTextures) {
     // Skip empty / degenerate sub-meshes
     if (verts.length === 0 || indices.length === 0) continue;
 
-    // Interleaved Float32: [px,py,pz, nx,ny,nz, u,v] per vertex (8 floats)
-    const stride = 8;
+    // Interleaved Float32. v2 payloads (payload.has_color) carry 4
+    // trailing RGBA color floats: [px,py,pz, nx,ny,nz, u,v, r,g,b,a]
+    // (12 floats). v1 payloads omit them (8 floats). Gate on has_color
+    // so older servers/caches still load.
+    const hasColor = payload.has_color === true;
+    const stride = hasColor ? 12 : 8;
     const vertexCount = verts.length / stride;
     if (!Number.isInteger(vertexCount)) {
       console.warn("model_viewer: non-integer vertex count; skipping mesh");
@@ -1123,6 +1184,7 @@ function buildMeshGroupFromPayload(payload, boundTextures) {
     const positions = new Float32Array(vertexCount * 3);
     const normals = new Float32Array(vertexCount * 3);
     const uvs = new Float32Array(vertexCount * 2);
+    const colors = hasColor ? new Float32Array(vertexCount * 4) : null;
     for (let i = 0; i < vertexCount; i++) {
       const o = i * stride;
       positions[i * 3 + 0] = verts[o + 0];
@@ -1133,12 +1195,19 @@ function buildMeshGroupFromPayload(payload, boundTextures) {
       normals[i * 3 + 2] = verts[o + 5];
       uvs[i * 2 + 0] = verts[o + 6];
       uvs[i * 2 + 1] = verts[o + 7];
+      if (colors) {
+        colors[i * 4 + 0] = verts[o + 8];
+        colors[i * 4 + 1] = verts[o + 9];
+        colors[i * 4 + 2] = verts[o + 10];
+        colors[i * 4 + 3] = verts[o + 11];
+      }
     }
 
     const geo = new THREE.BufferGeometry();
     geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
     geo.setAttribute("normal", new THREE.BufferAttribute(normals, 3));
     geo.setAttribute("uv", new THREE.BufferAttribute(uvs, 2));
+    if (colors) geo.setAttribute("color", new THREE.BufferAttribute(colors, 4));
     geo.setIndex(new THREE.BufferAttribute(indices, 1));
     geo.computeBoundingSphere();
 
@@ -1175,20 +1244,33 @@ function buildMeshGroupFromPayload(payload, boundTextures) {
     // want to opt OUT of double-sided rendering for a specific
     // material — it doesn't pay the engineering cost of a backend
     // change to surface authoring intent on every binding row.
+    // Phase 3 (2026-06-20): BOTH branches are now MeshBasicMaterial
+    // (UNLIT) to match psov2 (DashGL NinjaModel.js — all materials are
+    // MeshBasicMaterial). The un-textured branch was MeshLambertMaterial,
+    // which is LIT by the scene's Hemisphere+Directional lights and
+    // washes untextured submeshes to flat white. PSOBB bakes shading
+    // into per-vertex / diffuse color, so unlit × vertexColor reproduces
+    // the authored look. vertexColors:true multiplies map (or 0xffffff)
+    // by the per-vertex RGBA we de-interleaved above.
     const mat = submeshTex
       ? new THREE.MeshBasicMaterial({
           map: submeshTex,
           color: 0xffffff,
+          vertexColors: hasColor,
           wireframe: state.wireframe,
           side: THREE.DoubleSide,
           transparent: false,
         })
-      : new THREE.MeshLambertMaterial({
+      : new THREE.MeshBasicMaterial({
           color: 0xffffff,
+          vertexColors: hasColor,
           wireframe: state.wireframe,
           side: THREE.DoubleSide,
           transparent: false,
         });
+    // Phase 3 (2026-06-20): fold the payload's per-submesh render-state
+    // flags (blend_mode / alpha_test / two_sided) onto the material.
+    applyPsoMaterialFlags(mat, m);
 
     const mesh = new THREE.Mesh(geo, mat);
     // Stash the material_id on the mesh so the texture-replace flow
@@ -2642,12 +2724,15 @@ async function tryLoadCompositeBmlMesh(bmlPath, innerNames) {
         const verts = new Float32Array(vbuf);
         const indices = new Uint32Array(ibuf);
         if (verts.length === 0 || indices.length === 0) continue;
-        const stride = 8;
+        // v2 payloads carry 4 trailing RGBA floats (12-float stride).
+        const hasColor = payload.has_color === true;
+        const stride = hasColor ? 12 : 8;
         const vertexCount = verts.length / stride;
         if (!Number.isInteger(vertexCount)) continue;
         const positions = new Float32Array(vertexCount * 3);
         const normals = new Float32Array(vertexCount * 3);
         const uvs = new Float32Array(vertexCount * 2);
+        const colors = hasColor ? new Float32Array(vertexCount * 4) : null;
         for (let i = 0; i < vertexCount; i++) {
           const o = i * stride;
           positions[i * 3 + 0] = verts[o + 0];
@@ -2658,11 +2743,18 @@ async function tryLoadCompositeBmlMesh(bmlPath, innerNames) {
           normals[i * 3 + 2] = verts[o + 5];
           uvs[i * 2 + 0] = verts[o + 6];
           uvs[i * 2 + 1] = verts[o + 7];
+          if (colors) {
+            colors[i * 4 + 0] = verts[o + 8];
+            colors[i * 4 + 1] = verts[o + 9];
+            colors[i * 4 + 2] = verts[o + 10];
+            colors[i * 4 + 3] = verts[o + 11];
+          }
         }
         const geo = new THREE.BufferGeometry();
         geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
         geo.setAttribute("normal", new THREE.BufferAttribute(normals, 3));
         geo.setAttribute("uv", new THREE.BufferAttribute(uvs, 2));
+        if (colors) geo.setAttribute("color", new THREE.BufferAttribute(colors, 4));
         geo.setIndex(new THREE.BufferAttribute(indices, 1));
         geo.computeBoundingSphere();
         const matId = (m.material_id | 0);
@@ -2674,20 +2766,27 @@ async function tryLoadCompositeBmlMesh(bmlPath, innerNames) {
         // Override per-material via `psoUpdateMaterial(idx, {two_sided:
         // false})` when an authoring-intent flag says the strip is
         // single-sided.
+        // Phase 3 (2026-06-20): unlit MeshBasicMaterial for BOTH branches
+        // (psov2 parity) + vertexColors so the per-vertex/diffuse color
+        // shades the mesh. The Lambert un-textured branch washed to white.
         const mat = submeshTex
           ? new THREE.MeshBasicMaterial({
               map: submeshTex,
               color: 0xffffff,
+              vertexColors: hasColor,
               wireframe: state.wireframe,
               side: THREE.DoubleSide,
               transparent: false,
             })
-          : new THREE.MeshLambertMaterial({
+          : new THREE.MeshBasicMaterial({
               color: 0xffffff,
+              vertexColors: hasColor,
               wireframe: state.wireframe,
               side: THREE.DoubleSide,
               transparent: false,
             });
+        // Phase 3 (2026-06-20): apply per-submesh blend/alpha/two-sided flags.
+        applyPsoMaterialFlags(mat, m);
         const mesh = new THREE.Mesh(geo, mat);
         // Composite-mode bug fix (2026-04-30): per-inner material_ids are
         // NOT globally unique across the BML — inner-A's matId=0 collides
@@ -3780,7 +3879,9 @@ function buildSkinnedMeshGroupFromPayload(payload, boundTextures) {
     const boneIdxRaw = new Int32Array(bbuf);
 
     if (verts.length === 0 || indices.length === 0) continue;
-    const stride = 8;
+    // v2 payloads carry 4 trailing RGBA floats (12-float stride).
+    const hasColor = payload.has_color === true;
+    const stride = hasColor ? 12 : 8;
     const vertexCount = (verts.length / stride) | 0;
     if (!Number.isInteger(verts.length / stride)) {
       console.warn("model_viewer: skinned non-integer vertex count; skipping mesh");
@@ -3791,6 +3892,7 @@ function buildSkinnedMeshGroupFromPayload(payload, boundTextures) {
     const positions = new Float32Array(vertexCount * 3);
     const normals = new Float32Array(vertexCount * 3);
     const uvs = new Float32Array(vertexCount * 2);
+    const colors = hasColor ? new Float32Array(vertexCount * 4) : null;
     for (let i = 0; i < vertexCount; i++) {
       const o = i * stride;
       positions[i * 3 + 0] = verts[o + 0];
@@ -3801,17 +3903,25 @@ function buildSkinnedMeshGroupFromPayload(payload, boundTextures) {
       normals[i * 3 + 2] = verts[o + 5];
       uvs[i * 2 + 0] = verts[o + 6];
       uvs[i * 2 + 1] = verts[o + 7];
+      if (colors) {
+        colors[i * 4 + 0] = verts[o + 8];
+        colors[i * 4 + 1] = verts[o + 9];
+        colors[i * 4 + 2] = verts[o + 10];
+        colors[i * 4 + 3] = verts[o + 11];
+      }
     }
 
     // The geometry's position/normal arrays START as a copy of the
     // bone-local data. The re-bake step overwrites them in place each
     // frame using the original bone-local snapshots stashed below.
+    // (Color is static per-vertex — not re-baked.)
     const renderPos = new Float32Array(positions);
     const renderNorm = new Float32Array(normals);
     const geo = new THREE.BufferGeometry();
     geo.setAttribute("position", new THREE.BufferAttribute(renderPos, 3));
     geo.setAttribute("normal", new THREE.BufferAttribute(renderNorm, 3));
     geo.setAttribute("uv", new THREE.BufferAttribute(uvs, 2));
+    if (colors) geo.setAttribute("color", new THREE.BufferAttribute(colors, 4));
     geo.setIndex(new THREE.BufferAttribute(indices, 1));
     // Skip computeBoundingSphere here — the bone-local AABB is much
     // smaller than the animated AABB, so three.js' frustum culling
@@ -3828,20 +3938,27 @@ function buildSkinnedMeshGroupFromPayload(payload, boundTextures) {
     // `buildMeshGroupFromPayload` for the full rationale (no LH→RH
     // axis flip happens; the per-strip `cw` bit handles winding;
     // PSOBB authoring data has known reverse-faced strips).
+    // Phase 3 (2026-06-20): unlit MeshBasicMaterial for BOTH branches
+    // (psov2 parity) + vertexColors. The Lambert un-textured branch
+    // washed skinned models (Dragon, De Rol Le) to flat white.
     const mat = submeshTex
       ? new THREE.MeshBasicMaterial({
           map: submeshTex,
           color: 0xffffff,
+          vertexColors: hasColor,
           wireframe: state.wireframe,
           side: THREE.DoubleSide,
           transparent: false,
         })
-      : new THREE.MeshLambertMaterial({
+      : new THREE.MeshBasicMaterial({
           color: 0xffffff,
+          vertexColors: hasColor,
           wireframe: state.wireframe,
           side: THREE.DoubleSide,
           transparent: false,
         });
+    // Phase 3 (2026-06-20): apply per-submesh blend/alpha/two-sided flags.
+    applyPsoMaterialFlags(mat, m);
 
     const mesh = new THREE.Mesh(geo, mat);
     mesh.userData.materialId = matId;
@@ -5073,12 +5190,15 @@ function _psoBuildSceneGroupFromPayload(payload, label) {
     const verts = new Float32Array(vbuf);
     const indices = new Uint32Array(ibuf);
     if (verts.length === 0 || indices.length === 0) continue;
-    const stride = 8;
+    // v2 payloads carry 4 trailing RGBA floats (12-float stride).
+    const hasColor = payload.has_color === true;
+    const stride = hasColor ? 12 : 8;
     const vertexCount = verts.length / stride;
     if (!Number.isInteger(vertexCount)) continue;
     const positions = new Float32Array(vertexCount * 3);
     const normals = new Float32Array(vertexCount * 3);
     const uvs = new Float32Array(vertexCount * 2);
+    const colors = hasColor ? new Float32Array(vertexCount * 4) : null;
     for (let i = 0; i < vertexCount; i++) {
       const o = i * stride;
       positions[i * 3 + 0] = verts[o + 0];
@@ -5089,24 +5209,34 @@ function _psoBuildSceneGroupFromPayload(payload, label) {
       normals[i * 3 + 2] = verts[o + 5];
       uvs[i * 2 + 0] = verts[o + 6];
       uvs[i * 2 + 1] = verts[o + 7];
+      if (colors) {
+        colors[i * 4 + 0] = verts[o + 8];
+        colors[i * 4 + 1] = verts[o + 9];
+        colors[i * 4 + 2] = verts[o + 10];
+        colors[i * 4 + 3] = verts[o + 11];
+      }
     }
     const geo = new THREE.BufferGeometry();
     geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
     geo.setAttribute("normal", new THREE.BufferAttribute(normals, 3));
     geo.setAttribute("uv", new THREE.BufferAttribute(uvs, 2));
+    if (colors) geo.setAttribute("color", new THREE.BufferAttribute(colors, 4));
     geo.setIndex(new THREE.BufferAttribute(indices, 1));
     geo.computeBoundingSphere();
-    // Phantasmal-diff fix 4 (2026-04-25): Lambert for un-textured
-    // terrain (matches Phantasmal's MeshRenderer for non-textured
-    // submeshes — closest to PSOBB's per-vertex T&L). The
-    // psoSceneUseExactLambert toggle (5744) is unaffected since it
-    // walks the existing meshes after creation and only swaps in the
-    // bit-exact PSO shader on demand.
-    const mat = new THREE.MeshLambertMaterial({
-      color: 0xb8c2cf,
+    // Phase 3 (2026-06-20): unlit MeshBasicMaterial + vertexColors for
+    // scene terrain too (psov2 parity). When the payload carries color
+    // we use white base so the per-vertex diffuse shows through; without
+    // color (legacy payload) we keep the neutral grey-blue fallback.
+    // The psoSceneUseExactLambert toggle (below) is unaffected — it
+    // walks meshes after creation and swaps in the bit-exact PSO shader.
+    const mat = new THREE.MeshBasicMaterial({
+      color: hasColor ? 0xffffff : 0xb8c2cf,
+      vertexColors: hasColor,
       side: THREE.DoubleSide,
       transparent: false,
     });
+    // Phase 3 (2026-06-20): apply per-submesh blend/alpha/two-sided flags.
+    applyPsoMaterialFlags(mat, m);
     const mesh = new THREE.Mesh(geo, mat);
     mesh.userData.materialId = (m.material_id | 0);
     mesh.userData.scenePart = label;

@@ -324,7 +324,7 @@ TILE_PNG_CACHE_SCHEMA = 1  # bump if PNG-key shape changes
 # avoid pickle's pre-load cost and a corrupted file is human-readable.
 SKINNED_PAYLOAD_CACHE_DIR = CACHE_DIR / "skinned_payload"
 SKINNED_PAYLOAD_CACHE_DIR.mkdir(exist_ok=True)
-SKINNED_PAYLOAD_CACHE_SCHEMA = 1  # bump on payload-shape change
+SKINNED_PAYLOAD_CACHE_SCHEMA = 2  # bump on payload-shape change (v2: +RGBA color, 12-float interleave)
 
 # Binding-cache LRU disk root (Phase 0.5 perf, Item 5 of finishing-line
 # 2026-04-25). The in-memory cache wraps `_build_model_texture_binding`
@@ -8468,7 +8468,10 @@ def _xj_meshes_to_payload(meshes: list) -> dict:
     """Project a list[XjMesh] to the JSON wire shape documented above.
 
     Vertex data is packed into an interleaved Float32 array with the
-    layout (px, py, pz, nx, ny, nz, u, v) per vertex. Indices are
+    layout (px, py, pz, nx, ny, nz, u, v, r, g, b, a) per vertex — 12
+    floats. The trailing RGBA (0..1) is PSOBB's authored per-vertex /
+    material-diffuse color, used by the frontend for unlit × vertexColor
+    rendering (``has_color: true`` in the returned dict). Indices are
     Uint32 (we widen from u16 strips to allow >65k vertices in future
     files; current files don't need it but the pad is cheap).
 
@@ -8495,7 +8498,12 @@ def _xj_meshes_to_payload(meshes: list) -> dict:
     total_v = 0
     total_t = 0
     for m in meshes:
-        # Interleaved Float32 array
+        # Interleaved Float32 array. 12 floats per vertex:
+        #   [px,py,pz, nx,ny,nz, u,v, r,g,b,a]
+        # The trailing RGBA (0..1) carries PSOBB's authored per-vertex /
+        # diffuse color so the frontend can render UNLIT × vertexColor
+        # (psov2 parity). Always emitted (default white) — the payload
+        # advertises ``has_color: true`` so older frontends can branch.
         floats = array.array("f")
         minx = miny = minz = float("inf")
         maxx = maxy = maxz = float("-inf")
@@ -8503,7 +8511,8 @@ def _xj_meshes_to_payload(meshes: list) -> dict:
             px, py, pz = v.pos
             nx, ny, nz = v.normal
             u, vv = v.uv
-            floats.extend((px, py, pz, nx, ny, nz, u, vv))
+            cr, cg, cb, ca = v.color
+            floats.extend((px, py, pz, nx, ny, nz, u, vv, cr, cg, cb, ca))
             if px < minx:
                 minx = px
             if py < miny:
@@ -8549,6 +8558,15 @@ def _xj_meshes_to_payload(meshes: list) -> dict:
             "world_rotation_euler": list(m.world_rotation_euler),
             "world_scale": list(m.world_scale),
             "world_matrix": list(m.world_matrix),
+            # Per-submesh render-state flags (Phase 3, 2026-06-20). The
+            # frontend maps blend_mode "additive" -> AdditiveBlending +
+            # depthWrite:false; alpha_test -> transparent + alphaTest;
+            # two_sided -> DoubleSide. ``getattr`` keeps older pickled
+            # XjMesh objects (pre-v2 disk cache) safe.
+            "blend_mode": getattr(m, "blend_mode", "none"),
+            "two_sided": bool(getattr(m, "two_sided", False)),
+            "alpha_test": getattr(m, "alpha_test", None),
+            "alpha_blend": getattr(m, "alpha_blend", None),
         })
 
     return {
@@ -8561,6 +8579,13 @@ def _xj_meshes_to_payload(meshes: list) -> dict:
         # are diagnostic — DO NOT compose them into Object3D.position
         # or every submesh will be doubly-offset.
         "vertices_pre_transformed": True,
+        # Vertex interleave now carries 4 trailing RGBA color floats
+        # (12 floats/vertex). ``has_color`` lets the frontend pick the
+        # stride safely; ``vertex_format_version`` bumps from the
+        # implicit v1 (8 floats) to v2 (12 floats) so any cached/older
+        # consumer can detect the shape change.
+        "has_color": True,
+        "vertex_format_version": 2,
         # Convenience aliases (flat) used by the ad-hoc smoke
         # commands in AGENT_XJ_FAITHFUL_PORT_REPORT.md and other
         # CLI reports. The structured form above is the authoritative
@@ -8593,8 +8618,8 @@ def _xj_meshes_to_skinned_payload(meshes: list, bones: list) -> dict:
         track; consumers fall back to bone 0 / identity in that case).
 
     Vertex layout (per the regular payload's interleaved format):
-      Float32: [px, py, pz, nx, ny, nz, u, v]    (8 floats per vertex)
-      Int32:   [bone_idx]                          (separate buffer)
+      Float32: [px, py, pz, nx, ny, nz, u, v, r, g, b, a]  (12 floats/vertex)
+      Int32:   [bone_idx]                                   (separate buffer)
 
     Performance (Phase 0.5 perf, 2026-04-25): the inner loop uses
     ``array.array`` (a C-level packed buffer) extended one 8-tuple at
@@ -8635,7 +8660,8 @@ def _xj_meshes_to_skinned_payload(meshes: list, bones: list) -> dict:
                 px, py, pz = v.pos
                 nx, ny, nz = v.normal
                 u, vv = v.uv
-                floats.extend((px, py, pz, nx, ny, nz, u, vv))
+                cr, cg, cb, ca = v.color
+                floats.extend((px, py, pz, nx, ny, nz, u, vv, cr, cg, cb, ca))
                 bone_idx_arr.append(v.bone_idx)
                 if px < minx:
                     minx = px
@@ -8677,6 +8703,13 @@ def _xj_meshes_to_skinned_payload(meshes: list, bones: list) -> dict:
             "material_id": m.material_id,
             "bounding_sphere": list(m.bounding_sphere),
             "aabb": aabb,
+            # Per-submesh render-state flags (Phase 3, 2026-06-20) — same
+            # shape as the static payload; ``getattr`` keeps older pickled
+            # XjMesh objects (pre-v2 skinned disk cache) safe.
+            "blend_mode": getattr(m, "blend_mode", "none"),
+            "two_sided": bool(getattr(m, "two_sided", False)),
+            "alpha_test": getattr(m, "alpha_test", None),
+            "alpha_blend": getattr(m, "alpha_blend", None),
         })
 
     bones_out: list[dict] = [
@@ -8705,6 +8738,9 @@ def _xj_meshes_to_skinned_payload(meshes: list, bones: list) -> dict:
         "totals": {"vertices": total_v, "triangles": total_t},
         "vertices_pre_transformed": False,
         "has_bone_indices": True,
+        # Same 12-float interleave (+RGBA) as the static payload.
+        "has_color": True,
+        "vertex_format_version": 2,
         "vert_total": total_v,
         "tri_total": total_t,
     }

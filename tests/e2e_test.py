@@ -1845,15 +1845,19 @@ def t_model_mesh_endpoint_consistency():
     assert "meshes" in r, r
     assert r["mesh_count"] == len(r["meshes"]), r
     assert r["mesh_count"] >= 1, r
+    # v2 payloads carry 4 trailing RGBA color floats: 12 floats (48 bytes)
+    # per vertex. v1 (no has_color) is the legacy 8-float (32-byte) shape.
+    bytes_per_vertex = 48 if r.get("has_color") else 32
     total_v = 0
     total_t = 0
     for m in r["meshes"]:
         # b64 decode and verify the byte counts match vertex/triangle counts
         verts_bin = base64.b64decode(m["vertices_b64"])
         idx_bin = base64.b64decode(m["indices_b64"])
-        # Float32 interleaved [px,py,pz, nx,ny,nz, u,v] = 32 bytes per vertex
-        assert len(verts_bin) == m["vertex_count"] * 32, (
-            f"vertices_b64 size mismatch: {len(verts_bin)} vs {m['vertex_count']}*32"
+        # Float32 interleaved [px,py,pz, nx,ny,nz, u,v(, r,g,b,a)]
+        assert len(verts_bin) == m["vertex_count"] * bytes_per_vertex, (
+            f"vertices_b64 size mismatch: {len(verts_bin)} vs "
+            f"{m['vertex_count']}*{bytes_per_vertex}"
         )
         # Uint32 indices, 4 bytes each, 3 per triangle
         assert len(idx_bin) == m["triangle_count"] * 12, (
@@ -3183,12 +3187,16 @@ def t_model_mesh_via_path_for_bml_inner():
     assert payload["inner"] == inner, payload
     # The wire shape used by buildMeshGroupFromPayload — each mesh
     # carries vertices_b64 + indices_b64 in the documented stride.
+    # v2 payloads carry 4 trailing RGBA color floats (48 bytes/vertex);
+    # legacy v1 is 32 bytes/vertex.
+    bytes_per_vertex = 48 if payload.get("has_color") else 32
     for mesh in payload["meshes"]:
         verts = base64.b64decode(mesh["vertices_b64"])
         idx = base64.b64decode(mesh["indices_b64"])
-        # Float32 interleaved [px,py,pz, nx,ny,nz, u,v] = 32 bytes/vertex
-        assert len(verts) == mesh["vertex_count"] * 32, (
-            f"vertex stride mismatch: {len(verts)} vs {mesh['vertex_count']}*32"
+        # Float32 interleaved [px,py,pz, nx,ny,nz, u,v(, r,g,b,a)]
+        assert len(verts) == mesh["vertex_count"] * bytes_per_vertex, (
+            f"vertex stride mismatch: {len(verts)} vs "
+            f"{mesh['vertex_count']}*{bytes_per_vertex}"
         )
         # Uint32 indices, 12 bytes per triangle
         assert len(idx) == mesh["triangle_count"] * 12, (

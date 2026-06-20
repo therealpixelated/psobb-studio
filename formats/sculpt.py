@@ -815,13 +815,21 @@ def apply_displacement_to_payload(payload: dict, sub_sculpts: list[SubmeshSculpt
         m2 = dict(m)
         sub = by_idx.get(i)
         if sub is not None and m.get("vertex_count", 0) == sub.vertex_count:
-            # Decode the verts buffer (8 floats per vert: pos3 + nrm3 + uv2),
-            # add displacement, re-encode.
+            # Decode the verts buffer and add displacement to the position
+            # columns (0:3) only, then re-encode. The interleave stride is
+            # 8 floats (v1: pos3 + nrm3 + uv2) or 12 floats (v2: + RGBA
+            # color, 2026-06-20). Derive the stride from the buffer length
+            # / vertex_count so both shapes round-trip — displacement never
+            # touches the trailing normal/uv/color floats.
             v_bytes = base64.b64decode(m["vertices_b64"])
-            verts = np.frombuffer(v_bytes, dtype=np.float32).reshape(-1, 8).copy()
-            if verts.shape[0] == sub.vertex_count:
-                disp = np.asarray(sub.displacement, dtype=np.float32).reshape(-1, 3)
-                verts[:, 0:3] += disp
-                m2["vertices_b64"] = base64.b64encode(verts.tobytes()).decode("ascii")
+            flat = np.frombuffer(v_bytes, dtype=np.float32)
+            vc = int(sub.vertex_count)
+            stride = (flat.size // vc) if vc else 8
+            if stride in (8, 12) and vc * stride == flat.size:
+                verts = flat.reshape(-1, stride).copy()
+                if verts.shape[0] == sub.vertex_count:
+                    disp = np.asarray(sub.displacement, dtype=np.float32).reshape(-1, 3)
+                    verts[:, 0:3] += disp
+                    m2["vertices_b64"] = base64.b64encode(verts.tobytes()).decode("ascii")
         out["meshes"].append(m2)
     return out

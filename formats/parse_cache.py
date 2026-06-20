@@ -87,7 +87,9 @@ _DISK_PERSIST_MAX_BYTES = 32 * 1024 * 1024
 # Bump when the in-memory dataclass shapes change in a way that breaks
 # pickle round-trip. A schema bump invalidates every prior on-disk pkl
 # without manual cleanup — the lookup just won't find any v<old> files.
-_DISK_CACHE_SCHEMA = 1
+# v2 (2026-06-20): XjVertex gained a `color` RGBA field — old v1 pickles
+# unpickle WITHOUT it and crash `_xj_meshes_to_payload`'s v.color read.
+_DISK_CACHE_SCHEMA = 2
 
 # Disk cache root. Created on first write; the ``ensure_cache_dir``
 # helper in the server points us at the real location.

@@ -11,11 +11,15 @@ test (``test_autoplay_regression.py``) covers the live behaviour.
 
 Conventions enforced (all from the reference Phantasmal renderer):
 
-  * Textured submeshes use ``MeshBasicMaterial`` (Phantasmal's
-    ``MeshRenderer.kt``); ``MeshStandardMaterial`` must NOT appear in
-    submesh-creation paths.
-  * Un-textured paths use ``MeshLambertMaterial`` (closest to Sega's
-    per-vertex T&L).
+  * ALL model submeshes — textured AND un-textured — use UNLIT
+    ``MeshBasicMaterial`` (psov2 / DashGL NinjaModel.js parity, Phase 3
+    2026-06-20). PSOBB bakes shading into per-vertex / material-diffuse
+    color, so an unlit material × vertexColor reproduces the authored
+    look; the old ``MeshLambertMaterial`` un-textured branch was LIT and
+    washed untextured submeshes to flat white. ``MeshStandardMaterial``
+    must NOT appear in submesh-creation paths. ``MeshLambertMaterial``
+    now appears only in the primitive-shape preview (``rebuildMeshNow``)
+    and the opt-in ``psoSceneUseExactLambert`` toggle.
   * Texture wrap mode is ``MirroredRepeatWrapping`` for the real-mesh
     + non-sphere primitive paths (Sega's D3DTADDRESS_MIRROR).
   * No ``tex.colorSpace = THREE.SRGBColorSpace`` anywhere — Phantasmal
@@ -164,22 +168,25 @@ def test_textured_submeshes_default_to_transparent_false() -> None:
 
 
 def test_untextured_submesh_fallbacks_default_to_transparent_false() -> None:
-    """Phantasmal-diff fix 3 (un-textured branch).
+    """Phantasmal-diff fix 3 (un-textured branch), Phase-3 update.
 
-    The MeshLambertMaterial fallback for submeshes WITHOUT a bound
-    texture must also default to transparent: false.
+    The un-textured submesh fallback is now UNLIT MeshBasicMaterial
+    (Phase 3, psov2 parity) and must still default to transparent:
+    false. We match MeshBasicMaterial sites with ``color: 0xffffff`` and
+    NO ``map:`` field (the un-textured fallback in the 3 submesh builders
+    + rebuildMeshNow).
     """
     src = _strip_line_comments(_read_source())
-    # MeshLambertMaterial sites with ``color: 0xffffff`` (un-textured
-    # submesh fallback in rebuildMeshNow + 3 submesh paths).
+    # Un-textured MeshBasicMaterial fallback sites: `color: 0xffffff`
+    # present, `map:` absent before the transparent flag.
     pattern = re.compile(
-        r"new THREE\.MeshLambertMaterial\(\{[^}]*?color:\s*0xffffff[^}]*?transparent:\s*(true|false)",
+        r"new THREE\.MeshBasicMaterial\(\{(?:(?!\bmap:)[^}])*?color:\s*0xffffff(?:(?!\bmap:)[^}])*?transparent:\s*(true|false)",
         re.DOTALL,
     )
     matches = pattern.findall(src)
-    assert matches, "no un-textured MeshLambertMaterial sites found"
+    assert matches, "no un-textured MeshBasicMaterial fallback sites found"
     assert all(m == "false" for m in matches), (
-        f"expected un-textured Lambert fallback sites to use "
+        f"expected un-textured MeshBasicMaterial fallback sites to use "
         f"transparent: false; offenders: "
         f"{[m for m in matches if m != 'false']}"
     )
@@ -189,12 +196,14 @@ def test_untextured_submesh_fallbacks_default_to_transparent_false() -> None:
 
 
 def test_no_meshstandardmaterial_in_submesh_paths() -> None:
-    """Phantasmal-diff fix 4: textured submeshes use MeshBasicMaterial.
+    """Phantasmal-diff fix 4 + Phase-3: model submeshes are UNLIT MeshBasic.
 
     PSOBB does no BRDF on diffuse-mapped pixels, so PBR is wasted GPU
     cost (Dragon's 1069 submeshes × PBR shader compile was the worst
-    offender). Phantasmal uses MeshBasicMaterial for textured paths and
-    MeshLambertMaterial for un-textured.
+    offender). Phase 3 (psov2 parity) makes EVERY model submesh —
+    textured and un-textured — MeshBasicMaterial (unlit). Lambert now
+    survives only in the primitive preview + the opt-in exact-Lambert
+    toggle.
     """
     src = _strip_line_comments(_read_source())
     # Constructor sites: should be ZERO MeshStandardMaterial in the
@@ -204,21 +213,27 @@ def test_no_meshstandardmaterial_in_submesh_paths() -> None:
     )
     assert not constructor_sites, (
         f"found {len(constructor_sites)} MeshStandardMaterial constructor "
-        f"sites — Phantasmal-diff fix 4 requires MeshBasicMaterial "
-        f"(textured) / MeshLambertMaterial (un-textured)"
+        f"sites — fix 4 requires MeshBasicMaterial everywhere in the "
+        f"model submesh paths"
     )
 
-    # Sanity: the new types are actually being used.
+    # Sanity: MeshBasicMaterial is the dominant material now. Each of the
+    # 3 model-payload builders + the scene/terrain builder has a textured
+    # AND un-textured branch (or single unlit material), plus the
+    # primitive preview — so expect a healthy count.
     basic_sites = re.findall(r"new THREE\.MeshBasicMaterial\(", src)
-    lambert_sites = re.findall(r"new THREE\.MeshLambertMaterial\(", src)
-    assert len(basic_sites) >= 4, (
-        f"expected ≥4 MeshBasicMaterial sites (rebuildMeshNow + 3 "
-        f"submesh paths: world-baked, composite, skinned); got {len(basic_sites)}"
+    assert len(basic_sites) >= 6, (
+        f"expected ≥6 MeshBasicMaterial sites (textured + un-textured "
+        f"branches across world-baked/composite/skinned builders, scene "
+        f"terrain, primitive preview); got {len(basic_sites)}"
     )
-    assert len(lambert_sites) >= 4, (
-        f"expected ≥4 MeshLambertMaterial sites (rebuildMeshNow "
-        f"un-textured branch + 3 un-textured submesh fallbacks + "
-        f"scene/terrain); got {len(lambert_sites)}"
+    # Lambert is now confined to the primitive preview + the opt-in
+    # psoSceneUseExactLambert swap — NOT the model submesh fallbacks.
+    lambert_sites = re.findall(r"new THREE\.MeshLambertMaterial\(", src)
+    assert len(lambert_sites) <= 2, (
+        f"expected ≤2 MeshLambertMaterial sites (primitive preview + "
+        f"exact-Lambert toggle only — model submeshes are now unlit "
+        f"MeshBasic); got {len(lambert_sites)}"
     )
 
 

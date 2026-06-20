@@ -642,46 +642,57 @@ def _parse_vertex_array(
     return out
 
 
-def _parse_material(body: bytes, mat_off: int, mat_size: int) -> Optional[int]:
-    """Walk the material entry list and return the first texture_id seen.
+def _parse_material(
+    body: bytes, mat_off: int, mat_size: int
+) -> Tuple[Optional[int], Optional[Tuple[float, float, float, float]]]:
+    """Walk the material entry list; return ``(texture_id, diffuse_rgba)``.
 
     Each entry is 16 bytes; the first u32 is the entry "type". Per
     Phantasmal's ``parseTriangleStripMaterial``:
         type=2: src_alpha (u32), dst_alpha (u32)
         type=3: texture_id (u32)
         type=5: diffuse R/G/B/A (u8 each)
-    Other types are ignored. We only care about the texture id for the
-    XjMesh's ``material_id`` field; the JSON wire schema doesn't carry
-    src/dst alpha or diffuse color today (it's a TODO for both Nj and
-    Xj parsers).
+    Other types are ignored.
+
+    ``texture_id`` is the first type-3 entry's id (or None). ``diffuse_rgba``
+    is the first type-5 entry's color as a 0..1 RGBA tuple (or None). The
+    diffuse is fed to the vertex-color channel so the descriptor render
+    path matches psov2's "unlit × diffuse" look (2026-06-20); previously
+    the color was decoded and discarded.
     """
+    tex_id: Optional[int] = None
+    diffuse: Optional[Tuple[float, float, float, float]] = None
     if mat_size <= 0 or mat_off <= 0:
-        return None
+        return tex_id, diffuse
     n = len(body)
     for i in range(mat_size):
         off = mat_off + i * _MAT_ENTRY_SIZE
         if off + _MAT_ENTRY_SIZE > n:
             break
         (entry_type,) = struct.unpack_from("<I", body, off)
-        if entry_type == 3:
+        if entry_type == 3 and tex_id is None:
             (tex_id,) = struct.unpack_from("<I", body, off + 4)
-            return tex_id
-    return None
+        elif entry_type == 5 and diffuse is None:
+            r, g, b, a = body[off + 4], body[off + 5], body[off + 6], body[off + 7]
+            diffuse = (r / 255.0, g / 255.0, b / 255.0, a / 255.0)
+    return tex_id, diffuse
 
 
 def _parse_strip_table(
     body: bytes,
     strip_table_off: int,
     strip_count: int,
-) -> List[Tuple[Optional[int], List[int]]]:
-    """Read all strips from one strip table; return ``[(texture_id, indices), ...]``.
+) -> List[Tuple[Optional[int], Optional[Tuple[float, float, float, float]], List[int]]]:
+    """Read all strips from one strip table.
+
+    Returns ``[(texture_id, diffuse_rgba, indices), ...]``.
 
     Phantasmal's ``parseTriangleStripTable`` (Xj.kt) emits one ``XjMesh``
     per row; we mirror that. Each row has a 20-byte header pointing to
     a material table + an index list. Indices are u16 triangle-strip
     indices into the global vertex slot table.
     """
-    out: List[Tuple[Optional[int], List[int]]] = []
+    out: List[Tuple[Optional[int], Optional[Tuple[float, float, float, float]], List[int]]] = []
     if strip_count <= 0 or strip_table_off <= 0:
         return out
     n = len(body)
@@ -692,13 +703,13 @@ def _parse_strip_table(
         mat_off, mat_size, idx_off, idx_count, _unk = struct.unpack_from(
             _STRIP_ROW_FMT, body, row_off,
         )
-        tex_id = _parse_material(body, mat_off, mat_size)
+        tex_id, diffuse = _parse_material(body, mat_off, mat_size)
 
         if idx_count <= 0 or idx_off <= 0 or idx_off + 2 * idx_count > n:
             indices: List[int] = []
         else:
             indices = list(struct.unpack_from(f"<{idx_count}H", body, idx_off))
-        out.append((tex_id, indices))
+        out.append((tex_id, diffuse, indices))
     return out
 
 
@@ -865,6 +876,11 @@ def parse_xj_descriptor(
     # tex_id=5 (5 sticky strips), and so on through 6 distinct ids
     # spread across 94 submeshes.
     last_tex_id: Optional[int] = None
+    # Sticky diffuse default color (mirrors last_tex_id stickiness). The
+    # descriptor format carries diffuse in a type-5 material entry; we
+    # feed it to the per-vertex color channel so untextured/unlit
+    # submeshes show their authored tint instead of washing to white.
+    last_diffuse: Optional[Tuple[float, float, float, float]] = None
     for (_off, model_offset, world_M, ef) in nodes:
         # HIDE / SHAPE_SKIP suppress drawing for this node only.
         # Children were already enqueued during the DFS regardless of
@@ -906,7 +922,7 @@ def parse_xj_descriptor(
         # XjMesh rows in Phantasmal — we keep them in one combined
         # list. The texture id (when present in the material list)
         # rides along on each strip entry.
-        strips: List[Tuple[Optional[int], List[int]]] = []
+        strips: List[Tuple[Optional[int], Optional[Tuple[float, float, float, float]], List[int]]] = []
         strips.extend(_parse_strip_table(body, ts_off, ts_count))
         strips.extend(_parse_strip_table(body, tts_off, tts_count))
 
@@ -916,7 +932,7 @@ def parse_xj_descriptor(
         wp, wr, ws = _decompose_world_xform(world_M)
         wm_tuple = tuple(world_M)
 
-        for (tex_id, strip_indices) in strips:
+        for (tex_id, diffuse, strip_indices) in strips:
             if len(strip_indices) < 3:
                 continue
             # Inherit previous GPU texture state when this strip's
@@ -927,6 +943,17 @@ def parse_xj_descriptor(
             else:
                 effective_tex_id = int(tex_id)
                 last_tex_id = effective_tex_id
+            # Same render-state stickiness for the diffuse default color.
+            if diffuse is not None:
+                last_diffuse = diffuse
+            effective_diffuse = diffuse if diffuse is not None else last_diffuse
+            if effective_diffuse is not None:
+                dr, dg, db, da = effective_diffuse
+                if da < 0.3:
+                    da = 0.3
+                vcolor = (dr, dg, db, da)
+            else:
+                vcolor = (1.0, 1.0, 1.0, 1.0)
 
             # Locally renumber the strip's slot references so that
             # downstream consumers can treat the XjMesh's `vertices`
@@ -966,6 +993,7 @@ def parse_xj_descriptor(
                     pos=pos_world,
                     normal=normal_world,
                     uv=uv,
+                    color=vcolor,
                 ))
                 local_strip.append(local_slot_map[sidx])
 

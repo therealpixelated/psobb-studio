@@ -126,15 +126,21 @@ def test_conversion_correctness_synthetic(srv):
     assert payload["has_bone_indices"] is True
     assert payload["totals"] == {"vertices": 4, "triangles": 2}
 
+    # v2 payloads (has_color) carry 4 trailing RGBA floats: 12 floats per
+    # vertex ([px,py,pz, nx,ny,nz, u,v, r,g,b,a]). Synthetic XjVertex
+    # defaults to white (1,1,1,1).
+    assert payload.get("has_color") is True
+    assert payload.get("vertex_format_version") == 2
+
     sub = payload["meshes"][0]
-    # Round-trip vertices_b64 → Float32 array → check first 8 floats match
+    # Round-trip vertices_b64 → Float32 array → check the 12 floats match
     # the constructed mesh.
     raw = base64.b64decode(sub["vertices_b64"])
-    arr = np.frombuffer(raw, dtype="<f4").reshape(-1, 8)
-    assert arr.shape == (4, 8)
-    # Vertex 0: pos=(0,1,2), normal=(0,1,0), uv=(0,0)
-    np.testing.assert_allclose(arr[0], [0, 1, 2, 0, 1, 0, 0, 0])
-    np.testing.assert_allclose(arr[3], [3, 4, 5, 0, 1, 0, 0.3, 0.6])
+    arr = np.frombuffer(raw, dtype="<f4").reshape(-1, 12)
+    assert arr.shape == (4, 12)
+    # Vertex 0: pos=(0,1,2), normal=(0,1,0), uv=(0,0), color=(1,1,1,1)
+    np.testing.assert_allclose(arr[0], [0, 1, 2, 0, 1, 0, 0, 0, 1, 1, 1, 1])
+    np.testing.assert_allclose(arr[3], [3, 4, 5, 0, 1, 0, 0.3, 0.6, 1, 1, 1, 1])
 
     # AABB = positions min/max across all 4 verts.
     aabb = sub["aabb"]

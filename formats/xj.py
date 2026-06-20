@@ -138,6 +138,16 @@ class XjVertex:
     normal: Tuple[float, float, float]
     uv: Tuple[float, float]
     bone_idx: int = -1
+    # Per-vertex RGBA in 0..1 (2026-06-20). PSOBB bakes shading / AO /
+    # tint into either a per-vertex ARGB chunk (strip types 70/71/72 or
+    # vertex chunk heads 0x23/0x2a) OR the material-chunk DIFFUSE color.
+    # psov2 (DashGL NinjaModel.js) multiplies an UNLIT MeshBasicMaterial
+    # by this color; without it, untextured submeshes wash to white and
+    # textured ones lose their authored shading. Default white = no-op.
+    # Precedence (psov2 `aClr = aPos.color || this.color`): own per-vertex
+    # color > material diffuse > white. Alpha is floored to 0.3 so no
+    # submesh renders fully invisible (NinjaModel.js:867).
+    color: Tuple[float, float, float, float] = (1.0, 1.0, 1.0, 1.0)
 
 
 @dataclass
@@ -207,6 +217,22 @@ class XjMesh:
         0.0, 0.0, 1.0, 0.0,
         0.0, 0.0, 0.0, 1.0,
     )
+    # Per-submesh render-state flags (2026-06-20, Phase 3). Decoded from
+    # the polygon stream's BlendAlpha (type 1), Tiny (8/9 alpha-test
+    # overlay) and strip-chunk (64..75) flags that were in effect when
+    # this strip emitted. The frontend maps these onto three.js material
+    # state: ``blend_mode`` "additive" -> AdditiveBlending + depthWrite
+    # false; ``alpha_test`` -> transparent + alphaTest threshold;
+    # ``two_sided`` -> DoubleSide else FrontSide. Defaults are the
+    # opaque, single-sided, no-blend baseline so older/untracked paths
+    # render exactly as before.
+    blend_mode: str = "none"           # none / blend / additive / multiply / screen
+    two_sided: bool = False
+    # ``alpha_test`` is ``{"enabled": bool, "threshold": int}`` or None.
+    alpha_test: Optional[dict] = None
+    # ``alpha_blend`` is ``{"src": str, "dst": str}`` or None (the raw
+    # factor pair behind ``blend_mode``; surfaced for the Material panel).
+    alpha_blend: Optional[dict] = None
 
 
 # ---------------------------------------------------------------------------
@@ -504,6 +530,10 @@ class _ChunkVertex:
     index: int
     pos: Tuple[float, float, float]
     normal: Optional[Tuple[float, float, float]]
+    # Per-vertex RGBA (0..1) when the chunk head carries an ARGB color
+    # (Nj heads 0x23 / 0x2a — psov2 NinjaModel.js:638). None means the
+    # slot has no own color and the material diffuse should be used.
+    color: Optional[Tuple[float, float, float, float]] = None
 
 
 def _parse_vertex_chunk(
@@ -552,6 +582,7 @@ def _parse_vertex_chunk(
         pos += 12
         vertex_index = base_index + i
         normal: Optional[Tuple[float, float, float]] = None
+        color: Optional[Tuple[float, float, float, float]] = None
 
         if type_id == 32:
             # NJD_CV_SH          — pos + 4 bytes (always 1.0)
@@ -568,7 +599,16 @@ def _parse_vertex_chunk(
         elif type_id == 34:
             # NJD_CV             — pos only
             pass
-        elif 35 <= type_id <= 40:
+        elif type_id == 35:
+            # NJD_CV_VC (head 0x23) — pos + ARGB8888 vertex color (no
+            # normal). The 4 bytes are laid out B,G,R,A on disk (psov2
+            # NinjaModel.js:638-644 reads b,g,r,a / 255).
+            if pos + 4 > end:
+                break
+            cb, cg, cr, ca = body[pos], body[pos + 1], body[pos + 2], body[pos + 3]
+            pos += 4
+            color = (cr / 255.0, cg / 255.0, cb / 255.0, ca / 255.0)
+        elif 36 <= type_id <= 40:
             if type_id == 37:
                 # NJD_CV_NF      — u16 idx-offset, u16 boneWeight
                 if pos + 4 > end:
@@ -586,7 +626,21 @@ def _parse_vertex_chunk(
             nx, ny, nz = struct.unpack_from("<3f", body, pos)
             pos += 12
             normal = (nx, ny, nz)
-        elif 42 <= type_id <= 47:
+        elif type_id == 42:
+            # NJD_CV_VNC (head 0x2a) — pos + normal + ARGB8888 color.
+            # The trailing 4 bytes (which other 42..47 types use as a
+            # user/material pad) are the per-vertex color here.
+            if pos + 12 > end:
+                break
+            nx, ny, nz = struct.unpack_from("<3f", body, pos)
+            pos += 12
+            normal = (nx, ny, nz)
+            if pos + 4 > end:
+                break
+            cb, cg, cr, ca = body[pos], body[pos + 1], body[pos + 2], body[pos + 3]
+            pos += 4
+            color = (cr / 255.0, cg / 255.0, cb / 255.0, ca / 255.0)
+        elif 43 <= type_id <= 47:
             if pos + 12 > end:
                 break
             nx, ny, nz = struct.unpack_from("<3f", body, pos)
@@ -615,7 +669,7 @@ def _parse_vertex_chunk(
             if type_id >= 49:
                 pos += 4
 
-        vertices.append(_ChunkVertex(vertex_index, (x, y, z), normal))
+        vertices.append(_ChunkVertex(vertex_index, (x, y, z), normal, color))
 
     return vertices
 
@@ -635,6 +689,10 @@ class _StripVertex:
     index: int
     uv: Optional[Tuple[float, float]]
     normal: Optional[Tuple[float, float, float]]
+    # Per-vertex RGBA (0..1) for strip types 70/71/72 (ARGB8888 on disk,
+    # laid out B,G,R,A — Nj.kt "Ignore ARGB8888 color"). None for strips
+    # that carry no color.
+    color: Optional[Tuple[float, float, float, float]] = None
 
 
 @dataclass
@@ -726,6 +784,7 @@ def _parse_strip_chunk(
             pos += 2
             uv: Optional[Tuple[float, float]] = None
             normal: Optional[Tuple[float, float, float]] = None
+            color: Optional[Tuple[float, float, float, float]] = None
             if has_uv:
                 if pos + 4 > end:
                     break
@@ -733,9 +792,15 @@ def _parse_strip_chunk(
                 pos += 4
                 uv = (u_raw * UV_SCALE, v_raw * UV_SCALE)
             if has_color:
+                # ARGB8888 laid out B,G,R,A on disk (Nj.kt strip color;
+                # mirrors the material-chunk BGRA convention). Previously
+                # skipped — now read so the model shows its authored
+                # per-vertex shading instead of washing to white.
                 if pos + 4 > end:
                     break
+                cb, cg, cr, ca = body[pos], body[pos + 1], body[pos + 2], body[pos + 3]
                 pos += 4
+                color = (cr / 255.0, cg / 255.0, cb / 255.0, ca / 255.0)
             if has_normal:
                 if pos + 6 > end:
                     break
@@ -748,7 +813,7 @@ def _parse_strip_chunk(
                 pos += 8
             if j >= 2:
                 pos += user_offset_size
-            verts.append(_StripVertex(index=idx, uv=uv, normal=normal))
+            verts.append(_StripVertex(index=idx, uv=uv, normal=normal, color=color))
 
         strips.append((clockwise, verts))
 
@@ -877,11 +942,26 @@ class _NinjaChunkState:
         "cached_chunks",
         "cache_active",
         "current_world_matrix",
+        "diffuse_color",
+        "blend",
+        "tiny_alpha_bits",
     )
 
     def __init__(self) -> None:
         self.vertex_slots: Dict[int, _ChunkVertex] = {}
         self.texture_id: int = -1
+        # Most-recent Material-chunk DIFFUSE color (RGBA 0..1), used as
+        # the default per-vertex color for strips whose vertices carry
+        # no own ARGB color (psov2 `aClr = aPos.color || this.color`,
+        # NinjaModel.js:863). None = no material seen yet -> white.
+        self.diffuse_color: Optional[Tuple[float, float, float, float]] = None
+        # Most-recent BlendAlpha chunk (type 1) decode, carried forward
+        # as the active blend mode for subsequent strips. None = no blend
+        # chunk seen -> opaque (Phase 3, 2026-06-20).
+        self.blend = None  # Optional[BlendAlphaPayload]
+        # Most-recent Tiny-chunk alpha-test threshold overlay (top 3 bits
+        # of the Tiny body word). 0 = no alpha test in effect.
+        self.tiny_alpha_bits: int = 0
         self.cached_chunks: Dict[int, List[Tuple[int, int, int, int, int]]] = {}
         # When non-None, all subsequent chunks in the current vlist /
         # plist are diverted into ``cached_chunks[cache_active]``
@@ -949,6 +1029,7 @@ def _process_vertex_chunks(
                     index=cv.index,
                     pos=(wpx, wpy, wpz),
                     normal=new_normal,
+                    color=cv.color,
                 )
 
 
@@ -1008,20 +1089,71 @@ def _process_polygon_chunk_list(
             cached = state.cached_chunks.get(flags)
             if cached:
                 _process_polygon_chunk_list(body, cached, state, out_meshes)
+        elif type_id == 1:
+            # BlendAlpha: blend mode lives in the flags byte. Track it as
+            # the active blend state for subsequent strips (Phase 3).
+            try:
+                from .material import decode_blend_alpha_chunk as _dbac
+                state.blend = _dbac(flags)
+            except Exception:
+                state.blend = None
         elif 8 <= type_id <= 9:
-            # Tiny: bottom 13 bits of u16 = texture_id.
+            # Tiny: bottom 13 bits of u16 = texture_id; top 3 bits =
+            # alpha-test threshold overlay (PSOBB overload).
             if body_size >= 2:
                 (tex_word,) = struct.unpack_from("<H", body, body_pos)
                 state.texture_id = tex_word & 0x1FFF
+                state.tiny_alpha_bits = (tex_word >> 13) & 0x07
+        elif 17 <= type_id <= 23:
+            # Material chunk — decode its DIFFUSE color (when present)
+            # and carry it forward as the default per-vertex color for
+            # subsequent strips. PSOBB.IO Nj data carries NO per-vertex
+            # color chunks, so THIS is the load-bearing color source
+            # that fixes the flat/white look (psov2's `this.color`).
+            try:
+                from .material import decode_material_chunk as _dmc
+                mp = _dmc(type_id, flags, body[body_pos:body_pos + body_size])
+            except Exception:
+                mp = None
+            if mp is not None and mp.diffuse is not None:
+                r, g, b, a = mp.diffuse.to_tuple()
+                state.diffuse_color = (r / 255.0, g / 255.0, b / 255.0, a / 255.0)
         elif 64 <= type_id <= 75:
             sc = _parse_strip_chunk(body, body_pos, body_size, type_id, flags)
             for (cw, strip_verts) in sc.strips:
                 if len(strip_verts) < 3:
                     continue
-                _emit_strip_mesh(state, strip_verts, cw, out_meshes)
-        # Other chunks (Material, Volume, BlendAlpha, MipmapDAdjust,
-        # SpecularExponent, Unknown) carry render state we don't
-        # surface to the viewer; ignored intentionally.
+                _emit_strip_mesh(state, strip_verts, cw, out_meshes, flags)
+        # Other chunks (Volume, MipmapDAdjust, SpecularExponent,
+        # Unknown) carry render state we don't surface to the viewer;
+        # ignored intentionally.
+
+
+def _resolve_material_flags(
+    state: "_NinjaChunkState",
+    strip_flags: int,
+) -> Tuple[str, bool, Optional[dict], Optional[dict]]:
+    """Derive the per-submesh render-state flags for an emitting strip.
+
+    Returns ``(blend_mode, two_sided, alpha_test, alpha_blend)`` from the
+    state's most-recent BlendAlpha + Tiny chunks and the strip chunk's
+    own flags byte (bit 0x04 = double-sided per Phantasmal's
+    ``parseStripChunk``; mirrored in ``material.decode_strip_chunk_flags``).
+    Defaults are the opaque/single-sided baseline. (Phase 3, 2026-06-20.)
+    """
+    blend_mode = "none"
+    alpha_blend: Optional[dict] = None
+    if state.blend is not None:
+        blend_mode = state.blend.mode
+        alpha_blend = {"src": state.blend.src_factor, "dst": state.blend.dst_factor}
+    two_sided = bool(strip_flags & 0x04)
+    alpha_test: Optional[dict] = None
+    if state.tiny_alpha_bits:
+        # Reconstruct an 8-bit threshold from the 3-bit overlay (mirrors
+        # material.aggregate_submesh_state).
+        threshold = (state.tiny_alpha_bits << 5) & 0xE0
+        alpha_test = {"enabled": True, "threshold": threshold}
+    return blend_mode, two_sided, alpha_test, alpha_blend
 
 
 def _emit_strip_mesh(
@@ -1029,6 +1161,7 @@ def _emit_strip_mesh(
     strip_verts: List[_StripVertex],
     clockwise: bool,
     out_meshes: List[XjMesh],
+    strip_flags: int = 0,
 ) -> None:
     """Convert one parsed strip into an ``XjMesh`` and append it.
 
@@ -1048,6 +1181,10 @@ def _emit_strip_mesh(
     practice PSOBB BB rarely uses strip-level normals.
     """
     M = state.current_world_matrix
+    # Default per-vertex color for this strip when no own color is
+    # present: the most-recent material-chunk diffuse, else white
+    # (psov2 `aClr = aPos.color || this.color`, NinjaModel.js:863).
+    default_color = state.diffuse_color if state.diffuse_color is not None else (1.0, 1.0, 1.0, 1.0)
     local_verts: List[XjVertex] = []
     local_indices: List[int] = []
     for sv in strip_verts:
@@ -1065,8 +1202,20 @@ def _emit_strip_mesh(
         else:
             normal = slot.normal or (0.0, 1.0, 0.0)
         uv = sv.uv if sv.uv is not None else (0.0, 0.0)
+        # Color precedence: strip-vertex own color > vertex-chunk slot
+        # color > material diffuse default. Floor alpha to 0.3 so a
+        # fully-transparent authored color can't make the submesh vanish
+        # (NinjaModel.js:867).
+        if sv.color is not None:
+            cr, cg, cb, ca = sv.color
+        elif slot.color is not None:
+            cr, cg, cb, ca = slot.color
+        else:
+            cr, cg, cb, ca = default_color
+        if ca < 0.3:
+            ca = 0.3
         local_indices.append(len(local_verts))
-        local_verts.append(XjVertex(pos=slot.pos, normal=normal, uv=uv))
+        local_verts.append(XjVertex(pos=slot.pos, normal=normal, uv=uv, color=(cr, cg, cb, ca)))
 
     tri_indices = _tristrip_to_triangles(local_indices, cw=clockwise)
     if not tri_indices:
@@ -1113,6 +1262,9 @@ def _emit_strip_mesh(
     # it MUST NOT compose ``world_position`` into ``Mesh.position``,
     # else every submesh will be doubly-offset. The field is purely a
     # diagnostic / scene-graph anchor.
+    blend_mode, two_sided, alpha_test, alpha_blend = _resolve_material_flags(
+        state, strip_flags
+    )
     out_meshes.append(XjMesh(
         vertices=local_verts,
         indices=tri_indices,
@@ -1122,6 +1274,10 @@ def _emit_strip_mesh(
         world_rotation_euler=(0.0, 0.0, 0.0),
         world_scale=(1.0, 1.0, 1.0),
         world_matrix=tuple(_mat4_identity()),
+        blend_mode=blend_mode,
+        two_sided=two_sided,
+        alpha_test=alpha_test,
+        alpha_blend=alpha_blend,
     ))
 
 
@@ -1699,6 +1855,7 @@ def _process_vertex_chunks_skinned(
                     index=cv.index,
                     pos=cv.pos,
                     normal=cv.normal,
+                    color=cv.color,
                 )
                 bone_idx_map[cv.index] = bone_idx
 
@@ -1709,6 +1866,7 @@ def _emit_strip_mesh_skinned(
     clockwise: bool,
     out_meshes: List[XjMesh],
     bone_idx_map: dict,
+    strip_flags: int = 0,
 ) -> None:
     """Variant of ``_emit_strip_mesh`` that surfaces bone-local + bone_idx.
 
@@ -1722,6 +1880,7 @@ def _emit_strip_mesh_skinned(
     ``bone_idx_map`` is a ``dict[slot_idx -> bone_dfs_idx]`` populated
     by ``_process_vertex_chunks_skinned`` during the vertex pass.
     """
+    default_color = state.diffuse_color if state.diffuse_color is not None else (1.0, 1.0, 1.0, 1.0)
     local_verts: List[XjVertex] = []
     local_indices: List[int] = []
     for sv in strip_verts:
@@ -1731,8 +1890,18 @@ def _emit_strip_mesh_skinned(
         normal = sv.normal if sv.normal is not None else (slot.normal or (0.0, 1.0, 0.0))
         uv = sv.uv if sv.uv is not None else (0.0, 0.0)
         owner = bone_idx_map.get(sv.index, -1)
+        # Color precedence: strip color > slot color > material diffuse;
+        # alpha floored to 0.3 (mirrors the world-baked emitter).
+        if sv.color is not None:
+            cr, cg, cb, ca = sv.color
+        elif slot.color is not None:
+            cr, cg, cb, ca = slot.color
+        else:
+            cr, cg, cb, ca = default_color
+        if ca < 0.3:
+            ca = 0.3
         local_indices.append(len(local_verts))
-        local_verts.append(XjVertex(pos=slot.pos, normal=normal, uv=uv, bone_idx=owner))
+        local_verts.append(XjVertex(pos=slot.pos, normal=normal, uv=uv, bone_idx=owner, color=(cr, cg, cb, ca)))
 
     tri_indices = _tristrip_to_triangles(local_indices, cw=clockwise)
     if not tri_indices:
@@ -1757,6 +1926,9 @@ def _emit_strip_mesh_skinned(
             r = d2
     r = math.sqrt(r) if r > 0 else 0.0
 
+    blend_mode, two_sided, alpha_test, alpha_blend = _resolve_material_flags(
+        state, strip_flags
+    )
     out_meshes.append(XjMesh(
         vertices=local_verts,
         indices=tri_indices,
@@ -1768,6 +1940,10 @@ def _emit_strip_mesh_skinned(
         world_rotation_euler=(0.0, 0.0, 0.0),
         world_scale=(1.0, 1.0, 1.0),
         world_matrix=tuple(_mat4_identity()),
+        blend_mode=blend_mode,
+        two_sided=two_sided,
+        alpha_test=alpha_test,
+        alpha_blend=alpha_blend,
     ))
 
 
@@ -1810,16 +1986,34 @@ def _process_polygon_chunk_list_skinned(
             cached = state.cached_chunks.get(flags)
             if cached:
                 _process_polygon_chunk_list_skinned(body, cached, state, out_meshes, bone_idx_map)
+        elif type_id == 1:
+            # BlendAlpha — track active blend mode (see world-baked variant).
+            try:
+                from .material import decode_blend_alpha_chunk as _dbac
+                state.blend = _dbac(flags)
+            except Exception:
+                state.blend = None
         elif 8 <= type_id <= 9:
             if body_size >= 2:
                 (tex_word,) = struct.unpack_from("<H", body, body_pos)
                 state.texture_id = tex_word & 0x1FFF
+                state.tiny_alpha_bits = (tex_word >> 13) & 0x07
+        elif 17 <= type_id <= 23:
+            # Material diffuse default color (see the world-baked variant).
+            try:
+                from .material import decode_material_chunk as _dmc
+                mp = _dmc(type_id, flags, body[body_pos:body_pos + body_size])
+            except Exception:
+                mp = None
+            if mp is not None and mp.diffuse is not None:
+                r, g, b, a = mp.diffuse.to_tuple()
+                state.diffuse_color = (r / 255.0, g / 255.0, b / 255.0, a / 255.0)
         elif 64 <= type_id <= 75:
             sc = _parse_strip_chunk(body, body_pos, body_size, type_id, flags)
             for (cw, strip_verts) in sc.strips:
                 if len(strip_verts) < 3:
                     continue
-                _emit_strip_mesh_skinned(state, strip_verts, cw, out_meshes, bone_idx_map)
+                _emit_strip_mesh_skinned(state, strip_verts, cw, out_meshes, bone_idx_map, flags)
 
 
 def parse_xj_njcm_skinned(
