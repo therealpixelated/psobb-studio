@@ -770,7 +770,7 @@ def t_v4q_verify():
     # Drop any stale cache so /api/verify re-extracts from disk, producing
     # both fresh PNGs AND fresh sidecars (which always match).
     import shutil as _sh
-    cache_dir = Path(r"C:/tmp_pso_editor/cache")
+    cache_dir = Path(os.path.expanduser("~/Repositories/psobb-studio/cache"))
     target_pat = TARGET_PRS + "_*"
     for d in cache_dir.glob(target_pat):
         if d.is_dir():

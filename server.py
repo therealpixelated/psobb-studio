@@ -281,7 +281,7 @@ TILE_PNG_CACHE_DIR = (
     else CACHE_DIR / "tile_png"
 )
 # `parents=True` so a per-worker test override at e.g.
-# C:/tmp_pso_editor/cache/tile_png_test_xdist/gw0 doesn't 500 on first
+# ~/Repositories/psobb-studio/cache/tile_png_test_xdist/gw0 doesn't 500 on first
 # write because the parent dir wasn't pre-created. The default install
 # path under cache/ already exists.
 TILE_PNG_CACHE_DIR.mkdir(parents=True, exist_ok=True)

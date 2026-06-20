@@ -486,7 +486,7 @@ def test_wrong_scope_staged_npcapcmot_is_renamed():
     won't pick it up. (If it exists at all — the user may also have
     deleted it outright.)
     """
-    bad = Path(r"C:/tmp_pso_editor/cache/bml_export/NpcApcMot.bml")
+    bad = Path(os.path.expanduser("~/Repositories/psobb-studio/cache/bml_export/NpcApcMot.bml"))
     assert not bad.exists(), (
         "cache/bml_export/NpcApcMot.bml exists — the wrong-scope staged "
         "BML must be deleted or renamed to .WRONG_SCOPE_DO_NOT_DEPLOY"

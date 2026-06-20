@@ -207,7 +207,7 @@ def _find_real_pvrs() -> list[Path]:
     roots = [
         Path("C:/tmp_pso_dev/data"),
         Path(os.path.expanduser("~/PSOBB.IO/data")),
-        Path("C:/tmp_pso_editor/_reference/pvr2image"),
+        Path(os.path.expanduser("~/Repositories/psobb-studio/_reference/pvr2image")),
     ]
     found: list[Path] = []
     for r in roots:

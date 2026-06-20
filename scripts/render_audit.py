@@ -15,8 +15,8 @@ table summarising:
     positions across frames.
 
 Output:
-  C:/tmp_pso_editor/model_audit/render_audit.csv
-  C:/tmp_pso_editor/model_audit/render_audit.md   (human summary)
+  ~/Repositories/psobb-studio/model_audit/render_audit.csv
+  ~/Repositories/psobb-studio/model_audit/render_audit.md   (human summary)
 
 Requires the editor server running at http://127.0.0.1:8765.
 

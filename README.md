@@ -56,7 +56,7 @@ A web-based asset studio for **Phantasy Star Online: Blue Burst**. psobb-studio 
 ## Architecture
 
 ```
-C:/tmp_pso_editor/
+~/Repositories/psobb-studio/
 ├── server.py            # FastAPI app — the HTTP API (137 routes)
 ├── manifest.py          # asset-tree walker + classifier (disk-cached)
 ├── atlas_layouts.py     # ground-truth per-file tile layouts

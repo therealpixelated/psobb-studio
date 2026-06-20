@@ -1,7 +1,7 @@
 '''
 Pure-Python PVR (Sega Dreamcast PowerVR) texture decoder.
 
-Ported from VincentNL/pvr2image (MIT) — see C:/tmp_pso_editor/_reference/pvr2image/.
+Ported from VincentNL/pvr2image (MIT) — see ~/Repositories/psobb-studio/_reference/pvr2image/.
 The original is a single-file PNG/BMP/TGA exporter with file IO baked in;
 this port refactors it into a pure decode-to-RGBA library with no disk
 side effects so we can plug it into the editor's preview pipeline.

@@ -417,7 +417,7 @@ def test_gbix_at_offset_4_prefix():
 # ---------------------------------------------------------------------------
 # 5. Optional: byte-exact differential vs the RUNNABLE pvr2image oracle.
 # ---------------------------------------------------------------------------
-_ORACLE_PATH = "C:/tmp_pso_editor/_reference/pvr2image/pvr2image.py"
+_ORACLE_PATH = os.path.expanduser("~/Repositories/psobb-studio/_reference/pvr2image/pvr2image.py")
 
 
 def _load_oracle():

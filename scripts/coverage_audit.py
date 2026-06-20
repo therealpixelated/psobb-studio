@@ -20,13 +20,13 @@ Walks every BML and standalone ``.nj`` / ``.xj`` in
       unknown_inner_extension - BML inner with extension we don't dispatch
 
 Outputs:
-  - C:/tmp_pso_editor/MODEL_COVERAGE.csv  (one row per inner asset)
-  - C:/tmp_pso_editor/MODEL_COVERAGE.md   (human readable summary)
+  - ~/Repositories/psobb-studio/MODEL_COVERAGE.csv  (one row per inner asset)
+  - ~/Repositories/psobb-studio/MODEL_COVERAGE.md   (human readable summary)
 
 Usage:
   python scripts/coverage_audit.py [--limit N] [--no-pso-blender]
 
-Run from the editor root (``C:/tmp_pso_editor``). The script imports the
+Run from the editor root (``~/Repositories/psobb-studio``). The script imports the
 editor's own parsers from ``formats/``, plus pso-blender's pure-Python
 PRS decoder (no Blender dep) for in-process BML extraction. PuyoToolsCli
 is NOT invoked — we use the embedded prs.py for ~50x speedup on a full

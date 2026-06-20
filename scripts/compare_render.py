@@ -6,7 +6,7 @@ For each `.bml#inner` model, this script:
   2. Computes a wireframe + per-submesh-color projection in three
      viewports (XY, XZ, YZ).
   3. Saves the result as
-     ``C:/tmp_pso_editor/render_compare/<bml>__<inner>.png``.
+     ``~/Repositories/psobb-studio/render_compare/<bml>__<inner>.png``.
 
 It uses matplotlib (a stdlib-adjacent dep that's already installed
 for many Python distributions). If matplotlib isn't available the
@@ -36,7 +36,7 @@ from typing import List, Tuple
 _HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(_HERE.parent))
 
-OUTPUT_DIR = Path(r"C:/tmp_pso_editor/render_compare")
+OUTPUT_DIR = Path(os.path.expanduser("~/Repositories/psobb-studio/render_compare"))
 
 
 def _load_inner_bytes(path: str) -> Tuple[bytes, str]:
