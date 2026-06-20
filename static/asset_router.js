@@ -651,7 +651,9 @@
     // surface the BML-inner "view as model" hint since it's a useful
     // affordance regardless of UI mode.
     if (document.body.classList.contains("unified-viewport-mode")) {
-      if (cat === "texture" || cat === "container") {
+      // .prs UI atlases are texture-editable too (PRS-compressed XVMH).
+      if (cat === "texture" || cat === "container"
+          || (cat === "ui" && ext === ".prs")) {
         try { offerViewAsModel(evt.path, entry); } catch (_e) {}
       }
       return;
@@ -700,6 +702,17 @@
           // Show in a fresh tab — the editor's own UI doesn't host an
           // image preview pane, and the PNG is already a static asset.
           window.open(rawUrl(evt.path), "_blank");
+          return;
+        }
+        // .prs UI assets are PRS-compressed XVMH atlases — route them to
+        // the tile/texture editor (they're editable images), same as the
+        // texture case, rather than a raw hex dump.
+        if (ext === ".prs") {
+          const basename = evt.path.split("/").pop();
+          if (typeof window.openFile === "function") {
+            window.openFile(basename);
+          }
+          offerViewAsModel(evt.path, entry);
           return;
         }
         openHexOrText(evt.path, entry, "hex");

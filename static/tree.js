@@ -45,6 +45,7 @@
     { key: "all",     label: "All",     match: null },
     { key: "model",   label: "Models",  match: ["model"] },
     { key: "texture", label: "Textures", match: ["texture", "container"] },
+    { key: "ui",      label: "UI",      match: ["ui"] },
     { key: "audio",   label: "Audio",   match: ["audio"] },
     { key: "quest",   label: "Quests",  match: ["quest"] },
   ];

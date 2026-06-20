@@ -2379,16 +2379,18 @@ def t_manifest_bml_classification():
     assert e["extension"] == ".bml", e
 
 
-@step("manifest classifies LogoEP4.prs as compressed=true, inner_format=XVM")
+@step("manifest classifies LogoEP4.prs as ui/compressed=true, inner_format=XVMH")
 def t_manifest_prs_inner_xvm():
     m = _http("GET", "/api/manifest", timeout=120)
     e = _entry_for(m, TARGET_PRS)
     assert e is not None, f"{TARGET_PRS} missing from manifest"
-    assert e["category"] == "texture", e
+    # .prs is a PRS-compressed UI asset (XVMH atlas), NOT a 3D/world
+    # texture — re-categorized 2026-06 to fix asset sorting.
+    assert e["category"] == "ui", e
     assert e["format"] == "PRS", e
     assert e["parsable"] == "yes", e
     assert e["compressed"] is True, e
-    assert e["inner_format"] == "XVM", e["inner_format"]
+    assert e["inner_format"] == "XVMH", e["inner_format"]
 
 
 @step("manifest cache rebuilds on file mtime change")

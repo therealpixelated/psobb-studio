@@ -170,8 +170,11 @@ def test_manifest_lite_shape(client):
     assert data["version"] == 1
     assert isinstance(data["entries"], list)
     assert data["entries"], "manifest_lite must have at least some entries"
-    # Every entry MUST be limited to the lite key set.
-    allowed = {"path", "category", "inferred_category", "size", "parent_archive"}
+    # Every entry MUST be limited to the lite key set. ``display_name`` +
+    # ``sort_key`` are the curated psov2 columns the tree prefers over
+    # filename inference (added with the asset-categorization rework).
+    allowed = {"path", "category", "inferred_category", "size",
+               "parent_archive", "display_name", "sort_key"}
     for e in data["entries"][:50]:
         assert e
         assert set(e.keys()).issubset(allowed), f"unexpected keys in lite entry: {set(e.keys()) - allowed}"

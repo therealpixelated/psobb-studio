@@ -1,0 +1,6421 @@
+{
+  "version": 1,
+  "source": "_reference/psov2 (DashGL Ninja plugin, GPLv3) — names + order only",
+  "category_map": {
+    "Stage": "Maps / Terrain",
+    "Rooms": "Maps / Terrain",
+    "Player": "Player Bodies",
+    "Enemies": "Enemies",
+    "Weapons": "Weapons",
+    "Objects": "Objects"
+  },
+  "by_file": {
+    "abeniji_fe_obj001_niji.bml": {
+      "name": "Rainbow",
+      "category": "Objects",
+      "order": 76
+    },
+    "abeniji_fe_obj001_niji.nj": {
+      "name": "Rainbow",
+      "category": "Objects",
+      "order": 76
+    },
+    "abeno_fs_obj001_fosuno.bml": {
+      "name": "Door Switch",
+      "category": "Objects",
+      "order": 8
+    },
+    "abeno_fs_obj001_fosuno.nj": {
+      "name": "Door Switch",
+      "category": "Objects",
+      "order": 8
+    },
+    "abesu_fs_obj001_fosu.nj": {
+      "name": "Door Switch",
+      "category": "Objects",
+      "order": 8
+    },
+    "abesu_fs_obj001_fotutu.nj": {
+      "name": "Door Switch",
+      "category": "Objects",
+      "order": 8
+    },
+    "ad_f_moyouring.bml": {
+      "name": "Text Ring Background",
+      "category": "Objects",
+      "order": 167
+    },
+    "apear_bm4_ps_mb_body.njm": {
+      "name": "Pofuilly Slime (Blue)",
+      "category": "Enemies",
+      "order": 25
+    },
+    "appear_bm1_s_wala_body.njm": {
+      "name": "Booma",
+      "category": "Enemies",
+      "order": 3
+    },
+    "apper_me3_y_me3.njm": {
+      "name": "Sinow Beat",
+      "category": "Enemies",
+      "order": 33
+    },
+    "armor_scan.nj": {
+      "name": "Armor Scan",
+      "category": "Objects",
+      "order": 6
+    },
+    "armor_scan.njm": {
+      "name": "Armor Scan",
+      "category": "Objects",
+      "order": 6
+    },
+    "aseri_df1_s_kil_body.njm": {
+      "name": "Delsaber",
+      "category": "Enemies",
+      "order": 39
+    },
+    "atack_bm3_fly_body.njm": {
+      "name": "Mothmant",
+      "category": "Enemies",
+      "order": 9
+    },
+    "atack_bm4_ps_ma_body.njm": {
+      "name": "Pofuilly Slime (Blue)",
+      "category": "Enemies",
+      "order": 25
+    },
+    "atack_bm7_s_pal_body.njm": {
+      "name": "Hidoom",
+      "category": "Enemies",
+      "order": 18
+    },
+    "atack_bm7_s_par_body.njm": {
+      "name": "Migium",
+      "category": "Enemies",
+      "order": 19
+    },
+    "atack_df1_s_kil_body.njm": {
+      "name": "Delsaber",
+      "category": "Enemies",
+      "order": 39
+    },
+    "atackl_bm1_s_wala_body.njm": {
+      "name": "Booma",
+      "category": "Enemies",
+      "order": 3
+    },
+    "atackr_bm1_s_wala_body.njm": {
+      "name": "Booma",
+      "category": "Enemies",
+      "order": 3
+    },
+    "attack1_re4_b_body.njm": {
+      "name": "Chaos Sorcerer",
+      "category": "Enemies",
+      "order": 43
+    },
+    "attack2_re4_b_body.njm": {
+      "name": "Chaos Sorcerer",
+      "category": "Enemies",
+      "order": 43
+    },
+    "attack3_re4_b_body.njm": {
+      "name": "Chaos Sorcerer",
+      "category": "Enemies",
+      "order": 43
+    },
+    "attack_me4_y_me4.njm": {
+      "name": "Garanz",
+      "category": "Enemies",
+      "order": 30
+    },
+    "attack_re2_b_root.njm": {
+      "name": "Poison Lily",
+      "category": "Enemies",
+      "order": 23
+    },
+    "attack_re3_b_base.njm": {
+      "name": "Rappy",
+      "category": "Enemies",
+      "order": 1
+    },
+    "attack_re5_b_body.njm": {
+      "name": "Dark Gunner",
+      "category": "Enemies",
+      "order": 45
+    },
+    "attack_re7_b_body.njm": {
+      "name": "Dark Belra",
+      "category": "Enemies",
+      "order": 44
+    },
+    "await_re5_b_body.njm": {
+      "name": "Dark Gunner",
+      "category": "Enemies",
+      "order": 45
+    },
+    "b_attack_me5p02_y_all.njm": {
+      "name": "Vol Opt",
+      "category": "Enemies",
+      "order": 35
+    },
+    "backstep_me3_y_me3.njm": {
+      "name": "Sinow Beat",
+      "category": "Enemies",
+      "order": 33
+    },
+    "balattack_re6_b_bal_body.njm": {
+      "name": "Bulclaw (Open)",
+      "category": "Enemies",
+      "order": 36
+    },
+    "balcomb_re6_b_bal_body.njm": {
+      "name": "Bulclaw (Open)",
+      "category": "Enemies",
+      "order": 36
+    },
+    "baldamage_re6_b_bal_body.njm": {
+      "name": "Bulclaw (Open)",
+      "category": "Enemies",
+      "order": 36
+    },
+    "baldie_re6_b_bal_body.njm": {
+      "name": "Bulclaw (Open)",
+      "category": "Enemies",
+      "order": 36
+    },
+    "balshout_re6_b_bal_body.njm": {
+      "name": "Bulclaw (Open)",
+      "category": "Enemies",
+      "order": 36
+    },
+    "balwait_re6_b_bal_body.njm": {
+      "name": "Bulclaw (Open)",
+      "category": "Enemies",
+      "order": 36
+    },
+    "bcattack_re6_b_bcbody.njm": {
+      "name": "Bulclaw (Closed)",
+      "category": "Enemies",
+      "order": 37
+    },
+    "bcdamage_re6_b_bcbody.njm": {
+      "name": "Bulclaw (Closed)",
+      "category": "Enemies",
+      "order": 37
+    },
+    "bcdie_re6_b_bcbody.njm": {
+      "name": "Bulclaw (Closed)",
+      "category": "Enemies",
+      "order": 37
+    },
+    "bcwait_re6_b_bcbody.njm": {
+      "name": "Bulclaw (Closed)",
+      "category": "Enemies",
+      "order": 37
+    },
+    "beam02_boss2_b_body.njm": {
+      "name": "De Rol Le",
+      "category": "Enemies",
+      "order": 27
+    },
+    "beam_a_boss2_b_body.njm": {
+      "name": "De Rol Le",
+      "category": "Enemies",
+      "order": 27
+    },
+    "beam_b_boss2_b_body.njm": {
+      "name": "De Rol Le",
+      "category": "Enemies",
+      "order": 27
+    },
+    "beam_bm6_s_drc_body.njm": {
+      "name": "Nano Dragoon",
+      "category": "Enemies",
+      "order": 22
+    },
+    "beam_bm8_s_kb_body.njm": {
+      "name": "Chaos Bringer",
+      "category": "Enemies",
+      "order": 46
+    },
+    "beam_c_boss2_b_body.njm": {
+      "name": "De Rol Le",
+      "category": "Enemies",
+      "order": 27
+    },
+    "beamdwn_bm7_s_paa_body.njm": {
+      "name": "Pan Arms",
+      "category": "Enemies",
+      "order": 17
+    },
+    "beaml_df1_s_body.njm": {
+      "name": "DarkFalz Form 1 Body",
+      "category": "Enemies",
+      "order": 47
+    },
+    "beaml_df2_s_body.njm": {
+      "name": "Dark Falz Form 2 Body",
+      "category": "Enemies",
+      "order": 54
+    },
+    "beaml_df2_s_dodai1.njm": {
+      "name": "Dark Falz Form 2 Base",
+      "category": "Enemies",
+      "order": 55
+    },
+    "beamr_df1_s_body.njm": {
+      "name": "DarkFalz Form 1 Body",
+      "category": "Enemies",
+      "order": 47
+    },
+    "beamr_df2_s_body.njm": {
+      "name": "Dark Falz Form 2 Body",
+      "category": "Enemies",
+      "order": 54
+    },
+    "beamr_df2_s_dodai1.njm": {
+      "name": "Dark Falz Form 2 Base",
+      "category": "Enemies",
+      "order": 55
+    },
+    "beamup_bm7_s_paa_body.njm": {
+      "name": "Pan Arms",
+      "category": "Enemies",
+      "order": 17
+    },
+    "beamwait_boss2_b_body.njm": {
+      "name": "De Rol Le",
+      "category": "Enemies",
+      "order": 27
+    },
+    "biri_ball.bml": {
+      "name": "Biri Ball",
+      "category": "Objects",
+      "order": 9
+    },
+    "bite_lloop_boss2_b_body.njm": {
+      "name": "De Rol Le",
+      "category": "Enemies",
+      "order": 27
+    },
+    "bite_rloop_boss2_b_body.njm": {
+      "name": "De Rol Le",
+      "category": "Enemies",
+      "order": 27
+    },
+    "bm1_s_wala_body.nj": {
+      "name": "Evil Shark",
+      "category": "Enemies",
+      "order": 14
+    },
+    "bm1f_s1_wala_body.nj": {
+      "name": "GoVulmer",
+      "category": "Enemies",
+      "order": 63
+    },
+    "bm1f_s_wala_body.nj": {
+      "name": "Pal Shark",
+      "category": "Enemies",
+      "order": 15
+    },
+    "bm1tl_s_wala_body.nj": {
+      "name": "Guil Shark",
+      "category": "Enemies",
+      "order": 16
+    },
+    "bm2c_s_moj_body.nj": {
+      "name": "Hildebaby",
+      "category": "Enemies",
+      "order": 10
+    },
+    "bm2f_s_moj_body.nj": {
+      "name": "Hildebear",
+      "category": "Enemies",
+      "order": 11
+    },
+    "bm2w_s_moj_body.nj": {
+      "name": "Hildeblue",
+      "category": "Enemies",
+      "order": 12
+    },
+    "bm3_fly_body.nj": {
+      "name": "Mothmant",
+      "category": "Enemies",
+      "order": 9
+    },
+    "bm3_s_nest.nj": {
+      "name": "Monest",
+      "category": "Enemies",
+      "order": 8
+    },
+    "bm4_ps_ma_body.bml": {
+      "name": "Pofuilly Slime (Blue)",
+      "category": "Enemies",
+      "order": 25
+    },
+    "bm4_ps_ma_body.nj": {
+      "name": "Pofuilly Slime (Blue)",
+      "category": "Enemies",
+      "order": 25
+    },
+    "bm4_ps_ma_tail.nj": {
+      "name": "Pofuilly Slime (Blue)",
+      "category": "Enemies",
+      "order": 25
+    },
+    "bm4_ps_mar_body.nj": {
+      "name": "Pouilly Slime (Red)",
+      "category": "Enemies",
+      "order": 26
+    },
+    "bm4_ps_mar_tail.nj": {
+      "name": "Pouilly Slime (Red)",
+      "category": "Enemies",
+      "order": 26
+    },
+    "bm4_ps_mbr_body.nj": {
+      "name": "Pofuilly Slime (Blue)",
+      "category": "Enemies",
+      "order": 25
+    },
+    "bm5_s_kem_body.nj": {
+      "name": "Savage Wolf",
+      "category": "Enemies",
+      "order": 6
+    },
+    "bm5_s_keml_body.nj": {
+      "name": "Barbarous Wolf",
+      "category": "Enemies",
+      "order": 7
+    },
+    "bm6_s_drc_body.nj": {
+      "name": "Nano Dragoon",
+      "category": "Enemies",
+      "order": 22
+    },
+    "bm7_s_paa_body.bml": {
+      "name": "Pan Arms",
+      "category": "Enemies",
+      "order": 17
+    },
+    "bm7_s_paa_body.nj": {
+      "name": "Pan Arms",
+      "category": "Enemies",
+      "order": 17
+    },
+    "bm7_s_pal_body.nj": {
+      "name": "Hidoom",
+      "category": "Enemies",
+      "order": 18
+    },
+    "bm7_s_par_body.nj": {
+      "name": "Migium",
+      "category": "Enemies",
+      "order": 19
+    },
+    "bm8_s_kb_body.nj": {
+      "name": "Chaos Bringer",
+      "category": "Enemies",
+      "order": 46
+    },
+    "bm_boss1_dragon.bml": {
+      "name": "Dragon",
+      "category": "Enemies",
+      "order": 13
+    },
+    "bm_boss1_dragon_a.bml": {
+      "name": "Sil Dragon",
+      "category": "Enemies",
+      "order": 60
+    },
+    "bm_boss2_de_rol_le.bml": {
+      "name": "De Rol Le",
+      "category": "Enemies",
+      "order": 27
+    },
+    "bm_boss2_de_rol_le_a.bml": {
+      "name": "Dal Ral Lie",
+      "category": "Enemies",
+      "order": 61
+    },
+    "bm_boss3_volopt.bml": {
+      "name": "Vol Opt",
+      "category": "Enemies",
+      "order": 35
+    },
+    "bm_boss3_volopt_ap.bml": {
+      "name": "Vol Opt Version 2",
+      "category": "Enemies",
+      "order": 94
+    },
+    "bm_ene_balclaw.bml": {
+      "name": "Bulclaw (Open)",
+      "category": "Enemies",
+      "order": 36
+    },
+    "bm_ene_bm1_shark.bml": {
+      "name": "Evil Shark",
+      "category": "Enemies",
+      "order": 14
+    },
+    "bm_ene_bm1_shark_a.bml": {
+      "name": "Vulmer",
+      "category": "Enemies",
+      "order": 62
+    },
+    "bm_ene_bm2_moja.bml": {
+      "name": "Hildebaby",
+      "category": "Enemies",
+      "order": 10
+    },
+    "bm_ene_bm2_moja_a.bml": {
+      "name": "Hidelt Baby",
+      "category": "Enemies",
+      "order": 65
+    },
+    "bm_ene_bm3_fly.bml": {
+      "name": "Monest",
+      "category": "Enemies",
+      "order": 8
+    },
+    "bm_ene_bm3_fly_a.bml": {
+      "name": "Mothvist",
+      "category": "Enemies",
+      "order": 68
+    },
+    "bm_ene_bm5_wolf.bml": {
+      "name": "Savage Wolf",
+      "category": "Enemies",
+      "order": 6
+    },
+    "bm_ene_bm5_wolf_a.bml": {
+      "name": "Gulgus",
+      "category": "Enemies",
+      "order": 70
+    },
+    "bm_ene_cgrass.bml": {
+      "name": "Mini Grass Assasin",
+      "category": "Enemies",
+      "order": 20
+    },
+    "bm_ene_cgrass_a.bml": {
+      "name": "Mini Crimson Assassin",
+      "category": "Enemies",
+      "order": 72
+    },
+    "bm_ene_darkgunner.bml": {
+      "name": "Dark Gunner",
+      "category": "Enemies",
+      "order": 45
+    },
+    "bm_ene_df1_saver.bml": {
+      "name": "Delsaber",
+      "category": "Enemies",
+      "order": 39
+    },
+    "bm_ene_df2_bringer.bml": {
+      "name": "Chaos Bringer",
+      "category": "Enemies",
+      "order": 46
+    },
+    "bm_ene_df2_bringer_a.bml": {
+      "name": "Dark Bringer",
+      "category": "Enemies",
+      "order": 74
+    },
+    "bm_ene_df3_dimedian.bml": {
+      "name": "Dimenian",
+      "category": "Enemies",
+      "order": 40
+    },
+    "bm_ene_df3_dimedian_a.bml": {
+      "name": "Arlan",
+      "category": "Enemies",
+      "order": 75
+    },
+    "bm_ene_dubchik.bml": {
+      "name": "Dubchic",
+      "category": "Enemies",
+      "order": 28
+    },
+    "bm_ene_dubchik_a.bml": {
+      "name": "Dubchich",
+      "category": "Enemies",
+      "order": 78
+    },
+    "bm_ene_grass.bml": {
+      "name": "Grass Assasin",
+      "category": "Enemies",
+      "order": 21
+    },
+    "bm_ene_grass_a.bml": {
+      "name": "Crimson Assassin",
+      "category": "Enemies",
+      "order": 73
+    },
+    "bm_ene_gyaranzo.bml": {
+      "name": "Garanz",
+      "category": "Enemies",
+      "order": 30
+    },
+    "bm_ene_gyaranzo_a.bml": {
+      "name": "Baranz",
+      "category": "Enemies",
+      "order": 80
+    },
+    "bm_ene_lappy.bml": {
+      "name": "Rappy",
+      "category": "Enemies",
+      "order": 1
+    },
+    "bm_ene_lappy_ap.bml": {
+      "name": "El Rappy",
+      "category": "Enemies",
+      "order": 95
+    },
+    "bm_ene_me1_mb.bml": {
+      "name": "Canadine",
+      "category": "Enemies",
+      "order": 31
+    },
+    "bm_ene_me1_mb_a.bml": {
+      "name": "Canabin",
+      "category": "Enemies",
+      "order": 81
+    },
+    "bm_ene_me3_shinowa.bml": {
+      "name": "Sinow Beat",
+      "category": "Enemies",
+      "order": 33
+    },
+    "bm_ene_me3_shinowa_a.bml": {
+      "name": "Sinow Blue",
+      "category": "Enemies",
+      "order": 83
+    },
+    "bm_ene_nanodrago.bml": {
+      "name": "Nano Dragoon",
+      "category": "Enemies",
+      "order": 22
+    },
+    "bm_ene_re2_flower.bml": {
+      "name": "Poison Lily",
+      "category": "Enemies",
+      "order": 23
+    },
+    "bm_ene_re2_flower_a.bml": {
+      "name": "Ob Lily",
+      "category": "Enemies",
+      "order": 85
+    },
+    "bm_ene_re4_sorcerer.bml": {
+      "name": "Chaos Sorcerer",
+      "category": "Enemies",
+      "order": 43
+    },
+    "bm_ene_re4_sorcerer_a.bml": {
+      "name": "Gran Sorcerer",
+      "category": "Enemies",
+      "order": 87
+    },
+    "bm_ene_re7_berura.bml": {
+      "name": "Dark Belra",
+      "category": "Enemies",
+      "order": 44
+    },
+    "bm_ene_re7_berura_a.bml": {
+      "name": "Indi Belra",
+      "category": "Enemies",
+      "order": 88
+    },
+    "bm_ene_re8_b_beast.bml": {
+      "name": "Booma",
+      "category": "Enemies",
+      "order": 3
+    },
+    "bm_ene_re8_b_beast_a.bml": {
+      "name": "Bartle",
+      "category": "Enemies",
+      "order": 89
+    },
+    "bm_fd_obj_n_saku_4x2.bml": {
+      "name": "Ruins Fence 4x2",
+      "category": "Objects",
+      "order": 90
+    },
+    "bm_fd_obj_n_saku_4x4.bml": {
+      "name": "Ruins Fence 4x4",
+      "category": "Objects",
+      "order": 92
+    },
+    "bm_fd_obj_n_saku_6x2.bml": {
+      "name": "Ruins Fence 6x2",
+      "category": "Objects",
+      "order": 91
+    },
+    "bm_fd_obj_n_saku_6x4.bml": {
+      "name": "Ruins Fence 6x4",
+      "category": "Objects",
+      "order": 93
+    },
+    "bm_fd_obj_n_switch.bml": {
+      "name": "Ruins Fence Switch",
+      "category": "Objects",
+      "order": 84
+    },
+    "bm_fe_obj_aircon02.bml": {
+      "name": "Caves Aircon 02",
+      "category": "Objects",
+      "order": 74
+    },
+    "bm_fe_obj_kaifuku_moto.bml": {
+      "name": "Heal Ring",
+      "category": "Objects",
+      "order": 61
+    },
+    "bm_fe_obj_o_capsule01.bml": {
+      "name": "Capsule",
+      "category": "Objects",
+      "order": 10
+    },
+    "bm_fe_obj_o_door01l.bml": {
+      "name": "Door 01",
+      "category": "Objects",
+      "order": 11
+    },
+    "bm_fe_obj_o_door04l.bml": {
+      "name": "Door 04",
+      "category": "Objects",
+      "order": 12
+    },
+    "bm_fe_obj_o_hahen.bml": {
+      "name": "Ruins Fragments",
+      "category": "Objects",
+      "order": 98
+    },
+    "bm_fe_obj_rb2_liwa.bml": {
+      "name": "Caves 02 Boulder",
+      "category": "Objects",
+      "order": 79
+    },
+    "bm_fe_obj_rb3_liwa.bml": {
+      "name": "Caves 03 Boulder",
+      "category": "Objects",
+      "order": 80
+    },
+    "bm_fe_obj_rb_liwa.bml": {
+      "name": "Caves 01 Boulder",
+      "category": "Objects",
+      "order": 68
+    },
+    "bm_fe_obj_tank_hikari.bml": {
+      "name": "Tank Light",
+      "category": "Objects",
+      "order": 36
+    },
+    "bm_fs_obj_aircon01.bml": {
+      "name": "Caves Aircon 01",
+      "category": "Objects",
+      "order": 73
+    },
+    "bm_fs_obj_cakeya.bml": {
+      "name": "Cake Sisters",
+      "category": "Objects",
+      "order": 13
+    },
+    "bm_fs_obj_cap_moto.bml": {
+      "name": "Hanger Dock",
+      "category": "Objects",
+      "order": 14
+    },
+    "bm_fs_obj_do_doa01.bml": {
+      "name": "Caves Door 01",
+      "category": "Objects",
+      "order": 64
+    },
+    "bm_fs_obj_do_doa01_a.bml": {
+      "name": "Ultimate Caves Door 01",
+      "category": "Objects",
+      "order": 161
+    },
+    "bm_fs_obj_do_doa02.bml": {
+      "name": "Caves Door 02",
+      "category": "Objects",
+      "order": 65
+    },
+    "bm_fs_obj_do_doa02_a.bml": {
+      "name": "Ultimate Caves Door 02",
+      "category": "Objects",
+      "order": 162
+    },
+    "bm_fs_obj_do_doa03.bml": {
+      "name": "Caves Door 03",
+      "category": "Objects",
+      "order": 66
+    },
+    "bm_fs_obj_do_doa03_a.bml": {
+      "name": "Ultimate Caves Door 03",
+      "category": "Objects",
+      "order": 163
+    },
+    "bm_fs_obj_do_doa_panel.bml": {
+      "name": "Door Panel",
+      "category": "Objects",
+      "order": 15
+    },
+    "bm_fs_obj_dokanban01.bml": {
+      "name": "Caves Sign 1",
+      "category": "Objects",
+      "order": 70
+    },
+    "bm_fs_obj_dokanban02.bml": {
+      "name": "Caves Sign 2",
+      "category": "Objects",
+      "order": 71
+    },
+    "bm_fs_obj_dokanban03.bml": {
+      "name": "Caves Sign 3",
+      "category": "Objects",
+      "order": 72
+    },
+    "bm_fs_obj_hanger_moto.bml": {
+      "name": "Cargo Hanger",
+      "category": "Objects",
+      "order": 44
+    },
+    "bm_fs_obj_kenkyu_com.bml": {
+      "name": "Research Computer",
+      "category": "Objects",
+      "order": 16
+    },
+    "bm_fs_obj_ki_doa.bml": {
+      "name": "Mines Door 01",
+      "category": "Objects",
+      "order": 34
+    },
+    "bm_fs_obj_ki_doa2.bml": {
+      "name": "Mines Door 02",
+      "category": "Objects",
+      "order": 35
+    },
+    "bm_fs_obj_ki_doa2_a.bml": {
+      "name": "Ultimate Mines Door 02",
+      "category": "Objects",
+      "order": 165
+    },
+    "bm_fs_obj_ki_doa_a.bml": {
+      "name": "Ultimate Mines Door 01",
+      "category": "Objects",
+      "order": 164
+    },
+    "bm_fs_obj_ki_doa_panel.bml": {
+      "name": "Forest Door Panel",
+      "category": "Objects",
+      "order": 63
+    },
+    "bm_fs_obj_kurage.bml": {
+      "name": "Jellyfish",
+      "category": "Objects",
+      "order": 77
+    },
+    "bm_fs_obj_lazerguard.bml": {
+      "name": "Laser Door",
+      "category": "Objects",
+      "order": 59
+    },
+    "bm_fs_obj_mekatombo.bml": {
+      "name": "Mecha Firefly",
+      "category": "Objects",
+      "order": 38
+    },
+    "bm_fs_obj_monitor.bml": {
+      "name": "Mines Monitor",
+      "category": "Objects",
+      "order": 39
+    },
+    "bm_fs_obj_o_doorpanel.bml": {
+      "name": "Ruins Door Panel",
+      "category": "Objects",
+      "order": 17
+    },
+    "bm_fs_obj_o_doorswitch01.bml": {
+      "name": "Ruins Switch",
+      "category": "Objects",
+      "order": 18
+    },
+    "bm_fs_obj_o_monument01.bml": {
+      "name": "Monument 01",
+      "category": "Objects",
+      "order": 19
+    },
+    "bm_fs_obj_o_monument02.bml": {
+      "name": "Monument 02",
+      "category": "Objects",
+      "order": 20
+    },
+    "bm_fs_obj_o_monument03.bml": {
+      "name": "Monument 03",
+      "category": "Objects",
+      "order": 21
+    },
+    "bm_fs_obj_o_sekihi01.bml": {
+      "name": "Ruins Crystal",
+      "category": "Objects",
+      "order": 22
+    },
+    "bm_fs_obj_o_sensor01.bml": {
+      "name": "Ruins Sensor 01",
+      "category": "Objects",
+      "order": 81
+    },
+    "bm_fs_obj_o_torabasami.bml": {
+      "name": "Ruins Tiger Trap",
+      "category": "Objects",
+      "order": 96
+    },
+    "bm_fs_obj_sensor.bml": {
+      "name": "Forest Sensor",
+      "category": "Objects",
+      "order": 54
+    },
+    "bm_fs_obj_tombo.bml": {
+      "name": "Dragonfly",
+      "category": "Objects",
+      "order": 78
+    },
+    "bm_fs_obj_yukakaiten01.bml": {
+      "name": "Caves Spinning Floor Light",
+      "category": "Objects",
+      "order": 75
+    },
+    "bm_n_ebm_i_body.bml": {
+      "name": "bm_n_ebm_i_body",
+      "category": "Player Bodies",
+      "order": 18
+    },
+    "bm_n_ebw_i_body.bml": {
+      "name": "bm_n_ebw_i_body",
+      "category": "Player Bodies",
+      "order": 11
+    },
+    "bm_n_ecw_i_body.bml": {
+      "name": "bm_n_ecw_i_body",
+      "category": "Player Bodies",
+      "order": 12
+    },
+    "bm_n_efm_i_body.bml": {
+      "name": "bm_n_efm_i_body",
+      "category": "Player Bodies",
+      "order": 21
+    },
+    "bm_n_efsm_i_body.bml": {
+      "name": "bm_n_efsm_i_body",
+      "category": "Player Bodies",
+      "order": 20
+    },
+    "bm_n_efsw_i_body.bml": {
+      "name": "bm_n_efsw_i_body",
+      "category": "Player Bodies",
+      "order": 13
+    },
+    "bm_n_efw_i_body.bml": {
+      "name": "bm_n_efw_i_body",
+      "category": "Player Bodies",
+      "order": 14
+    },
+    "bm_n_emm_i_body.bml": {
+      "name": "bm_n_emm_i_body",
+      "category": "Player Bodies",
+      "order": 22
+    },
+    "bm_n_emw_i_body.bml": {
+      "name": "bm_n_emw_i_body",
+      "category": "Player Bodies",
+      "order": 15
+    },
+    "bm_n_eom_i_body.bml": {
+      "name": "bm_n_eom_i_body",
+      "category": "Player Bodies",
+      "order": 23
+    },
+    "bm_n_eow_i_body.bml": {
+      "name": "bm_n_eow_i_body",
+      "category": "Player Bodies",
+      "order": 16
+    },
+    "bm_n_etm_i_body.bml": {
+      "name": "bm_n_etm_i_body",
+      "category": "Player Bodies",
+      "order": 24
+    },
+    "bm_n_etw_i_body.bml": {
+      "name": "bm_n_etw_i_body",
+      "category": "Player Bodies",
+      "order": 17
+    },
+    "bm_n_gunb2_i_body.bml": {
+      "name": "bm_n_gunb2_i_body",
+      "category": "Player Bodies",
+      "order": 35
+    },
+    "bm_n_gunm_i_body.bml": {
+      "name": "bm_n_gunm_i_body",
+      "category": "Player Bodies",
+      "order": 36
+    },
+    "bm_n_hakase_i_body.bml": {
+      "name": "bm_n_hakase_i_body",
+      "category": "Player Bodies",
+      "order": 39
+    },
+    "bm_n_hisyo_i_body.bml": {
+      "name": "bm_n_hisyo_i_body",
+      "category": "Player Bodies",
+      "order": 41
+    },
+    "bm_n_kanteib2_i_body.bml": {
+      "name": "bm_n_kanteib2_i_body",
+      "category": "Player Bodies",
+      "order": 26
+    },
+    "bm_n_kanteib_i_body.bml": {
+      "name": "bm_n_kanteib_i_body",
+      "category": "Player Bodies",
+      "order": 25
+    },
+    "bm_n_kanteif2_i_body.bml": {
+      "name": "bm_n_kanteif2_i_body",
+      "category": "Player Bodies",
+      "order": 28
+    },
+    "bm_n_kanteif_i_body.bml": {
+      "name": "bm_n_kanteif_i_body",
+      "category": "Player Bodies",
+      "order": 27
+    },
+    "bm_n_kanteifs2_i_body.bml": {
+      "name": "bm_n_kanteifs2_i_body",
+      "category": "Player Bodies",
+      "order": 30
+    },
+    "bm_n_kanteifs_i_body.bml": {
+      "name": "bm_n_kanteifs_i_body",
+      "category": "Player Bodies",
+      "order": 29
+    },
+    "bm_n_kanteio2_i_body.bml": {
+      "name": "bm_n_kanteio2_i_body",
+      "category": "Player Bodies",
+      "order": 32
+    },
+    "bm_n_kanteio_i_body.bml": {
+      "name": "bm_n_kanteio_i_body",
+      "category": "Player Bodies",
+      "order": 31
+    },
+    "bm_n_kanteit2_i_body.bml": {
+      "name": "bm_n_kanteit2_i_body",
+      "category": "Player Bodies",
+      "order": 34
+    },
+    "bm_n_kanteit_i_body.bml": {
+      "name": "bm_n_kanteit_i_body",
+      "category": "Player Bodies",
+      "order": 33
+    },
+    "bm_n_nurse_i_body.bml": {
+      "name": "bm_n_nurse_i_body",
+      "category": "Player Bodies",
+      "order": 40
+    },
+    "bm_n_soutoku_i_body.bml": {
+      "name": "bm_n_soutoku_i_body",
+      "category": "Player Bodies",
+      "order": 37
+    },
+    "bm_n_trunk_i_body.bml": {
+      "name": "bm_n_trunk_i_body",
+      "category": "Player Bodies",
+      "order": 38
+    },
+    "bm_o_bind.bml": {
+      "name": "Caves 01 Bind",
+      "category": "Objects",
+      "order": 69
+    },
+    "bm_o_container_ancient.bml": {
+      "name": "Ruins Box",
+      "category": "Objects",
+      "order": 99
+    },
+    "bm_o_explosive_machine.bml": {
+      "name": "Explosive Machine",
+      "category": "Objects",
+      "order": 40
+    },
+    "bm_o_light_machine01.bml": {
+      "name": "Light Machine",
+      "category": "Objects",
+      "order": 41
+    },
+    "bm_o_mine.bml": {
+      "name": "Mine",
+      "category": "Objects",
+      "order": 62
+    },
+    "bm_o_rock_cave01.bml": {
+      "name": "Cave 01 Rocks",
+      "category": "Objects",
+      "order": 23
+    },
+    "bm_o_rock_cave02.bml": {
+      "name": "Cave 02 Rocks",
+      "category": "Objects",
+      "order": 24
+    },
+    "bm_o_rock_cave03.bml": {
+      "name": "Cave 03 Rocks",
+      "category": "Objects",
+      "order": 25
+    },
+    "bm_o_trap_ancient01.bml": {
+      "name": "Ruins Trap",
+      "category": "Objects",
+      "order": 26
+    },
+    "bm_o_warp_ancient.bml": {
+      "name": "Ruins Warp",
+      "category": "Objects",
+      "order": 83
+    },
+    "bm_o_wreck_ancient.bml": {
+      "name": "Ruins Wreck",
+      "category": "Objects",
+      "order": 97
+    },
+    "bm_obj_boss1_common.bml": {
+      "name": "Dragon Boss Common",
+      "category": "Objects",
+      "order": 110
+    },
+    "bm_obj_boss1_common_a.bml": {
+      "name": "Dragon Boss Common Ultimate",
+      "category": "Objects",
+      "order": 111
+    },
+    "bm_obj_boss2_common.bml": {
+      "name": "De Rol Le Common",
+      "category": "Objects",
+      "order": 112
+    },
+    "bm_obj_city_common.bml": {
+      "name": "City Common",
+      "category": "Objects",
+      "order": 102
+    },
+    "bm_obj_warpboss.bml": {
+      "name": "Boss Teleport Inactive",
+      "category": "Objects",
+      "order": 103
+    },
+    "bm_obj_warpboss_ancient.bml": {
+      "name": "Ruins Warp Room",
+      "category": "Objects",
+      "order": 101
+    },
+    "boss1_s_nb_dragon.nj": {
+      "name": "Dragon",
+      "category": "Enemies",
+      "order": 13
+    },
+    "boss2_b_derorure_body.nj": {
+      "name": "De Rol Le",
+      "category": "Enemies",
+      "order": 27
+    },
+    "br01mdl.bin": {
+      "name": "Boss1",
+      "category": "Enemies",
+      "order": 0
+    },
+    "btamed_bm7_s_paa_body.njm": {
+      "name": "Pan Arms",
+      "category": "Enemies",
+      "order": 17
+    },
+    "btameu_bm7_s_paa_body.njm": {
+      "name": "Pan Arms",
+      "category": "Enemies",
+      "order": 17
+    },
+    "bunri_bm7_s_pal_body.njm": {
+      "name": "Hidoom",
+      "category": "Enemies",
+      "order": 18
+    },
+    "bunri_bm7_s_par_body.njm": {
+      "name": "Migium",
+      "category": "Enemies",
+      "order": 19
+    },
+    "change01_me1_y_mb.njm": {
+      "name": "Canadine",
+      "category": "Enemies",
+      "order": 31
+    },
+    "change02_me1_y_mb.njm": {
+      "name": "Canadine",
+      "category": "Enemies",
+      "order": 31
+    },
+    "clattack_re6_b_claw_body.njm": {
+      "name": "Claw",
+      "category": "Enemies",
+      "order": 38
+    },
+    "cldamage_re6_b_claw_body.njm": {
+      "name": "Claw",
+      "category": "Enemies",
+      "order": 38
+    },
+    "cldie_re6_b_claw_body.njm": {
+      "name": "Claw",
+      "category": "Enemies",
+      "order": 38
+    },
+    "cllturn_re6_b_claw_body.njm": {
+      "name": "Claw",
+      "category": "Enemies",
+      "order": 38
+    },
+    "clrturn_re6_b_claw_body.njm": {
+      "name": "Claw",
+      "category": "Enemies",
+      "order": 38
+    },
+    "clwait_re6_b_claw_body.njm": {
+      "name": "Claw",
+      "category": "Enemies",
+      "order": 38
+    },
+    "cold_bm8_s_kb_body.njm": {
+      "name": "Chaos Bringer",
+      "category": "Enemies",
+      "order": 46
+    },
+    "cry_bm7_s_paa_body.njm": {
+      "name": "Pan Arms",
+      "category": "Enemies",
+      "order": 17
+    },
+    "cstand_bm2c_s_moj_body.njm": {
+      "name": "Hildebaby",
+      "category": "Enemies",
+      "order": 10
+    },
+    "cure_re4_b_body.njm": {
+      "name": "Chaos Sorcerer",
+      "category": "Enemies",
+      "order": 43
+    },
+    "cwalk_bm2c_s_moj_body.njm": {
+      "name": "Hildebaby",
+      "category": "Enemies",
+      "order": 10
+    },
+    "dam_bm3_s_nest.njm": {
+      "name": "Monest",
+      "category": "Enemies",
+      "order": 8
+    },
+    "damage01_me1_y_mb.njm": {
+      "name": "Canadine",
+      "category": "Enemies",
+      "order": 31
+    },
+    "damage01_me4_y_me4.njm": {
+      "name": "Garanz",
+      "category": "Enemies",
+      "order": 30
+    },
+    "damage02_me1_y_mb.njm": {
+      "name": "Canadine",
+      "category": "Enemies",
+      "order": 31
+    },
+    "damage02_me4_y_me4.njm": {
+      "name": "Garanz",
+      "category": "Enemies",
+      "order": 30
+    },
+    "damage2_re5_b_body.njm": {
+      "name": "Dark Gunner",
+      "category": "Enemies",
+      "order": 45
+    },
+    "damage_b_me2_y_me2.njm": {
+      "name": "Dubchic",
+      "category": "Enemies",
+      "order": 28
+    },
+    "damage_bm1_s_wala_body.njm": {
+      "name": "Booma",
+      "category": "Enemies",
+      "order": 3
+    },
+    "damage_bm2f_s_moj_body.njm": {
+      "name": "Hildebaby",
+      "category": "Enemies",
+      "order": 10
+    },
+    "damage_bm3_fly_body.njm": {
+      "name": "Mothmant",
+      "category": "Enemies",
+      "order": 9
+    },
+    "damage_bm4_ps_ma_body.njm": {
+      "name": "Pofuilly Slime (Blue)",
+      "category": "Enemies",
+      "order": 25
+    },
+    "damage_bm7_s_paa_body.njm": {
+      "name": "Pan Arms",
+      "category": "Enemies",
+      "order": 17
+    },
+    "damage_bm7_s_pal_body.njm": {
+      "name": "Hidoom",
+      "category": "Enemies",
+      "order": 18
+    },
+    "damage_bm7_s_par_body.njm": {
+      "name": "Migium",
+      "category": "Enemies",
+      "order": 19
+    },
+    "damage_bm8_s_kb_body.njm": {
+      "name": "Chaos Bringer",
+      "category": "Enemies",
+      "order": 46
+    },
+    "damage_df1_s_body.njm": {
+      "name": "DarkFalz Form 1 Body",
+      "category": "Enemies",
+      "order": 47
+    },
+    "damage_df1_s_da_heada.njm": {
+      "name": "DarkFalz Form 1 Head A",
+      "category": "Enemies",
+      "order": 48
+    },
+    "damage_df1_s_dodai.njm": {
+      "name": "DarkFalz Form 1 Base",
+      "category": "Enemies",
+      "order": 51
+    },
+    "damage_df1_s_kil_body.njm": {
+      "name": "Delsaber",
+      "category": "Enemies",
+      "order": 39
+    },
+    "damage_df2_s_body.njm": {
+      "name": "Dark Falz Form 2 Body",
+      "category": "Enemies",
+      "order": 54
+    },
+    "damage_df2_s_dodai1.njm": {
+      "name": "Dark Falz Form 2 Base",
+      "category": "Enemies",
+      "order": 55
+    },
+    "damage_df3_s_body.njm": {
+      "name": "Dark Falz Form 3 Body",
+      "category": "Enemies",
+      "order": 56
+    },
+    "damage_df3_s_wing.njm": {
+      "name": "Dark Falz Form 3 Wing",
+      "category": "Enemies",
+      "order": 57
+    },
+    "damage_f_me2_y_me2.njm": {
+      "name": "Dubchic",
+      "category": "Enemies",
+      "order": 28
+    },
+    "damage_me3_y_me3.njm": {
+      "name": "Sinow Beat",
+      "category": "Enemies",
+      "order": 33
+    },
+    "damage_me5p02_y_all.njm": {
+      "name": "Vol Opt",
+      "category": "Enemies",
+      "order": 35
+    },
+    "damage_re3_b_base.njm": {
+      "name": "Rappy",
+      "category": "Enemies",
+      "order": 1
+    },
+    "damage_re4_b_body.njm": {
+      "name": "Chaos Sorcerer",
+      "category": "Enemies",
+      "order": 43
+    },
+    "damage_re5_b_body.njm": {
+      "name": "Dark Gunner",
+      "category": "Enemies",
+      "order": 45
+    },
+    "damege_re1_b_base.njm": {
+      "name": "Grass Assasin",
+      "category": "Enemies",
+      "order": 21
+    },
+    "damege_re2_b_root.njm": {
+      "name": "Poison Lily",
+      "category": "Enemies",
+      "order": 23
+    },
+    "damege_re7_b_body.njm": {
+      "name": "Dark Belra",
+      "category": "Enemies",
+      "order": 44
+    },
+    "damfly_bm6_s_drc_body.njm": {
+      "name": "Nano Dragoon",
+      "category": "Enemies",
+      "order": 22
+    },
+    "damgrd_bm6_s_drc_body.njm": {
+      "name": "Nano Dragoon",
+      "category": "Enemies",
+      "order": 22
+    },
+    "daml_boss1_s_nb_dragon.njm": {
+      "name": "Dragon",
+      "category": "Enemies",
+      "order": 13
+    },
+    "dams_bm5_s_kem_body.njm": {
+      "name": "Savage Wolf",
+      "category": "Enemies",
+      "order": 6
+    },
+    "dams_boss1_s_nb_dragon.njm": {
+      "name": "Dragon",
+      "category": "Enemies",
+      "order": 13
+    },
+    "darkfalz_dat.bml": {
+      "name": "DarkFalz Form 1 Body",
+      "category": "Enemies",
+      "order": 47
+    },
+    "dead1_df1_s_body.njm": {
+      "name": "DarkFalz Form 1 Body",
+      "category": "Enemies",
+      "order": 47
+    },
+    "dead1_df1_s_da_heada.njm": {
+      "name": "DarkFalz Form 1 Head A",
+      "category": "Enemies",
+      "order": 48
+    },
+    "dead_bm1_s_wala_body.njm": {
+      "name": "Booma",
+      "category": "Enemies",
+      "order": 3
+    },
+    "dead_bm2f_s_moj_body.njm": {
+      "name": "Hildebaby",
+      "category": "Enemies",
+      "order": 10
+    },
+    "dead_bm3_fly_body.njm": {
+      "name": "Mothmant",
+      "category": "Enemies",
+      "order": 9
+    },
+    "dead_bm3_s_nest.njm": {
+      "name": "Monest",
+      "category": "Enemies",
+      "order": 8
+    },
+    "dead_bm8_s_kb_body.njm": {
+      "name": "Chaos Bringer",
+      "category": "Enemies",
+      "order": 46
+    },
+    "dead_boss1_s_nb_dragon.njm": {
+      "name": "Dragon",
+      "category": "Enemies",
+      "order": 13
+    },
+    "dead_df1_s_kil_body.njm": {
+      "name": "Delsaber",
+      "category": "Enemies",
+      "order": 39
+    },
+    "dead_df2_s_body.njm": {
+      "name": "Dark Falz Form 2 Body",
+      "category": "Enemies",
+      "order": 54
+    },
+    "dead_df2_s_dodai1.njm": {
+      "name": "Dark Falz Form 2 Base",
+      "category": "Enemies",
+      "order": 55
+    },
+    "dead_df3_s_body.njm": {
+      "name": "Dark Falz Form 3 Body",
+      "category": "Enemies",
+      "order": 56
+    },
+    "deada_bm7_s_paa_body.njm": {
+      "name": "Pan Arms",
+      "category": "Enemies",
+      "order": 17
+    },
+    "deada_bm7_s_pal_body.njm": {
+      "name": "Hidoom",
+      "category": "Enemies",
+      "order": 18
+    },
+    "deada_bm7_s_par_body.njm": {
+      "name": "Migium",
+      "category": "Enemies",
+      "order": 19
+    },
+    "deadb_bm1_s_wala_body.njm": {
+      "name": "Booma",
+      "category": "Enemies",
+      "order": 3
+    },
+    "deadb_bm2f_s_moj_body.njm": {
+      "name": "Hildebaby",
+      "category": "Enemies",
+      "order": 10
+    },
+    "deadb_bm7_s_paa_body.njm": {
+      "name": "Pan Arms",
+      "category": "Enemies",
+      "order": 17
+    },
+    "deadb_bm7_s_pal_body.njm": {
+      "name": "Hidoom",
+      "category": "Enemies",
+      "order": 18
+    },
+    "deadb_bm7_s_par_body.njm": {
+      "name": "Migium",
+      "category": "Enemies",
+      "order": 19
+    },
+    "deadb_df1_s_kil_body.njm": {
+      "name": "Delsaber",
+      "category": "Enemies",
+      "order": 39
+    },
+    "deadg_bm6_s_drc_body.njm": {
+      "name": "Nano Dragoon",
+      "category": "Enemies",
+      "order": 22
+    },
+    "deadr_bm5_s_kem_body.njm": {
+      "name": "Savage Wolf",
+      "category": "Enemies",
+      "order": 6
+    },
+    "deads_bm6_s_drc_body.njm": {
+      "name": "Nano Dragoon",
+      "category": "Enemies",
+      "order": 22
+    },
+    "death_me3_y_me3.njm": {
+      "name": "Sinow Beat",
+      "category": "Enemies",
+      "order": 33
+    },
+    "death_me5p02_y_all.njm": {
+      "name": "Vol Opt",
+      "category": "Enemies",
+      "order": 35
+    },
+    "defdam_df1_s_kil_body.njm": {
+      "name": "Delsaber",
+      "category": "Enemies",
+      "order": 39
+    },
+    "defence_df1_s_kil_body.njm": {
+      "name": "Delsaber",
+      "category": "Enemies",
+      "order": 39
+    },
+    "deth_me4_y_me4.njm": {
+      "name": "Garanz",
+      "category": "Enemies",
+      "order": 30
+    },
+    "df1_anzen.nj": {
+      "name": "Dark Falz Ring",
+      "category": "Objects",
+      "order": 33
+    },
+    "df1_s_body.nj": {
+      "name": "DarkFalz Form 1 Body",
+      "category": "Enemies",
+      "order": 47
+    },
+    "df1_s_da_heada.nj": {
+      "name": "DarkFalz Form 1 Head A",
+      "category": "Enemies",
+      "order": 48
+    },
+    "df1_s_db_heada.nj": {
+      "name": "DarkFalz Form 1 Head B",
+      "category": "Enemies",
+      "order": 49
+    },
+    "df1_s_dc_heada.nj": {
+      "name": "DarkFalz Form 1 Head C",
+      "category": "Enemies",
+      "order": 50
+    },
+    "df1_s_dodai.nj": {
+      "name": "DarkFalz Form 1 Base",
+      "category": "Enemies",
+      "order": 51
+    },
+    "df1_s_kil_body.nj": {
+      "name": "Delsaber",
+      "category": "Enemies",
+      "order": 39
+    },
+    "df1_s_simobe.nj": {
+      "name": "Dark Falz Form 1 Blades",
+      "category": "Enemies",
+      "order": 52
+    },
+    "df1_s_waist.nj": {
+      "name": "Dark Falz Form 1 Waist",
+      "category": "Enemies",
+      "order": 53
+    },
+    "df1op_df1_s_body.njm": {
+      "name": "DarkFalz Form 1 Body",
+      "category": "Enemies",
+      "order": 47
+    },
+    "df1op_df1_s_da_heada.njm": {
+      "name": "DarkFalz Form 1 Head A",
+      "category": "Enemies",
+      "order": 48
+    },
+    "df2_s_body.nj": {
+      "name": "Dark Falz Form 2 Body",
+      "category": "Enemies",
+      "order": 54
+    },
+    "df2_s_dodai1.nj": {
+      "name": "Dark Falz Form 2 Base",
+      "category": "Enemies",
+      "order": 55
+    },
+    "df2op_df1_s_body.njm": {
+      "name": "DarkFalz Form 1 Body",
+      "category": "Enemies",
+      "order": 47
+    },
+    "df2op_df1_s_da_heada.njm": {
+      "name": "DarkFalz Form 1 Head A",
+      "category": "Enemies",
+      "order": 48
+    },
+    "df2op_df2_s_body.njm": {
+      "name": "Dark Falz Form 2 Body",
+      "category": "Enemies",
+      "order": 54
+    },
+    "df2op_df2_s_dodai1.njm": {
+      "name": "Dark Falz Form 2 Base",
+      "category": "Enemies",
+      "order": 55
+    },
+    "df3_op_df2_s_body.njm": {
+      "name": "Dark Falz Form 2 Body",
+      "category": "Enemies",
+      "order": 54
+    },
+    "df3_op_df2_s_dodai1.njm": {
+      "name": "Dark Falz Form 2 Base",
+      "category": "Enemies",
+      "order": 55
+    },
+    "df3_op_df3_s_body.njm": {
+      "name": "Dark Falz Form 3 Body",
+      "category": "Enemies",
+      "order": 56
+    },
+    "df3_op_df3_s_wing.njm": {
+      "name": "Dark Falz Form 3 Wing",
+      "category": "Enemies",
+      "order": 57
+    },
+    "df3_s_body.nj": {
+      "name": "Dark Falz Form 3 Body",
+      "category": "Enemies",
+      "order": 56
+    },
+    "df3_s_wala_body.nj": {
+      "name": "Dimenian",
+      "category": "Enemies",
+      "order": 40
+    },
+    "df3_s_wing.nj": {
+      "name": "Dark Falz Form 3 Wing",
+      "category": "Enemies",
+      "order": 57
+    },
+    "df3_sl_body.nj": {
+      "name": "Dark Falz Form 3 BodyS",
+      "category": "Enemies",
+      "order": 58
+    },
+    "df3_sl_wala_body.nj": {
+      "name": "So Dimenian",
+      "category": "Enemies",
+      "order": 42
+    },
+    "df3_sl_wing.nj": {
+      "name": "Dark Falz Form 3 WingS",
+      "category": "Enemies",
+      "order": 59
+    },
+    "df3_ssl_wala_body.nj": {
+      "name": "La Dimenian",
+      "category": "Enemies",
+      "order": 41
+    },
+    "df3dead_df3_s_body.njm": {
+      "name": "Dark Falz Form 3 Body",
+      "category": "Enemies",
+      "order": 56
+    },
+    "df_event_tower.nj": {
+      "name": "DarkFalz Event Tower",
+      "category": "Objects",
+      "order": 27
+    },
+    "df_rikomiraju_body.nj": {
+      "name": "Red Ring Rico (Falz)",
+      "category": "Objects",
+      "order": 32
+    },
+    "df_rikomiraju_body.njm": {
+      "name": "Red Ring Rico (Falz)",
+      "category": "Objects",
+      "order": 32
+    },
+    "die_boss2_b_body.njm": {
+      "name": "De Rol Le",
+      "category": "Enemies",
+      "order": 27
+    },
+    "die_re1_b_base.njm": {
+      "name": "Grass Assasin",
+      "category": "Enemies",
+      "order": 21
+    },
+    "die_re2_b_root.njm": {
+      "name": "Poison Lily",
+      "category": "Enemies",
+      "order": 23
+    },
+    "die_re3_b_base.njm": {
+      "name": "Rappy",
+      "category": "Enemies",
+      "order": 1
+    },
+    "die_re4_b_body.njm": {
+      "name": "Chaos Sorcerer",
+      "category": "Enemies",
+      "order": 43
+    },
+    "die_re5_b_body.njm": {
+      "name": "Dark Gunner",
+      "category": "Enemies",
+      "order": 45
+    },
+    "die_re7_b_body.njm": {
+      "name": "Dark Belra",
+      "category": "Enemies",
+      "order": 44
+    },
+    "down_bm3_s_nest.njm": {
+      "name": "Monest",
+      "category": "Enemies",
+      "order": 8
+    },
+    "down_boss1_s_nb_dragon.njm": {
+      "name": "Dragon",
+      "category": "Enemies",
+      "order": 13
+    },
+    "drop_re5_b_body.njm": {
+      "name": "Dark Gunner",
+      "category": "Enemies",
+      "order": 45
+    },
+    "ds_obj_o_doorswitch01_glass.nj": {
+      "name": "Ruins Switch",
+      "category": "Objects",
+      "order": 18
+    },
+    "duck_re5_b_body.njm": {
+      "name": "Dark Gunner",
+      "category": "Enemies",
+      "order": 45
+    },
+    "duckdame_re5_b_body.njm": {
+      "name": "Dark Gunner",
+      "category": "Enemies",
+      "order": 45
+    },
+    "duckdie_re5_b_body.njm": {
+      "name": "Dark Gunner",
+      "category": "Enemies",
+      "order": 45
+    },
+    "duckroop_re5_b_body.njm": {
+      "name": "Dark Gunner",
+      "category": "Enemies",
+      "order": 45
+    },
+    "duckwake_re5_b_body.njm": {
+      "name": "Dark Gunner",
+      "category": "Enemies",
+      "order": 45
+    },
+    "dwndam_bm3_s_nest.njm": {
+      "name": "Monest",
+      "category": "Enemies",
+      "order": 8
+    },
+    "dwnexit_bm3_s_nest.njm": {
+      "name": "Monest",
+      "category": "Enemies",
+      "order": 8
+    },
+    "dwntec_df3_s_body.njm": {
+      "name": "Dark Falz Form 3 Body",
+      "category": "Enemies",
+      "order": 56
+    },
+    "dwnwait_bm3_s_nest.njm": {
+      "name": "Monest",
+      "category": "Enemies",
+      "order": 8
+    },
+    "eat_bm5_s_kem_body.njm": {
+      "name": "Savage Wolf",
+      "category": "Enemies",
+      "order": 6
+    },
+    "ending_blue_oya.nj": {
+      "name": "Ending Blue Title",
+      "category": "Objects",
+      "order": 28
+    },
+    "enter_boss2_b_body.njm": {
+      "name": "De Rol Le",
+      "category": "Enemies",
+      "order": 27
+    },
+    "enter_re4_b_body.njm": {
+      "name": "Chaos Sorcerer",
+      "category": "Enemies",
+      "order": 43
+    },
+    "exit_bm3_s_nest.njm": {
+      "name": "Monest",
+      "category": "Enemies",
+      "order": 8
+    },
+    "f_attack_me3_y_me3.njm": {
+      "name": "Sinow Beat",
+      "category": "Enemies",
+      "order": 33
+    },
+    "f_attack_me5p02_y_all.njm": {
+      "name": "Vol Opt",
+      "category": "Enemies",
+      "order": 35
+    },
+    "fd02_boss2_b_body.njm": {
+      "name": "De Rol Le",
+      "category": "Enemies",
+      "order": 27
+    },
+    "fd_obj813_face.nj": {
+      "name": "Falz Face Ground",
+      "category": "Objects",
+      "order": 30
+    },
+    "fd_obj813_flower01.nj": {
+      "name": "Falz Flowers",
+      "category": "Objects",
+      "order": 31
+    },
+    "fd_obj_n_saku_4x2.nj": {
+      "name": "Ruins Fence 4x2",
+      "category": "Objects",
+      "order": 90
+    },
+    "fd_obj_n_saku_4x2.njm": {
+      "name": "Ruins Fence 4x2",
+      "category": "Objects",
+      "order": 90
+    },
+    "fd_obj_n_saku_4x4.nj": {
+      "name": "Ruins Fence 4x4",
+      "category": "Objects",
+      "order": 92
+    },
+    "fd_obj_n_saku_4x4.njm": {
+      "name": "Ruins Fence 4x4",
+      "category": "Objects",
+      "order": 92
+    },
+    "fd_obj_n_saku_6x2.nj": {
+      "name": "Ruins Fence 6x2",
+      "category": "Objects",
+      "order": 91
+    },
+    "fd_obj_n_saku_6x2.njm": {
+      "name": "Ruins Fence 6x2",
+      "category": "Objects",
+      "order": 91
+    },
+    "fd_obj_n_saku_6x4.nj": {
+      "name": "Ruins Fence 6x4",
+      "category": "Objects",
+      "order": 93
+    },
+    "fd_obj_n_saku_6x4.njm": {
+      "name": "Ruins Fence 6x4",
+      "category": "Objects",
+      "order": 93
+    },
+    "fd_obj_n_switch.nj": {
+      "name": "Ruins Fence Switch",
+      "category": "Objects",
+      "order": 84
+    },
+    "fd_obj_n_switch.njm": {
+      "name": "Ruins Fence Switch",
+      "category": "Objects",
+      "order": 84
+    },
+    "fe_obj001_komo.nj": {
+      "name": "Sunrays",
+      "category": "Objects",
+      "order": 55
+    },
+    "fe_obj_aircon02.nj": {
+      "name": "Caves Aircon 02",
+      "category": "Objects",
+      "order": 74
+    },
+    "fe_obj_bind_moto.nj": {
+      "name": "Caves 01 Bind",
+      "category": "Objects",
+      "order": 69
+    },
+    "fe_obj_con_hahen1.bml": {
+      "name": "High Level Box",
+      "category": "Objects",
+      "order": 57
+    },
+    "fe_obj_doa_kanban.bml": {
+      "name": "Forest Door",
+      "category": "Objects",
+      "order": 52
+    },
+    "fe_obj_doa_oya.njm": {
+      "name": "Forest Door",
+      "category": "Objects",
+      "order": 52
+    },
+    "fe_obj_ex_box1.bml": {
+      "name": "Ex Box 01",
+      "category": "Objects",
+      "order": 169
+    },
+    "fe_obj_h_s_konte.bml": {
+      "name": "Ruins Blob Container",
+      "category": "Objects",
+      "order": 94
+    },
+    "fe_obj_h_s_konte.nj": {
+      "name": "Ruins Blob Container",
+      "category": "Objects",
+      "order": 94
+    },
+    "fe_obj_h_s_konte.njm": {
+      "name": "Ruins Blob Container",
+      "category": "Objects",
+      "order": 94
+    },
+    "fe_obj_h_s_konte2.nj": {
+      "name": "Ruins Blob Container 2",
+      "category": "Objects",
+      "order": 95
+    },
+    "fe_obj_h_s_konte2.njm": {
+      "name": "Ruins Blob Container 2",
+      "category": "Objects",
+      "order": 95
+    },
+    "fe_obj_hako01_hahen02.bml": {
+      "name": "Normal Box",
+      "category": "Objects",
+      "order": 56
+    },
+    "fe_obj_hashi.bml": {
+      "name": "Forest Bridge",
+      "category": "Objects",
+      "order": 53
+    },
+    "fe_obj_hashi.nj": {
+      "name": "Forest Bridge",
+      "category": "Objects",
+      "order": 53
+    },
+    "fe_obj_kaifuku_moto.nj": {
+      "name": "Heal Ring",
+      "category": "Objects",
+      "order": 61
+    },
+    "fe_obj_laz_guard_moto.nj": {
+      "name": "Laser Door",
+      "category": "Objects",
+      "order": 59
+    },
+    "fe_obj_lazer2_4m.bml": {
+      "name": "Laser Fence 4M",
+      "category": "Objects",
+      "order": 48
+    },
+    "fe_obj_lazer2_4m.nj": {
+      "name": "Laser Fence 4M",
+      "category": "Objects",
+      "order": 48
+    },
+    "fe_obj_lazer2_4m.njm": {
+      "name": "Laser Fence 4M",
+      "category": "Objects",
+      "order": 48
+    },
+    "fe_obj_lazer2_4m_moto.nj": {
+      "name": "Laser Fence 4M",
+      "category": "Objects",
+      "order": 48
+    },
+    "fe_obj_lazer2_6m.nj": {
+      "name": "Laser Fence 6M",
+      "category": "Objects",
+      "order": 49
+    },
+    "fe_obj_lazer2_6m.njm": {
+      "name": "Laser Fence 6M",
+      "category": "Objects",
+      "order": 49
+    },
+    "fe_obj_lazer2_6m_moto.nj": {
+      "name": "Laser Fence 6M",
+      "category": "Objects",
+      "order": 49
+    },
+    "fe_obj_lazer4_4m.bml": {
+      "name": "Square Laser Fence 4M",
+      "category": "Objects",
+      "order": 50
+    },
+    "fe_obj_lazer4_4m.nj": {
+      "name": "Square Laser Fence 4M",
+      "category": "Objects",
+      "order": 50
+    },
+    "fe_obj_lazer4_4m.njm": {
+      "name": "Square Laser Fence 4M",
+      "category": "Objects",
+      "order": 50
+    },
+    "fe_obj_lazer4_4m_moto.nj": {
+      "name": "Square Laser Fence 4M",
+      "category": "Objects",
+      "order": 50
+    },
+    "fe_obj_lazer4_6m.nj": {
+      "name": "Square Laser Fence 6M",
+      "category": "Objects",
+      "order": 51
+    },
+    "fe_obj_lazer4_6m.njm": {
+      "name": "Square Laser Fence 6M",
+      "category": "Objects",
+      "order": 51
+    },
+    "fe_obj_lazer4_6m_moto.nj": {
+      "name": "Square Laser Fence 6M",
+      "category": "Objects",
+      "order": 51
+    },
+    "fe_obj_liwa01.nj": {
+      "name": "Cave 01 Rocks",
+      "category": "Objects",
+      "order": 23
+    },
+    "fe_obj_liwa02.nj": {
+      "name": "Cave 02 Rocks",
+      "category": "Objects",
+      "order": 24
+    },
+    "fe_obj_liwa03.nj": {
+      "name": "Cave 03 Rocks",
+      "category": "Objects",
+      "order": 25
+    },
+    "fe_obj_miwa01.nj": {
+      "name": "Cave 01 Rocks",
+      "category": "Objects",
+      "order": 23
+    },
+    "fe_obj_miwa02.nj": {
+      "name": "Cave 02 Rocks",
+      "category": "Objects",
+      "order": 24
+    },
+    "fe_obj_miwa03.nj": {
+      "name": "Cave 03 Rocks",
+      "category": "Objects",
+      "order": 25
+    },
+    "fe_obj_o_capsule01.nj": {
+      "name": "Capsule",
+      "category": "Objects",
+      "order": 10
+    },
+    "fe_obj_o_container.nj": {
+      "name": "Ruins Box",
+      "category": "Objects",
+      "order": 99
+    },
+    "fe_obj_o_container_hahen01.nj": {
+      "name": "Ruins Box",
+      "category": "Objects",
+      "order": 99
+    },
+    "fe_obj_o_container_hahen02.nj": {
+      "name": "Ruins Box",
+      "category": "Objects",
+      "order": 99
+    },
+    "fe_obj_o_door01l.nj": {
+      "name": "Ruins Door 01",
+      "category": "Objects",
+      "order": 86
+    },
+    "fe_obj_o_door01l.njm": {
+      "name": "Ruins Door 01",
+      "category": "Objects",
+      "order": 86
+    },
+    "fe_obj_siwa01.nj": {
+      "name": "Cave 01 Rocks",
+      "category": "Objects",
+      "order": 23
+    },
+    "fe_obj_siwa02.nj": {
+      "name": "Cave 02 Rocks",
+      "category": "Objects",
+      "order": 24
+    },
+    "fe_obj_siwa03.nj": {
+      "name": "Cave 03 Rocks",
+      "category": "Objects",
+      "order": 25
+    },
+    "fe_obj_switch_laz.bml": {
+      "name": "Laser Switch",
+      "category": "Objects",
+      "order": 58
+    },
+    "fe_obj_switch_laz.nj": {
+      "name": "Laser Switch",
+      "category": "Objects",
+      "order": 58
+    },
+    "fe_obj_switch_laz.njm": {
+      "name": "Laser Switch",
+      "category": "Objects",
+      "order": 58
+    },
+    "fe_obj_tank_hikari.nj": {
+      "name": "Tank Light",
+      "category": "Objects",
+      "order": 36
+    },
+    "fe_obj_tanmatu02.bml": {
+      "name": "Mines Console 01",
+      "category": "Objects",
+      "order": 42
+    },
+    "fe_obj_tanmatu02.nj": {
+      "name": "Mines Console 02",
+      "category": "Objects",
+      "order": 43
+    },
+    "fe_obj_turiten_kuro.nj": {
+      "name": "Caves Crusher",
+      "category": "Objects",
+      "order": 67
+    },
+    "fe_obj_turiten_moto.bml": {
+      "name": "Caves Crusher",
+      "category": "Objects",
+      "order": 67
+    },
+    "fe_obj_turiten_moto.nj": {
+      "name": "Caves Crusher",
+      "category": "Objects",
+      "order": 67
+    },
+    "fe_obj_turiten_moto.njm": {
+      "name": "Caves Crusher",
+      "category": "Objects",
+      "order": 67
+    },
+    "fe_obj_turiten_moto_taiki.njm": {
+      "name": "Caves Crusher",
+      "category": "Objects",
+      "order": 67
+    },
+    "fire_boss1_s_nb_dragon.njm": {
+      "name": "Dragon",
+      "category": "Enemies",
+      "order": 13
+    },
+    "fjump_boss2_b_body.njm": {
+      "name": "De Rol Le",
+      "category": "Enemies",
+      "order": 27
+    },
+    "flower_root.nj": {
+      "name": "Ob Lily",
+      "category": "Enemies",
+      "order": 85
+    },
+    "fly_bm3_fly_body.njm": {
+      "name": "Mothmant",
+      "category": "Enemies",
+      "order": 9
+    },
+    "fly_bm6_s_drc_body.njm": {
+      "name": "Nano Dragoon",
+      "category": "Enemies",
+      "order": 22
+    },
+    "fly_boss1_s_nb_dragon.njm": {
+      "name": "Dragon",
+      "category": "Enemies",
+      "order": 13
+    },
+    "flyshot_boss1_s_nb_dragon.njm": {
+      "name": "Dragon",
+      "category": "Enemies",
+      "order": 13
+    },
+    "forward_boss2_b_body.njm": {
+      "name": "De Rol Le",
+      "category": "Enemies",
+      "order": 27
+    },
+    "frin_boss1_s_nb_dragon.njm": {
+      "name": "Dragon",
+      "category": "Enemies",
+      "order": 13
+    },
+    "frloop_boss1_s_nb_dragon.njm": {
+      "name": "Dragon",
+      "category": "Enemies",
+      "order": 13
+    },
+    "frout_boss1_s_nb_dragon.njm": {
+      "name": "Dragon",
+      "category": "Enemies",
+      "order": 13
+    },
+    "fs_obj_aircon01.nj": {
+      "name": "Caves Aircon 01",
+      "category": "Objects",
+      "order": 73
+    },
+    "fs_obj_bapipe.nj": {
+      "name": "Explosive Machine",
+      "category": "Objects",
+      "order": 40
+    },
+    "fs_obj_bind_laz_moto.nj": {
+      "name": "Caves 01 Bind",
+      "category": "Objects",
+      "order": 69
+    },
+    "fs_obj_bind_laz_moto.njm": {
+      "name": "Caves 01 Bind",
+      "category": "Objects",
+      "order": 69
+    },
+    "fs_obj_cakeya.nj": {
+      "name": "Cake Sisters",
+      "category": "Objects",
+      "order": 13
+    },
+    "fs_obj_cap_moto.nj": {
+      "name": "Hanger Dock",
+      "category": "Objects",
+      "order": 14
+    },
+    "fs_obj_con_body.nj": {
+      "name": "High Level Box",
+      "category": "Objects",
+      "order": 57
+    },
+    "fs_obj_do_doa01.nj": {
+      "name": "Caves Door 01",
+      "category": "Objects",
+      "order": 64
+    },
+    "fs_obj_do_doa01.njm": {
+      "name": "Caves Door 01",
+      "category": "Objects",
+      "order": 64
+    },
+    "fs_obj_do_doa02.nj": {
+      "name": "Caves Door 02",
+      "category": "Objects",
+      "order": 65
+    },
+    "fs_obj_do_doa02.njm": {
+      "name": "Caves Door 02",
+      "category": "Objects",
+      "order": 65
+    },
+    "fs_obj_do_doa03.nj": {
+      "name": "Caves Door 03",
+      "category": "Objects",
+      "order": 66
+    },
+    "fs_obj_do_doa_panel.nj": {
+      "name": "Door Panel",
+      "category": "Objects",
+      "order": 15
+    },
+    "fs_obj_dokanban01.nj": {
+      "name": "Caves Sign 1",
+      "category": "Objects",
+      "order": 70
+    },
+    "fs_obj_dokanban02.nj": {
+      "name": "Caves Sign 2",
+      "category": "Objects",
+      "order": 71
+    },
+    "fs_obj_dokanban03.nj": {
+      "name": "Caves Sign 3",
+      "category": "Objects",
+      "order": 72
+    },
+    "fs_obj_door07_m.bml": {
+      "name": "Ruins Door 07",
+      "category": "Objects",
+      "order": 87
+    },
+    "fs_obj_door07_m.nj": {
+      "name": "Ruins Door 07",
+      "category": "Objects",
+      "order": 87
+    },
+    "fs_obj_door07_m.njm": {
+      "name": "Ruins Door 07",
+      "category": "Objects",
+      "order": 87
+    },
+    "fs_obj_hako01.nj": {
+      "name": "Normal Box",
+      "category": "Objects",
+      "order": 56
+    },
+    "fs_obj_hanger_moto.nj": {
+      "name": "Cargo Hanger",
+      "category": "Objects",
+      "order": 44
+    },
+    "fs_obj_hanyousu_body1.bml": {
+      "name": "General Switch",
+      "category": "Objects",
+      "order": 60
+    },
+    "fs_obj_hanyousu_light.bml": {
+      "name": "General Switch",
+      "category": "Objects",
+      "order": 60
+    },
+    "fs_obj_kenkyu_com.nj": {
+      "name": "Research Computer",
+      "category": "Objects",
+      "order": 16
+    },
+    "fs_obj_ki_doa.nj": {
+      "name": "Mines Door 01",
+      "category": "Objects",
+      "order": 34
+    },
+    "fs_obj_ki_doa.njm": {
+      "name": "Mines Door 01",
+      "category": "Objects",
+      "order": 34
+    },
+    "fs_obj_ki_doa2.nj": {
+      "name": "Mines Door 02",
+      "category": "Objects",
+      "order": 35
+    },
+    "fs_obj_ki_doa2.njm": {
+      "name": "Mines Door 02",
+      "category": "Objects",
+      "order": 35
+    },
+    "fs_obj_ki_doa_panel.nj": {
+      "name": "Forest Door Panel",
+      "category": "Objects",
+      "order": 63
+    },
+    "fs_obj_kurage.nj": {
+      "name": "Jellyfish",
+      "category": "Objects",
+      "order": 77
+    },
+    "fs_obj_kurage.njm": {
+      "name": "Jellyfish",
+      "category": "Objects",
+      "order": 77
+    },
+    "fs_obj_laz_guard.nj": {
+      "name": "Laser Door",
+      "category": "Objects",
+      "order": 59
+    },
+    "fs_obj_laz_guard.njm": {
+      "name": "Laser Door",
+      "category": "Objects",
+      "order": 59
+    },
+    "fs_obj_light.nj": {
+      "name": "Light Machine",
+      "category": "Objects",
+      "order": 41
+    },
+    "fs_obj_mekatombo.nj": {
+      "name": "Mecha Firefly",
+      "category": "Objects",
+      "order": 38
+    },
+    "fs_obj_mekatombo.njm": {
+      "name": "Mecha Firefly",
+      "category": "Objects",
+      "order": 38
+    },
+    "fs_obj_monitor.nj": {
+      "name": "Mines Monitor",
+      "category": "Objects",
+      "order": 39
+    },
+    "fs_obj_o_door01l.nj": {
+      "name": "Door 01",
+      "category": "Objects",
+      "order": 11
+    },
+    "fs_obj_o_door01l.njm": {
+      "name": "Door 01",
+      "category": "Objects",
+      "order": 11
+    },
+    "fs_obj_o_door04l.nj": {
+      "name": "Door 04",
+      "category": "Objects",
+      "order": 12
+    },
+    "fs_obj_o_door04l.njm": {
+      "name": "Door 04",
+      "category": "Objects",
+      "order": 12
+    },
+    "fs_obj_o_door05l.bml": {
+      "name": "Ruins Door 05",
+      "category": "Objects",
+      "order": 89
+    },
+    "fs_obj_o_door05l.nj": {
+      "name": "Ruins Door 05",
+      "category": "Objects",
+      "order": 89
+    },
+    "fs_obj_o_door05l.njm": {
+      "name": "Ruins Door 05",
+      "category": "Objects",
+      "order": 89
+    },
+    "fs_obj_o_door06l.bml": {
+      "name": "Ruins Door 06",
+      "category": "Objects",
+      "order": 88
+    },
+    "fs_obj_o_door06l.nj": {
+      "name": "Ruins Door 06",
+      "category": "Objects",
+      "order": 88
+    },
+    "fs_obj_o_door06l.njm": {
+      "name": "Ruins Door 06",
+      "category": "Objects",
+      "order": 88
+    },
+    "fs_obj_o_doorpanel.nj": {
+      "name": "Ruins Door Panel",
+      "category": "Objects",
+      "order": 17
+    },
+    "fs_obj_o_doorswitch01.nj": {
+      "name": "Ruins Switch",
+      "category": "Objects",
+      "order": 18
+    },
+    "fs_obj_o_monument01.nj": {
+      "name": "Monument 01",
+      "category": "Objects",
+      "order": 19
+    },
+    "fs_obj_o_monument02.nj": {
+      "name": "Monument 02",
+      "category": "Objects",
+      "order": 20
+    },
+    "fs_obj_o_monument03.nj": {
+      "name": "Monument 03",
+      "category": "Objects",
+      "order": 21
+    },
+    "fs_obj_o_sekihi01.nj": {
+      "name": "Ruins Crystal",
+      "category": "Objects",
+      "order": 22
+    },
+    "fs_obj_o_sensor01.nj": {
+      "name": "Ruins Sensor 01",
+      "category": "Objects",
+      "order": 81
+    },
+    "fs_obj_o_sensor01.njm": {
+      "name": "Ruins Sensor 01",
+      "category": "Objects",
+      "order": 81
+    },
+    "fs_obj_o_torabasami.nj": {
+      "name": "Ruins Tiger Trap",
+      "category": "Objects",
+      "order": 96
+    },
+    "fs_obj_o_turigane.nj": {
+      "name": "Ruins Trap",
+      "category": "Objects",
+      "order": 26
+    },
+    "fs_obj_sensor.nj": {
+      "name": "Forest Sensor",
+      "category": "Objects",
+      "order": 54
+    },
+    "fs_obj_switch_laz_moto.nj": {
+      "name": "Laser Switch",
+      "category": "Objects",
+      "order": 58
+    },
+    "fs_obj_switch_laz_moto.njm": {
+      "name": "Laser Switch",
+      "category": "Objects",
+      "order": 58
+    },
+    "fs_obj_tanmatu01.nj": {
+      "name": "Mines Console 01",
+      "category": "Objects",
+      "order": 42
+    },
+    "fs_obj_tombo.nj": {
+      "name": "Dragonfly",
+      "category": "Objects",
+      "order": 78
+    },
+    "fs_obj_tombo.njm": {
+      "name": "Dragonfly",
+      "category": "Objects",
+      "order": 78
+    },
+    "fs_obj_toudai.nj": {
+      "name": "Light Machine",
+      "category": "Objects",
+      "order": 41
+    },
+    "fs_obj_turiten_singo.nj": {
+      "name": "Caves Crusher",
+      "category": "Objects",
+      "order": 67
+    },
+    "fs_obj_warp.bml": {
+      "name": "Teleport",
+      "category": "Objects",
+      "order": 45
+    },
+    "fs_obj_warp.nj": {
+      "name": "Teleport",
+      "category": "Objects",
+      "order": 45
+    },
+    "fs_obj_warp_beam.nj": {
+      "name": "Teleport",
+      "category": "Objects",
+      "order": 45
+    },
+    "fs_obj_warp_beam.njm": {
+      "name": "Teleport",
+      "category": "Objects",
+      "order": 45
+    },
+    "fs_obj_warp_dai.nj": {
+      "name": "Boss Teleport",
+      "category": "Objects",
+      "order": 46
+    },
+    "fs_obj_warp_dai_beam.nj": {
+      "name": "Boss Teleport",
+      "category": "Objects",
+      "order": 46
+    },
+    "fs_obj_warp_dai_beam.njm": {
+      "name": "Boss Teleport",
+      "category": "Objects",
+      "order": 46
+    },
+    "fs_obj_warp_dai_beam02.nj": {
+      "name": "Boss Teleport Inactive",
+      "category": "Objects",
+      "order": 103
+    },
+    "fs_obj_warp_dai_beam02.njm": {
+      "name": "Boss Teleport Inactive",
+      "category": "Objects",
+      "order": 103
+    },
+    "fs_obj_warp_n.nj": {
+      "name": "Warp",
+      "category": "Objects",
+      "order": 47
+    },
+    "fs_obj_warp_n_beam.nj": {
+      "name": "Warp",
+      "category": "Objects",
+      "order": 47
+    },
+    "fs_obj_warp_n_beam.njm": {
+      "name": "Warp",
+      "category": "Objects",
+      "order": 47
+    },
+    "fs_obj_yukakaiten01.nj": {
+      "name": "Caves Spinning Floor Light",
+      "category": "Objects",
+      "order": 75
+    },
+    "fs_obj_yukakaiten01.njm": {
+      "name": "Caves Spinning Floor Light",
+      "category": "Objects",
+      "order": 75
+    },
+    "gattai_bm7_s_pal_body.njm": {
+      "name": "Hidoom",
+      "category": "Enemies",
+      "order": 18
+    },
+    "gattai_bm7_s_par_body.njm": {
+      "name": "Migium",
+      "category": "Enemies",
+      "order": 19
+    },
+    "giva_bm2f_s_moj_body.njm": {
+      "name": "Hildebaby",
+      "category": "Enemies",
+      "order": 10
+    },
+    "gun_bullet.nj": {
+      "name": "Gun Bullet",
+      "category": "Objects",
+      "order": 0
+    },
+    "haki_df1_s_da_heada.njm": {
+      "name": "DarkFalz Form 1 Head A",
+      "category": "Enemies",
+      "order": 48
+    },
+    "hakiin_df1_s_da_heada.njm": {
+      "name": "DarkFalz Form 1 Head A",
+      "category": "Enemies",
+      "order": 48
+    },
+    "hakiout_df1_s_da_heada.njm": {
+      "name": "DarkFalz Form 1 Head A",
+      "category": "Enemies",
+      "order": 48
+    },
+    "heal_bm7_s_pal_body.njm": {
+      "name": "Hidoom",
+      "category": "Enemies",
+      "order": 18
+    },
+    "hoe_bm2f_s_moj_body.njm": {
+      "name": "Hildebaby",
+      "category": "Enemies",
+      "order": 10
+    },
+    "hoe_bm5_s_kem_body.njm": {
+      "name": "Savage Wolf",
+      "category": "Enemies",
+      "order": 6
+    },
+    "hoe_bm8_s_kb_body.njm": {
+      "name": "Chaos Bringer",
+      "category": "Enemies",
+      "order": 46
+    },
+    "hoe_df1_s_body.njm": {
+      "name": "DarkFalz Form 1 Body",
+      "category": "Enemies",
+      "order": 47
+    },
+    "hoe_df1_s_da_heada.njm": {
+      "name": "DarkFalz Form 1 Head A",
+      "category": "Enemies",
+      "order": 48
+    },
+    "hoe_df2_s_body.njm": {
+      "name": "Dark Falz Form 2 Body",
+      "category": "Enemies",
+      "order": 54
+    },
+    "hoe_df2_s_dodai1.njm": {
+      "name": "Dark Falz Form 2 Base",
+      "category": "Enemies",
+      "order": 55
+    },
+    "hunt_bm5_s_kem_body.njm": {
+      "name": "Savage Wolf",
+      "category": "Enemies",
+      "order": 6
+    },
+    "item.bml": {
+      "name": "Gun Bullet",
+      "category": "Objects",
+      "order": 0
+    },
+    "item_bb.bml": {
+      "name": "Weapon Box",
+      "category": "Objects",
+      "order": 1
+    },
+    "ixm_box01.nj": {
+      "name": "Weapon Box",
+      "category": "Objects",
+      "order": 1
+    },
+    "ixm_box02.nj": {
+      "name": "Armor Box",
+      "category": "Objects",
+      "order": 2
+    },
+    "ixm_box03.nj": {
+      "name": "Item Box",
+      "category": "Objects",
+      "order": 3
+    },
+    "ixm_box04.nj": {
+      "name": "Meseta",
+      "category": "Objects",
+      "order": 5
+    },
+    "jisin_df2_s_body.njm": {
+      "name": "Dark Falz Form 2 Body",
+      "category": "Enemies",
+      "order": 54
+    },
+    "jisin_df2_s_dodai1.njm": {
+      "name": "Dark Falz Form 2 Base",
+      "category": "Enemies",
+      "order": 55
+    },
+    "joy_bm6_s_drc_body.njm": {
+      "name": "Nano Dragoon",
+      "category": "Enemies",
+      "order": 22
+    },
+    "jump_bm2f_s_moj_body.njm": {
+      "name": "Hildebaby",
+      "category": "Enemies",
+      "order": 10
+    },
+    "jump_df1_s_kil_body.njm": {
+      "name": "Delsaber",
+      "category": "Enemies",
+      "order": 39
+    },
+    "jyousyou_df3_s_body.njm": {
+      "name": "Dark Falz Form 3 Body",
+      "category": "Enemies",
+      "order": 56
+    },
+    "jyousyou_df3_s_wing.njm": {
+      "name": "Dark Falz Form 3 Wing",
+      "category": "Enemies",
+      "order": 57
+    },
+    "kakou_df3_s_body.njm": {
+      "name": "Dark Falz Form 3 Body",
+      "category": "Enemies",
+      "order": 56
+    },
+    "kakou_df3_s_wing.njm": {
+      "name": "Dark Falz Form 3 Wing",
+      "category": "Enemies",
+      "order": 57
+    },
+    "kamae01_me2_y_me2.njm": {
+      "name": "Dubchic",
+      "category": "Enemies",
+      "order": 28
+    },
+    "kamae02_me2_y_me2.njm": {
+      "name": "Dubchic",
+      "category": "Enemies",
+      "order": 28
+    },
+    "kamae_bm8_s_kb_body.njm": {
+      "name": "Chaos Bringer",
+      "category": "Enemies",
+      "order": 46
+    },
+    "kie_bm4_ps_ma_body.njm": {
+      "name": "Pofuilly Slime (Blue)",
+      "category": "Enemies",
+      "order": 25
+    },
+    "kie_bm4_ps_mb_body.njm": {
+      "name": "Pofuilly Slime (Blue)",
+      "category": "Enemies",
+      "order": 25
+    },
+    "kiri_bm8_s_kb_body.njm": {
+      "name": "Chaos Bringer",
+      "category": "Enemies",
+      "order": 46
+    },
+    "kiri_boss1_s_nb_dragon.njm": {
+      "name": "Dragon",
+      "category": "Enemies",
+      "order": 13
+    },
+    "l_attack_me5p02_y_all.njm": {
+      "name": "Vol Opt",
+      "category": "Enemies",
+      "order": 35
+    },
+    "l_bite_boss2_b_body.njm": {
+      "name": "De Rol Le",
+      "category": "Enemies",
+      "order": 27
+    },
+    "land_bm3_s_nest.njm": {
+      "name": "Monest",
+      "category": "Enemies",
+      "order": 8
+    },
+    "land_bm6_s_drc_body.njm": {
+      "name": "Nano Dragoon",
+      "category": "Enemies",
+      "order": 22
+    },
+    "land_boss1_s_nb_dragon.njm": {
+      "name": "Dragon",
+      "category": "Enemies",
+      "order": 13
+    },
+    "laser_df3_s_body.njm": {
+      "name": "Dark Falz Form 3 Body",
+      "category": "Enemies",
+      "order": 56
+    },
+    "laser_df3_s_wing.njm": {
+      "name": "Dark Falz Form 3 Wing",
+      "category": "Enemies",
+      "order": 57
+    },
+    "lasfly_bm6_s_drc_body.njm": {
+      "name": "Nano Dragoon",
+      "category": "Enemies",
+      "order": 22
+    },
+    "lattack_re1_b_base.njm": {
+      "name": "Grass Assasin",
+      "category": "Enemies",
+      "order": 21
+    },
+    "lattack_re7_b_body.njm": {
+      "name": "Dark Belra",
+      "category": "Enemies",
+      "order": 44
+    },
+    "laugh_re2_b_root.njm": {
+      "name": "Poison Lily",
+      "category": "Enemies",
+      "order": 23
+    },
+    "leader_bm1_s_wala_body.njm": {
+      "name": "Booma",
+      "category": "Enemies",
+      "order": 3
+    },
+    "lhassya_df1_s_body.njm": {
+      "name": "DarkFalz Form 1 Body",
+      "category": "Enemies",
+      "order": 47
+    },
+    "lhassya_df2_s_body.njm": {
+      "name": "Dark Falz Form 2 Body",
+      "category": "Enemies",
+      "order": 54
+    },
+    "lhassya_df2_s_dodai1.njm": {
+      "name": "Dark Falz Form 2 Base",
+      "category": "Enemies",
+      "order": 55
+    },
+    "lift_bm6_s_drc_body.njm": {
+      "name": "Nano Dragoon",
+      "category": "Enemies",
+      "order": 22
+    },
+    "lift_boss1_s_nb_dragon.njm": {
+      "name": "Dragon",
+      "category": "Enemies",
+      "order": 13
+    },
+    "lkiri_df3_s_body.njm": {
+      "name": "Dark Falz Form 3 Body",
+      "category": "Enemies",
+      "order": 56
+    },
+    "lkiri_df3_s_wing.njm": {
+      "name": "Dark Falz Form 3 Wing",
+      "category": "Enemies",
+      "order": 57
+    },
+    "lrjump_boss2_b_body.njm": {
+      "name": "De Rol Le",
+      "category": "Enemies",
+      "order": 27
+    },
+    "ltame_df1_s_body.njm": {
+      "name": "DarkFalz Form 1 Body",
+      "category": "Enemies",
+      "order": 47
+    },
+    "ltame_df2_s_body.njm": {
+      "name": "Dark Falz Form 2 Body",
+      "category": "Enemies",
+      "order": 54
+    },
+    "m_fl003f_bip01.nj": {
+      "name": "Dress",
+      "category": "Player Bodies",
+      "order": 0
+    },
+    "mad_re1_b_base.njm": {
+      "name": "Grass Assasin",
+      "category": "Enemies",
+      "order": 21
+    },
+    "map_aancient01_00s.nj": {
+      "name": "map_aancient01_00s",
+      "category": "Objects",
+      "order": 113
+    },
+    "map_aancient01_01s.nj": {
+      "name": "map_aancient01_01s",
+      "category": "Objects",
+      "order": 114
+    },
+    "map_aancient01_02s.nj": {
+      "name": "map_aancient01_02s",
+      "category": "Objects",
+      "order": 115
+    },
+    "map_aancient01_03s.nj": {
+      "name": "map_aancient01_03s",
+      "category": "Objects",
+      "order": 116
+    },
+    "map_aancient01_04s.nj": {
+      "name": "map_aancient01_04s",
+      "category": "Objects",
+      "order": 117
+    },
+    "map_aboss01d.rel": {
+      "name": "Ultimate Boss 1 Area",
+      "category": "Maps / Terrain",
+      "order": 88
+    },
+    "map_aboss01n.rel": {
+      "name": "Ultimate Boss 1 Area",
+      "category": "Maps / Terrain",
+      "order": 88
+    },
+    "map_aboss02d.rel": {
+      "name": "Ultimate Boss 2 Area",
+      "category": "Maps / Terrain",
+      "order": 89
+    },
+    "map_aboss02n.rel": {
+      "name": "Ultimate Boss 2 Area",
+      "category": "Maps / Terrain",
+      "order": 89
+    },
+    "map_aboss03d.rel": {
+      "name": "Ultimate Boss 3 Area",
+      "category": "Maps / Terrain",
+      "order": 90
+    },
+    "map_aboss03n.rel": {
+      "name": "Ultimate Boss 3 Area",
+      "category": "Maps / Terrain",
+      "order": 90
+    },
+    "map_acave01_00d.rel": {
+      "name": "Ultimate Cave 01 00",
+      "category": "Maps / Terrain",
+      "order": 55
+    },
+    "map_acave01_00n.rel": {
+      "name": "Ultimate Cave 01 00",
+      "category": "Maps / Terrain",
+      "order": 55
+    },
+    "map_acave01_00s.nj": {
+      "name": "map_acave01_00s",
+      "category": "Objects",
+      "order": 118
+    },
+    "map_acave01_01d.rel": {
+      "name": "Ultimate Cave 01 01",
+      "category": "Maps / Terrain",
+      "order": 56
+    },
+    "map_acave01_01n.rel": {
+      "name": "Ultimate Cave 01 01",
+      "category": "Maps / Terrain",
+      "order": 56
+    },
+    "map_acave01_01s.nj": {
+      "name": "map_acave01_01s",
+      "category": "Objects",
+      "order": 119
+    },
+    "map_acave01_02d.rel": {
+      "name": "Ultimate Cave 01 02",
+      "category": "Maps / Terrain",
+      "order": 57
+    },
+    "map_acave01_02n.rel": {
+      "name": "Ultimate Cave 01 02",
+      "category": "Maps / Terrain",
+      "order": 57
+    },
+    "map_acave01_02s.nj": {
+      "name": "map_acave01_02s",
+      "category": "Objects",
+      "order": 120
+    },
+    "map_acave01_03d.rel": {
+      "name": "Ultimate Cave 01 03",
+      "category": "Maps / Terrain",
+      "order": 58
+    },
+    "map_acave01_03n.rel": {
+      "name": "Ultimate Cave 01 03",
+      "category": "Maps / Terrain",
+      "order": 58
+    },
+    "map_acave01_04d.rel": {
+      "name": "Ultimate Cave 01 04",
+      "category": "Maps / Terrain",
+      "order": 59
+    },
+    "map_acave01_04n.rel": {
+      "name": "Ultimate Cave 01 04",
+      "category": "Maps / Terrain",
+      "order": 59
+    },
+    "map_acave01_05d.rel": {
+      "name": "Ultimate Cave 01 05",
+      "category": "Maps / Terrain",
+      "order": 60
+    },
+    "map_acave01_05n.rel": {
+      "name": "Ultimate Cave 01 05",
+      "category": "Maps / Terrain",
+      "order": 60
+    },
+    "map_acave02_00d.rel": {
+      "name": "Ultimate Cave 02 00",
+      "category": "Maps / Terrain",
+      "order": 61
+    },
+    "map_acave02_00n.rel": {
+      "name": "Ultimate Cave 02 00",
+      "category": "Maps / Terrain",
+      "order": 61
+    },
+    "map_acave02_00s.nj": {
+      "name": "map_acave02_00s",
+      "category": "Objects",
+      "order": 121
+    },
+    "map_acave02_01d.rel": {
+      "name": "Ultimate Cave 02 01",
+      "category": "Maps / Terrain",
+      "order": 62
+    },
+    "map_acave02_01n.rel": {
+      "name": "Ultimate Cave 02 01",
+      "category": "Maps / Terrain",
+      "order": 62
+    },
+    "map_acave02_01s.nj": {
+      "name": "map_acave02_01s",
+      "category": "Objects",
+      "order": 122
+    },
+    "map_acave02_02d.rel": {
+      "name": "Ultimate Cave 02 02",
+      "category": "Maps / Terrain",
+      "order": 63
+    },
+    "map_acave02_02n.rel": {
+      "name": "Ultimate Cave 02 02",
+      "category": "Maps / Terrain",
+      "order": 63
+    },
+    "map_acave02_02s.nj": {
+      "name": "map_acave02_02s",
+      "category": "Objects",
+      "order": 123
+    },
+    "map_acave02_03d.rel": {
+      "name": "Ultimate Cave 02 03",
+      "category": "Maps / Terrain",
+      "order": 64
+    },
+    "map_acave02_03n.rel": {
+      "name": "Ultimate Cave 02 03",
+      "category": "Maps / Terrain",
+      "order": 64
+    },
+    "map_acave02_04d.rel": {
+      "name": "Ultimate Cave 02 04",
+      "category": "Maps / Terrain",
+      "order": 65
+    },
+    "map_acave02_04n.rel": {
+      "name": "Ultimate Cave 02 04",
+      "category": "Maps / Terrain",
+      "order": 65
+    },
+    "map_acave03_00d.rel": {
+      "name": "Ultimate Cave 03 00",
+      "category": "Maps / Terrain",
+      "order": 66
+    },
+    "map_acave03_00n.rel": {
+      "name": "Ultimate Cave 03 00",
+      "category": "Maps / Terrain",
+      "order": 66
+    },
+    "map_acave03_00s.nj": {
+      "name": "map_acave03_00s",
+      "category": "Objects",
+      "order": 124
+    },
+    "map_acave03_01d.rel": {
+      "name": "Ultimate Cave 03 01",
+      "category": "Maps / Terrain",
+      "order": 67
+    },
+    "map_acave03_01n.rel": {
+      "name": "Ultimate Cave 03 01",
+      "category": "Maps / Terrain",
+      "order": 67
+    },
+    "map_acave03_01s.nj": {
+      "name": "map_acave03_01s",
+      "category": "Objects",
+      "order": 125
+    },
+    "map_acave03_02d.rel": {
+      "name": "Ultimate Cave 03 02",
+      "category": "Maps / Terrain",
+      "order": 68
+    },
+    "map_acave03_02n.rel": {
+      "name": "Ultimate Cave 03 02",
+      "category": "Maps / Terrain",
+      "order": 68
+    },
+    "map_acave03_02s.nj": {
+      "name": "map_acave03_02s",
+      "category": "Objects",
+      "order": 126
+    },
+    "map_acave03_03d.rel": {
+      "name": "Ultimate Cave 03 03",
+      "category": "Maps / Terrain",
+      "order": 69
+    },
+    "map_acave03_03n.rel": {
+      "name": "Ultimate Cave 03 03",
+      "category": "Maps / Terrain",
+      "order": 69
+    },
+    "map_acave03_04d.rel": {
+      "name": "Ultimate Cave 03 04",
+      "category": "Maps / Terrain",
+      "order": 70
+    },
+    "map_acave03_04n.rel": {
+      "name": "Ultimate Cave 03 04",
+      "category": "Maps / Terrain",
+      "order": 70
+    },
+    "map_acave03_05d.rel": {
+      "name": "Ultimate Cave 03 05",
+      "category": "Maps / Terrain",
+      "order": 71
+    },
+    "map_acave03_05n.rel": {
+      "name": "Ultimate Cave 03 05",
+      "category": "Maps / Terrain",
+      "order": 71
+    },
+    "map_aforest01d.rel": {
+      "name": "Ultimate Forest 01",
+      "category": "Maps / Terrain",
+      "order": 53
+    },
+    "map_aforest01n.rel": {
+      "name": "Ultimate Forest 01",
+      "category": "Maps / Terrain",
+      "order": 53
+    },
+    "map_aforest01s.nj": {
+      "name": "map_aforest01s",
+      "category": "Objects",
+      "order": 127
+    },
+    "map_aforest02d.rel": {
+      "name": "Ultimate Forest 02",
+      "category": "Maps / Terrain",
+      "order": 54
+    },
+    "map_aforest02n.rel": {
+      "name": "Ultimate Forest 02",
+      "category": "Maps / Terrain",
+      "order": 54
+    },
+    "map_aforest02s.nj": {
+      "name": "map_aforest02s",
+      "category": "Objects",
+      "order": 128
+    },
+    "map_amachine01_00d.rel": {
+      "name": "Ultimate Mines 01 00",
+      "category": "Maps / Terrain",
+      "order": 72
+    },
+    "map_amachine01_00n.rel": {
+      "name": "Ultimate Mines 01 00",
+      "category": "Maps / Terrain",
+      "order": 72
+    },
+    "map_amachine01_00s.nj": {
+      "name": "map_amachine01_00s",
+      "category": "Objects",
+      "order": 129
+    },
+    "map_amachine01_01d.rel": {
+      "name": "Ultimate Mines 01 01",
+      "category": "Maps / Terrain",
+      "order": 73
+    },
+    "map_amachine01_01n.rel": {
+      "name": "Ultimate Mines 01 01",
+      "category": "Maps / Terrain",
+      "order": 73
+    },
+    "map_amachine01_01s.nj": {
+      "name": "map_amachine01_01s",
+      "category": "Objects",
+      "order": 130
+    },
+    "map_amachine01_02d.rel": {
+      "name": "Ultimate Mines 01 02",
+      "category": "Maps / Terrain",
+      "order": 74
+    },
+    "map_amachine01_02n.rel": {
+      "name": "Ultimate Mines 01 02",
+      "category": "Maps / Terrain",
+      "order": 74
+    },
+    "map_amachine01_02s.nj": {
+      "name": "map_amachine01_02s",
+      "category": "Objects",
+      "order": 131
+    },
+    "map_amachine01_03d.rel": {
+      "name": "Ultimate Mines 01 03",
+      "category": "Maps / Terrain",
+      "order": 75
+    },
+    "map_amachine01_03n.rel": {
+      "name": "Ultimate Mines 01 03",
+      "category": "Maps / Terrain",
+      "order": 75
+    },
+    "map_amachine01_04d.rel": {
+      "name": "Ultimate Mines 01 04",
+      "category": "Maps / Terrain",
+      "order": 76
+    },
+    "map_amachine01_04n.rel": {
+      "name": "Ultimate Mines 01 04",
+      "category": "Maps / Terrain",
+      "order": 76
+    },
+    "map_amachine01_05d.rel": {
+      "name": "Ultimate Mines 01 05",
+      "category": "Maps / Terrain",
+      "order": 77
+    },
+    "map_amachine01_05n.rel": {
+      "name": "Ultimate Mines 01 05",
+      "category": "Maps / Terrain",
+      "order": 77
+    },
+    "map_amachine02_00d.rel": {
+      "name": "Ultimate Mines 02 00",
+      "category": "Maps / Terrain",
+      "order": 78
+    },
+    "map_amachine02_00n.rel": {
+      "name": "Ultimate Mines 02 00",
+      "category": "Maps / Terrain",
+      "order": 78
+    },
+    "map_amachine02_00s.nj": {
+      "name": "map_amachine02_00s",
+      "category": "Objects",
+      "order": 132
+    },
+    "map_amachine02_01d.rel": {
+      "name": "Ultimate Mines 02 01",
+      "category": "Maps / Terrain",
+      "order": 79
+    },
+    "map_amachine02_01n.rel": {
+      "name": "Ultimate Mines 02 01",
+      "category": "Maps / Terrain",
+      "order": 79
+    },
+    "map_amachine02_01s.nj": {
+      "name": "map_amachine02_01s",
+      "category": "Objects",
+      "order": 133
+    },
+    "map_amachine02_02d.rel": {
+      "name": "Ultimate Mines 02 02",
+      "category": "Maps / Terrain",
+      "order": 80
+    },
+    "map_amachine02_02n.rel": {
+      "name": "Ultimate Mines 02 02",
+      "category": "Maps / Terrain",
+      "order": 80
+    },
+    "map_amachine02_02s.nj": {
+      "name": "map_amachine02_02s",
+      "category": "Objects",
+      "order": 134
+    },
+    "map_amachine02_03d.rel": {
+      "name": "Ultimate Mines 02 03",
+      "category": "Maps / Terrain",
+      "order": 81
+    },
+    "map_amachine02_03n.rel": {
+      "name": "Ultimate Mines 02 03",
+      "category": "Maps / Terrain",
+      "order": 81
+    },
+    "map_amachine02_04d.rel": {
+      "name": "Ultimate Mines 02 04",
+      "category": "Maps / Terrain",
+      "order": 82
+    },
+    "map_amachine02_04n.rel": {
+      "name": "Ultimate Mines 02 04",
+      "category": "Maps / Terrain",
+      "order": 82
+    },
+    "map_amachine02_05d.rel": {
+      "name": "Ultimate Mines 02 05",
+      "category": "Maps / Terrain",
+      "order": 83
+    },
+    "map_amachine02_05n.rel": {
+      "name": "Ultimate Mines 02 05",
+      "category": "Maps / Terrain",
+      "order": 83
+    },
+    "map_ancient01_00d.rel": {
+      "name": "Ruins 01 00",
+      "category": "Maps / Terrain",
+      "order": 32
+    },
+    "map_ancient01_00n.rel": {
+      "name": "Ruins 01 00",
+      "category": "Maps / Terrain",
+      "order": 32
+    },
+    "map_ancient01_00s.nj": {
+      "name": "map_ancient01_00s",
+      "category": "Objects",
+      "order": 135
+    },
+    "map_ancient01_01d.rel": {
+      "name": "Ruins 01 01",
+      "category": "Maps / Terrain",
+      "order": 33
+    },
+    "map_ancient01_01n.rel": {
+      "name": "Ruins 01 01",
+      "category": "Maps / Terrain",
+      "order": 33
+    },
+    "map_ancient01_01s.nj": {
+      "name": "map_ancient01_01s",
+      "category": "Objects",
+      "order": 136
+    },
+    "map_ancient01_02d.rel": {
+      "name": "Ruins 01 02",
+      "category": "Maps / Terrain",
+      "order": 34
+    },
+    "map_ancient01_02n.rel": {
+      "name": "Ruins 01 02",
+      "category": "Maps / Terrain",
+      "order": 34
+    },
+    "map_ancient01_02s.nj": {
+      "name": "map_ancient01_02s",
+      "category": "Objects",
+      "order": 137
+    },
+    "map_ancient01_03d.rel": {
+      "name": "Ruins 01 03",
+      "category": "Maps / Terrain",
+      "order": 35
+    },
+    "map_ancient01_03n.rel": {
+      "name": "Ruins 01 03",
+      "category": "Maps / Terrain",
+      "order": 35
+    },
+    "map_ancient01_03s.nj": {
+      "name": "map_ancient01_03s",
+      "category": "Objects",
+      "order": 138
+    },
+    "map_ancient01_04d.rel": {
+      "name": "Ruins 01 04",
+      "category": "Maps / Terrain",
+      "order": 36
+    },
+    "map_ancient01_04n.rel": {
+      "name": "Ruins 01 04",
+      "category": "Maps / Terrain",
+      "order": 36
+    },
+    "map_ancient01_04s.nj": {
+      "name": "map_ancient01_04s",
+      "category": "Objects",
+      "order": 139
+    },
+    "map_ancient02_00d.rel": {
+      "name": "Ruins 02 00",
+      "category": "Maps / Terrain",
+      "order": 37
+    },
+    "map_ancient02_00n.rel": {
+      "name": "Ruins 02 00",
+      "category": "Maps / Terrain",
+      "order": 37
+    },
+    "map_ancient02_01d.rel": {
+      "name": "Ruins 02 01",
+      "category": "Maps / Terrain",
+      "order": 38
+    },
+    "map_ancient02_01n.rel": {
+      "name": "Ruins 02 01",
+      "category": "Maps / Terrain",
+      "order": 38
+    },
+    "map_ancient02_02d.rel": {
+      "name": "Ruins 02 02",
+      "category": "Maps / Terrain",
+      "order": 39
+    },
+    "map_ancient02_02n.rel": {
+      "name": "Ruins 02 02",
+      "category": "Maps / Terrain",
+      "order": 39
+    },
+    "map_ancient02_03d.rel": {
+      "name": "Ruins 02 03",
+      "category": "Maps / Terrain",
+      "order": 40
+    },
+    "map_ancient02_03n.rel": {
+      "name": "Ruins 02 03",
+      "category": "Maps / Terrain",
+      "order": 40
+    },
+    "map_ancient02_04d.rel": {
+      "name": "Ruins 02 04",
+      "category": "Maps / Terrain",
+      "order": 41
+    },
+    "map_ancient02_04n.rel": {
+      "name": "Ruins 02 04",
+      "category": "Maps / Terrain",
+      "order": 41
+    },
+    "map_ancient03_00d.rel": {
+      "name": "Ruins 03 00",
+      "category": "Maps / Terrain",
+      "order": 42
+    },
+    "map_ancient03_00n.rel": {
+      "name": "Ruins 03 00",
+      "category": "Maps / Terrain",
+      "order": 42
+    },
+    "map_ancient03_01d.rel": {
+      "name": "Ruins 03 01",
+      "category": "Maps / Terrain",
+      "order": 43
+    },
+    "map_ancient03_01n.rel": {
+      "name": "Ruins 03 01",
+      "category": "Maps / Terrain",
+      "order": 43
+    },
+    "map_ancient03_02d.rel": {
+      "name": "Ruins 03 02",
+      "category": "Maps / Terrain",
+      "order": 44
+    },
+    "map_ancient03_02n.rel": {
+      "name": "Ruins 03 02",
+      "category": "Maps / Terrain",
+      "order": 44
+    },
+    "map_ancient03_03d.rel": {
+      "name": "Ruins 03 03",
+      "category": "Maps / Terrain",
+      "order": 45
+    },
+    "map_ancient03_03n.rel": {
+      "name": "Ruins 03 03",
+      "category": "Maps / Terrain",
+      "order": 45
+    },
+    "map_ancient03_04d.rel": {
+      "name": "Ruins 03 04",
+      "category": "Maps / Terrain",
+      "order": 46
+    },
+    "map_ancient03_04n.rel": {
+      "name": "Ruins 03 04",
+      "category": "Maps / Terrain",
+      "order": 46
+    },
+    "map_boss01d.rel": {
+      "name": "Boss 1 Area",
+      "category": "Maps / Terrain",
+      "order": 84
+    },
+    "map_boss01n.rel": {
+      "name": "Boss 1 Area",
+      "category": "Maps / Terrain",
+      "order": 84
+    },
+    "map_boss02d.rel": {
+      "name": "Boss 2 Area",
+      "category": "Maps / Terrain",
+      "order": 85
+    },
+    "map_boss02n.rel": {
+      "name": "Boss 2 Area",
+      "category": "Maps / Terrain",
+      "order": 85
+    },
+    "map_boss03d.rel": {
+      "name": "Boss 3 Area",
+      "category": "Maps / Terrain",
+      "order": 86
+    },
+    "map_boss03n.rel": {
+      "name": "Boss 3 Area",
+      "category": "Maps / Terrain",
+      "order": 86
+    },
+    "map_cave01_00d.rel": {
+      "name": "Cave 01 00",
+      "category": "Maps / Terrain",
+      "order": 3
+    },
+    "map_cave01_00n.rel": {
+      "name": "Cave 01 00",
+      "category": "Maps / Terrain",
+      "order": 3
+    },
+    "map_cave01_00s.nj": {
+      "name": "map_cave01_00s",
+      "category": "Objects",
+      "order": 140
+    },
+    "map_cave01_01d.rel": {
+      "name": "Cave 01 01",
+      "category": "Maps / Terrain",
+      "order": 4
+    },
+    "map_cave01_01n.rel": {
+      "name": "Cave 01 01",
+      "category": "Maps / Terrain",
+      "order": 4
+    },
+    "map_cave01_01s.nj": {
+      "name": "map_cave01_01s",
+      "category": "Objects",
+      "order": 141
+    },
+    "map_cave01_02d.rel": {
+      "name": "Cave 01 02",
+      "category": "Maps / Terrain",
+      "order": 5
+    },
+    "map_cave01_02n.rel": {
+      "name": "Cave 01 02",
+      "category": "Maps / Terrain",
+      "order": 5
+    },
+    "map_cave01_02s.nj": {
+      "name": "map_cave01_02s",
+      "category": "Objects",
+      "order": 142
+    },
+    "map_cave01_03d.rel": {
+      "name": "Cave 01 03",
+      "category": "Maps / Terrain",
+      "order": 6
+    },
+    "map_cave01_03n.rel": {
+      "name": "Cave 01 03",
+      "category": "Maps / Terrain",
+      "order": 6
+    },
+    "map_cave01_04d.rel": {
+      "name": "Cave 01 04",
+      "category": "Maps / Terrain",
+      "order": 7
+    },
+    "map_cave01_04n.rel": {
+      "name": "Cave 01 04",
+      "category": "Maps / Terrain",
+      "order": 7
+    },
+    "map_cave01_05d.rel": {
+      "name": "Cave 01 05",
+      "category": "Maps / Terrain",
+      "order": 8
+    },
+    "map_cave01_05n.rel": {
+      "name": "Cave 01 05",
+      "category": "Maps / Terrain",
+      "order": 8
+    },
+    "map_cave02_00d.rel": {
+      "name": "Cave 02 00",
+      "category": "Maps / Terrain",
+      "order": 9
+    },
+    "map_cave02_00n.rel": {
+      "name": "Cave 02 00",
+      "category": "Maps / Terrain",
+      "order": 9
+    },
+    "map_cave02_00s.nj": {
+      "name": "map_cave02_00s",
+      "category": "Objects",
+      "order": 143
+    },
+    "map_cave02_01d.rel": {
+      "name": "Cave 02 01",
+      "category": "Maps / Terrain",
+      "order": 10
+    },
+    "map_cave02_01n.rel": {
+      "name": "Cave 02 01",
+      "category": "Maps / Terrain",
+      "order": 10
+    },
+    "map_cave02_01s.nj": {
+      "name": "map_cave02_01s",
+      "category": "Objects",
+      "order": 144
+    },
+    "map_cave02_02d.rel": {
+      "name": "Cave 02 02",
+      "category": "Maps / Terrain",
+      "order": 11
+    },
+    "map_cave02_02n.rel": {
+      "name": "Cave 02 02",
+      "category": "Maps / Terrain",
+      "order": 11
+    },
+    "map_cave02_02s.nj": {
+      "name": "map_cave02_02s",
+      "category": "Objects",
+      "order": 145
+    },
+    "map_cave02_03d.rel": {
+      "name": "Cave 02 03",
+      "category": "Maps / Terrain",
+      "order": 12
+    },
+    "map_cave02_03n.rel": {
+      "name": "Cave 02 03",
+      "category": "Maps / Terrain",
+      "order": 12
+    },
+    "map_cave02_04d.rel": {
+      "name": "Cave 02 04",
+      "category": "Maps / Terrain",
+      "order": 13
+    },
+    "map_cave02_04n.rel": {
+      "name": "Cave 02 04",
+      "category": "Maps / Terrain",
+      "order": 13
+    },
+    "map_cave03_00d.rel": {
+      "name": "Cave 03 00",
+      "category": "Maps / Terrain",
+      "order": 14
+    },
+    "map_cave03_00n.rel": {
+      "name": "Cave 03 00",
+      "category": "Maps / Terrain",
+      "order": 14
+    },
+    "map_cave03_00s.nj": {
+      "name": "map_cave03_00s",
+      "category": "Objects",
+      "order": 146
+    },
+    "map_cave03_01d.rel": {
+      "name": "Cave 03 01",
+      "category": "Maps / Terrain",
+      "order": 15
+    },
+    "map_cave03_01n.rel": {
+      "name": "Cave 03 01",
+      "category": "Maps / Terrain",
+      "order": 15
+    },
+    "map_cave03_01s.nj": {
+      "name": "map_cave03_01s",
+      "category": "Objects",
+      "order": 147
+    },
+    "map_cave03_02d.rel": {
+      "name": "Cave 03 02",
+      "category": "Maps / Terrain",
+      "order": 16
+    },
+    "map_cave03_02n.rel": {
+      "name": "Cave 03 02",
+      "category": "Maps / Terrain",
+      "order": 16
+    },
+    "map_cave03_02s.nj": {
+      "name": "map_cave03_02s",
+      "category": "Objects",
+      "order": 148
+    },
+    "map_cave03_03d.rel": {
+      "name": "Cave 03 03",
+      "category": "Maps / Terrain",
+      "order": 17
+    },
+    "map_cave03_03n.rel": {
+      "name": "Cave 03 03",
+      "category": "Maps / Terrain",
+      "order": 17
+    },
+    "map_cave03_04d.rel": {
+      "name": "Cave 03 04",
+      "category": "Maps / Terrain",
+      "order": 18
+    },
+    "map_cave03_04n.rel": {
+      "name": "Cave 03 04",
+      "category": "Maps / Terrain",
+      "order": 18
+    },
+    "map_cave03_05d.rel": {
+      "name": "Cave 03 05",
+      "category": "Maps / Terrain",
+      "order": 19
+    },
+    "map_cave03_05n.rel": {
+      "name": "Cave 03 05",
+      "category": "Maps / Terrain",
+      "order": 19
+    },
+    "map_city00_00d.rel": {
+      "name": "Pioneer 2",
+      "category": "Maps / Terrain",
+      "order": 0
+    },
+    "map_city00_00n.rel": {
+      "name": "Pioneer 2",
+      "category": "Maps / Terrain",
+      "order": 0
+    },
+    "map_darkfalz00d.rel": {
+      "name": "Boss 4 Area",
+      "category": "Maps / Terrain",
+      "order": 87
+    },
+    "map_darkfalz00n.rel": {
+      "name": "Boss 4 Area",
+      "category": "Maps / Terrain",
+      "order": 87
+    },
+    "map_forest01d.rel": {
+      "name": "Forest 01",
+      "category": "Maps / Terrain",
+      "order": 1
+    },
+    "map_forest01n.rel": {
+      "name": "Forest 01",
+      "category": "Maps / Terrain",
+      "order": 1
+    },
+    "map_forest01s.nj": {
+      "name": "map_forest01s",
+      "category": "Objects",
+      "order": 149
+    },
+    "map_forest02d.rel": {
+      "name": "Forest 02",
+      "category": "Maps / Terrain",
+      "order": 2
+    },
+    "map_forest02n.rel": {
+      "name": "Forest 02",
+      "category": "Maps / Terrain",
+      "order": 2
+    },
+    "map_forest02s.nj": {
+      "name": "map_forest02s",
+      "category": "Objects",
+      "order": 150
+    },
+    "map_lobby_black00d.rel": {
+      "name": "Lobby Black",
+      "category": "Maps / Terrain",
+      "order": 91
+    },
+    "map_lobby_black00n.rel": {
+      "name": "Lobby Black",
+      "category": "Maps / Terrain",
+      "order": 91
+    },
+    "map_lobby_blue00d.rel": {
+      "name": "Lobby Blue",
+      "category": "Maps / Terrain",
+      "order": 92
+    },
+    "map_lobby_blue00n.rel": {
+      "name": "Lobby Blue",
+      "category": "Maps / Terrain",
+      "order": 92
+    },
+    "map_lobby_bluegreen00d.rel": {
+      "name": "Lobby Bluegreen",
+      "category": "Maps / Terrain",
+      "order": 93
+    },
+    "map_lobby_bluegreen00n.rel": {
+      "name": "Lobby Bluegreen",
+      "category": "Maps / Terrain",
+      "order": 93
+    },
+    "map_lobby_green00d.rel": {
+      "name": "Lobby Green",
+      "category": "Maps / Terrain",
+      "order": 94
+    },
+    "map_lobby_green00n.rel": {
+      "name": "Lobby Green",
+      "category": "Maps / Terrain",
+      "order": 94
+    },
+    "map_lobby_orange00d.rel": {
+      "name": "Lobby Orange",
+      "category": "Maps / Terrain",
+      "order": 95
+    },
+    "map_lobby_orange00n.rel": {
+      "name": "Lobby Orange",
+      "category": "Maps / Terrain",
+      "order": 95
+    },
+    "map_lobby_purple00d.rel": {
+      "name": "Lobby Purple",
+      "category": "Maps / Terrain",
+      "order": 96
+    },
+    "map_lobby_purple00n.rel": {
+      "name": "Lobby Purple",
+      "category": "Maps / Terrain",
+      "order": 96
+    },
+    "map_lobby_red00d.rel": {
+      "name": "Lobby Red",
+      "category": "Maps / Terrain",
+      "order": 97
+    },
+    "map_lobby_red00n.rel": {
+      "name": "Lobby Red",
+      "category": "Maps / Terrain",
+      "order": 97
+    },
+    "map_lobby_white00d.rel": {
+      "name": "Lobby White",
+      "category": "Maps / Terrain",
+      "order": 98
+    },
+    "map_lobby_white00n.rel": {
+      "name": "Lobby White",
+      "category": "Maps / Terrain",
+      "order": 98
+    },
+    "map_lobby_y_green00d.rel": {
+      "name": "Lobby Yellow Green",
+      "category": "Maps / Terrain",
+      "order": 100
+    },
+    "map_lobby_y_green00n.rel": {
+      "name": "Lobby Yellow Green",
+      "category": "Maps / Terrain",
+      "order": 100
+    },
+    "map_lobby_yellow00d.rel": {
+      "name": "Lobby Yellow",
+      "category": "Maps / Terrain",
+      "order": 99
+    },
+    "map_lobby_yellow00n.rel": {
+      "name": "Lobby Yellow",
+      "category": "Maps / Terrain",
+      "order": 99
+    },
+    "map_machine01_00d.rel": {
+      "name": "Mines 01 00",
+      "category": "Maps / Terrain",
+      "order": 20
+    },
+    "map_machine01_00n.rel": {
+      "name": "Mines 01 00",
+      "category": "Maps / Terrain",
+      "order": 20
+    },
+    "map_machine01_00s.nj": {
+      "name": "map_machine01_00s",
+      "category": "Objects",
+      "order": 151
+    },
+    "map_machine01_01d.rel": {
+      "name": "Mines 01 01",
+      "category": "Maps / Terrain",
+      "order": 21
+    },
+    "map_machine01_01n.rel": {
+      "name": "Mines 01 01",
+      "category": "Maps / Terrain",
+      "order": 21
+    },
+    "map_machine01_01s.nj": {
+      "name": "map_machine01_01s",
+      "category": "Objects",
+      "order": 152
+    },
+    "map_machine01_02d.rel": {
+      "name": "Mines 01 02",
+      "category": "Maps / Terrain",
+      "order": 22
+    },
+    "map_machine01_02n.rel": {
+      "name": "Mines 01 02",
+      "category": "Maps / Terrain",
+      "order": 22
+    },
+    "map_machine01_02s.nj": {
+      "name": "map_machine01_02s",
+      "category": "Objects",
+      "order": 153
+    },
+    "map_machine01_03d.rel": {
+      "name": "Mines 01 03",
+      "category": "Maps / Terrain",
+      "order": 23
+    },
+    "map_machine01_03n.rel": {
+      "name": "Mines 01 03",
+      "category": "Maps / Terrain",
+      "order": 23
+    },
+    "map_machine01_04d.rel": {
+      "name": "Mines 01 04",
+      "category": "Maps / Terrain",
+      "order": 24
+    },
+    "map_machine01_04n.rel": {
+      "name": "Mines 01 04",
+      "category": "Maps / Terrain",
+      "order": 24
+    },
+    "map_machine01_05d.rel": {
+      "name": "Mines 01 05",
+      "category": "Maps / Terrain",
+      "order": 25
+    },
+    "map_machine01_05n.rel": {
+      "name": "Mines 01 05",
+      "category": "Maps / Terrain",
+      "order": 25
+    },
+    "map_machine02_00d.rel": {
+      "name": "Mines 02 00",
+      "category": "Maps / Terrain",
+      "order": 26
+    },
+    "map_machine02_00n.rel": {
+      "name": "Mines 02 00",
+      "category": "Maps / Terrain",
+      "order": 26
+    },
+    "map_machine02_00s.nj": {
+      "name": "map_machine02_00s",
+      "category": "Objects",
+      "order": 154
+    },
+    "map_machine02_01d.rel": {
+      "name": "Mines 02 01",
+      "category": "Maps / Terrain",
+      "order": 27
+    },
+    "map_machine02_01n.rel": {
+      "name": "Mines 02 01",
+      "category": "Maps / Terrain",
+      "order": 27
+    },
+    "map_machine02_01s.nj": {
+      "name": "map_machine02_01s",
+      "category": "Objects",
+      "order": 155
+    },
+    "map_machine02_02d.rel": {
+      "name": "Mines 02 02",
+      "category": "Maps / Terrain",
+      "order": 28
+    },
+    "map_machine02_02n.rel": {
+      "name": "Mines 02 02",
+      "category": "Maps / Terrain",
+      "order": 28
+    },
+    "map_machine02_02s.nj": {
+      "name": "map_machine02_02s",
+      "category": "Objects",
+      "order": 156
+    },
+    "map_machine02_03d.rel": {
+      "name": "Mines 02 03",
+      "category": "Maps / Terrain",
+      "order": 29
+    },
+    "map_machine02_03n.rel": {
+      "name": "Mines 02 03",
+      "category": "Maps / Terrain",
+      "order": 29
+    },
+    "map_machine02_04d.rel": {
+      "name": "Mines 02 04",
+      "category": "Maps / Terrain",
+      "order": 30
+    },
+    "map_machine02_04n.rel": {
+      "name": "Mines 02 04",
+      "category": "Maps / Terrain",
+      "order": 30
+    },
+    "map_machine02_05d.rel": {
+      "name": "Mines 02 05",
+      "category": "Maps / Terrain",
+      "order": 31
+    },
+    "map_machine02_05n.rel": {
+      "name": "Mines 02 05",
+      "category": "Maps / Terrain",
+      "order": 31
+    },
+    "map_soccer11d.rel": {
+      "name": "Map Soccer 11",
+      "category": "Maps / Terrain",
+      "order": 101
+    },
+    "map_soccer11n.rel": {
+      "name": "Map Soccer 11",
+      "category": "Maps / Terrain",
+      "order": 101
+    },
+    "map_soccer12d.rel": {
+      "name": "Map Soccer 12",
+      "category": "Maps / Terrain",
+      "order": 102
+    },
+    "map_soccer12n.rel": {
+      "name": "Map Soccer 12",
+      "category": "Maps / Terrain",
+      "order": 102
+    },
+    "map_soccer13d.rel": {
+      "name": "Map Soccer 13",
+      "category": "Maps / Terrain",
+      "order": 103
+    },
+    "map_soccer13n.rel": {
+      "name": "Map Soccer 13",
+      "category": "Maps / Terrain",
+      "order": 103
+    },
+    "map_vs01_00d.rel": {
+      "name": "Spaceship 00",
+      "category": "Maps / Terrain",
+      "order": 47
+    },
+    "map_vs01_00n.rel": {
+      "name": "Spaceship 00",
+      "category": "Maps / Terrain",
+      "order": 47
+    },
+    "map_vs01_00s.nj": {
+      "name": "map_vs01_00s",
+      "category": "Objects",
+      "order": 157
+    },
+    "map_vs01_01d.rel": {
+      "name": "Spaceship 01",
+      "category": "Maps / Terrain",
+      "order": 48
+    },
+    "map_vs01_01n.rel": {
+      "name": "Spaceship 01",
+      "category": "Maps / Terrain",
+      "order": 48
+    },
+    "map_vs01_01s.nj": {
+      "name": "map_vs01_01s",
+      "category": "Objects",
+      "order": 158
+    },
+    "map_vs01_02d.rel": {
+      "name": "Spaceship 02",
+      "category": "Maps / Terrain",
+      "order": 49
+    },
+    "map_vs01_02n.rel": {
+      "name": "Spaceship 02",
+      "category": "Maps / Terrain",
+      "order": 49
+    },
+    "map_vs01_02s.nj": {
+      "name": "map_vs01_02s",
+      "category": "Objects",
+      "order": 159
+    },
+    "map_vs02_00d.rel": {
+      "name": "Temple 00",
+      "category": "Maps / Terrain",
+      "order": 50
+    },
+    "map_vs02_00n.rel": {
+      "name": "Temple 00",
+      "category": "Maps / Terrain",
+      "order": 50
+    },
+    "map_vs02_00s.nj": {
+      "name": "map_vs02_00s",
+      "category": "Objects",
+      "order": 160
+    },
+    "map_vs02_01d.rel": {
+      "name": "Temple 01",
+      "category": "Maps / Terrain",
+      "order": 51
+    },
+    "map_vs02_01n.rel": {
+      "name": "Temple 01",
+      "category": "Maps / Terrain",
+      "order": 51
+    },
+    "map_vs02_02d.rel": {
+      "name": "Temple 02",
+      "category": "Maps / Terrain",
+      "order": 52
+    },
+    "map_vs02_02n.rel": {
+      "name": "Temple 02",
+      "category": "Maps / Terrain",
+      "order": 52
+    },
+    "me1_y_mb.nj": {
+      "name": "Canane",
+      "category": "Enemies",
+      "order": 32
+    },
+    "me1n_y_mb.nj": {
+      "name": "Canadine",
+      "category": "Enemies",
+      "order": 31
+    },
+    "me2_y_me2.nj": {
+      "name": "Dubchic",
+      "category": "Enemies",
+      "order": 28
+    },
+    "me2_y_me2_2.nj": {
+      "name": "Dubchic Damaged",
+      "category": "Enemies",
+      "order": 29
+    },
+    "me3_y_me3.nj": {
+      "name": "Sinow Beat",
+      "category": "Enemies",
+      "order": 33
+    },
+    "me4_y_me4.nj": {
+      "name": "Garanz",
+      "category": "Enemies",
+      "order": 30
+    },
+    "me5p02_y_all.nj": {
+      "name": "Vol Opt",
+      "category": "Enemies",
+      "order": 35
+    },
+    "memai_re7_b_body.njm": {
+      "name": "Dark Belra",
+      "category": "Enemies",
+      "order": 44
+    },
+    "mihari_bm1_s_wala_body.njm": {
+      "name": "Booma",
+      "category": "Enemies",
+      "order": 3
+    },
+    "move_bm3_fly_body.njm": {
+      "name": "Mothmant",
+      "category": "Enemies",
+      "order": 9
+    },
+    "move_bm4_ps_mb_body.njm": {
+      "name": "Pofuilly Slime (Blue)",
+      "category": "Enemies",
+      "order": 25
+    },
+    "move_re5_b_body.njm": {
+      "name": "Dark Gunner",
+      "category": "Enemies",
+      "order": 45
+    },
+    "n_ebw_i_body.nj": {
+      "name": "bm_n_ebw_i_body",
+      "category": "Player Bodies",
+      "order": 11
+    },
+    "n_ecw_i_body.nj": {
+      "name": "bm_n_ecw_i_body",
+      "category": "Player Bodies",
+      "order": 12
+    },
+    "n_mt_idl2_b01_bip01.njm": {
+      "name": "Dress",
+      "category": "Player Bodies",
+      "order": 0
+    },
+    "nail_df1_s_kil_body.njm": {
+      "name": "Delsaber",
+      "category": "Enemies",
+      "order": 39
+    },
+    "nkdown_boss1_s_nb_dragon.njm": {
+      "name": "Dragon",
+      "category": "Enemies",
+      "order": 13
+    },
+    "nkup_boss1_s_nb_dragon.njm": {
+      "name": "Dragon",
+      "category": "Enemies",
+      "order": 13
+    },
+    "nobi_boss1_s_nb_dragon.njm": {
+      "name": "Dragon",
+      "category": "Enemies",
+      "order": 13
+    },
+    "nodam_bm4_ps_ma_body.njm": {
+      "name": "Pofuilly Slime (Blue)",
+      "category": "Enemies",
+      "order": 25
+    },
+    "npc_a00_data.rel": {
+      "name": "npc_a00_data",
+      "category": "Player Bodies",
+      "order": 42
+    },
+    "npc_b00_data.rel": {
+      "name": "npc_b00_data",
+      "category": "Player Bodies",
+      "order": 43
+    },
+    "npc_b01_data.rel": {
+      "name": "npc_b01_data",
+      "category": "Player Bodies",
+      "order": 50
+    },
+    "npc_c01_data.rel": {
+      "name": "npc_c01_data",
+      "category": "Player Bodies",
+      "order": 51
+    },
+    "npc_d00_data.rel": {
+      "name": "npc_d00_data",
+      "category": "Player Bodies",
+      "order": 44
+    },
+    "npc_d01_data.rel": {
+      "name": "npc_d01_data",
+      "category": "Player Bodies",
+      "order": 52
+    },
+    "npc_e00_data.rel": {
+      "name": "npc_e00_data",
+      "category": "Player Bodies",
+      "order": 45
+    },
+    "npc_f00_data.rel": {
+      "name": "npc_f00_data",
+      "category": "Player Bodies",
+      "order": 46
+    },
+    "npc_g00_data.rel": {
+      "name": "npc_g00_data",
+      "category": "Player Bodies",
+      "order": 47
+    },
+    "npc_g01_data.rel": {
+      "name": "npc_g01_data",
+      "category": "Player Bodies",
+      "order": 53
+    },
+    "npc_h00_data.rel": {
+      "name": "npc_h00_data",
+      "category": "Player Bodies",
+      "order": 48
+    },
+    "npc_h01_data.rel": {
+      "name": "npc_h01_data",
+      "category": "Player Bodies",
+      "order": 54
+    },
+    "npc_i00_data.rel": {
+      "name": "npc_i00_data",
+      "category": "Player Bodies",
+      "order": 49
+    },
+    "npc_i01_data.rel": {
+      "name": "npc_i01_data",
+      "category": "Player Bodies",
+      "order": 55
+    },
+    "obj_battery.rel": {
+      "name": "Forest Battery",
+      "category": "Objects",
+      "order": 108
+    },
+    "obj_butterfly.rel": {
+      "name": "Butterfly",
+      "category": "Objects",
+      "order": 104
+    },
+    "obj_containerido.rel": {
+      "name": "Forest Rel Container",
+      "category": "Objects",
+      "order": 109
+    },
+    "obj_motorcycle.rel": {
+      "name": "Motorcycle Broken",
+      "category": "Objects",
+      "order": 105
+    },
+    "obj_tank.rel": {
+      "name": "Forest Tank",
+      "category": "Objects",
+      "order": 107
+    },
+    "okil_bm5_s_kem_body.njm": {
+      "name": "Savage Wolf",
+      "category": "Enemies",
+      "order": 6
+    },
+    "okir_bm5_s_kem_body.njm": {
+      "name": "Savage Wolf",
+      "category": "Enemies",
+      "order": 6
+    },
+    "plabdy00.nj": {
+      "name": "Humar",
+      "category": "Player Bodies",
+      "order": 1
+    },
+    "plahai00.nj": {
+      "name": "Humar",
+      "category": "Player Bodies",
+      "order": 1
+    },
+    "plahed00.nj": {
+      "name": "Humar",
+      "category": "Player Bodies",
+      "order": 1
+    },
+    "planj.bml": {
+      "name": "Humar",
+      "category": "Player Bodies",
+      "order": 1
+    },
+    "plbbdy00.nj": {
+      "name": "Hunewearl",
+      "category": "Player Bodies",
+      "order": 2
+    },
+    "plbhai00.nj": {
+      "name": "Hunewearl",
+      "category": "Player Bodies",
+      "order": 2
+    },
+    "plbhed00.nj": {
+      "name": "Hunewearl",
+      "category": "Player Bodies",
+      "order": 2
+    },
+    "plbnj.bml": {
+      "name": "Hunewearl",
+      "category": "Player Bodies",
+      "order": 2
+    },
+    "plcbdy00.nj": {
+      "name": "Hucast",
+      "category": "Player Bodies",
+      "order": 3
+    },
+    "plched00.nj": {
+      "name": "Hucast",
+      "category": "Player Bodies",
+      "order": 3
+    },
+    "plcnj.bml": {
+      "name": "Hucast",
+      "category": "Player Bodies",
+      "order": 3
+    },
+    "pldbdy00.nj": {
+      "name": "Ramar",
+      "category": "Player Bodies",
+      "order": 4
+    },
+    "pldcap00.nj": {
+      "name": "Ramar",
+      "category": "Player Bodies",
+      "order": 4
+    },
+    "pldhai00.nj": {
+      "name": "Ramar",
+      "category": "Player Bodies",
+      "order": 4
+    },
+    "pldhed00.nj": {
+      "name": "Ramar",
+      "category": "Player Bodies",
+      "order": 4
+    },
+    "pldnj.bml": {
+      "name": "Ramar",
+      "category": "Player Bodies",
+      "order": 4
+    },
+    "plebdy00.nj": {
+      "name": "Racast",
+      "category": "Player Bodies",
+      "order": 5
+    },
+    "plehed00.nj": {
+      "name": "Racast",
+      "category": "Player Bodies",
+      "order": 5
+    },
+    "plenj.bml": {
+      "name": "Racast",
+      "category": "Player Bodies",
+      "order": 5
+    },
+    "plfbdy00.nj": {
+      "name": "Racaseal",
+      "category": "Player Bodies",
+      "order": 6
+    },
+    "plfhed00.nj": {
+      "name": "Racaseal",
+      "category": "Player Bodies",
+      "order": 6
+    },
+    "plfnj.bml": {
+      "name": "Racaseal",
+      "category": "Player Bodies",
+      "order": 6
+    },
+    "plgbdy00.nj": {
+      "name": "Fomarl",
+      "category": "Player Bodies",
+      "order": 7
+    },
+    "plgcap00.nj": {
+      "name": "Fomarl",
+      "category": "Player Bodies",
+      "order": 7
+    },
+    "plghai00.nj": {
+      "name": "Fomarl",
+      "category": "Player Bodies",
+      "order": 7
+    },
+    "plghed00.nj": {
+      "name": "Fomarl",
+      "category": "Player Bodies",
+      "order": 7
+    },
+    "plgnj.bml": {
+      "name": "Fomarl",
+      "category": "Player Bodies",
+      "order": 7
+    },
+    "plhbdy00.nj": {
+      "name": "Fonewm",
+      "category": "Player Bodies",
+      "order": 8
+    },
+    "plhcap00.nj": {
+      "name": "Fonewm",
+      "category": "Player Bodies",
+      "order": 8
+    },
+    "plhhai00.nj": {
+      "name": "Fonewm",
+      "category": "Player Bodies",
+      "order": 8
+    },
+    "plhhed00.nj": {
+      "name": "Fonewm",
+      "category": "Player Bodies",
+      "order": 8
+    },
+    "plhnj.bml": {
+      "name": "Fonewm",
+      "category": "Player Bodies",
+      "order": 8
+    },
+    "plibdy00.nj": {
+      "name": "Fonewearl",
+      "category": "Player Bodies",
+      "order": 9
+    },
+    "plicap00.nj": {
+      "name": "Fonewearl",
+      "category": "Player Bodies",
+      "order": 9
+    },
+    "plihai00.nj": {
+      "name": "Fonewearl",
+      "category": "Player Bodies",
+      "order": 9
+    },
+    "plihed00.nj": {
+      "name": "Fonewearl",
+      "category": "Player Bodies",
+      "order": 9
+    },
+    "plinj.bml": {
+      "name": "Fonewearl",
+      "category": "Player Bodies",
+      "order": 9
+    },
+    "plymotiondata.rlc": {
+      "name": "Humar",
+      "category": "Player Bodies",
+      "order": 1
+    },
+    "pullback_re5_b_body.njm": {
+      "name": "Dark Gunner",
+      "category": "Enemies",
+      "order": 45
+    },
+    "punch_bm2f_s_moj_body.njm": {
+      "name": "Hildebaby",
+      "category": "Enemies",
+      "order": 10
+    },
+    "r_attack_me5p02_y_all.njm": {
+      "name": "Vol Opt",
+      "category": "Enemies",
+      "order": 35
+    },
+    "r_bite_boss2_b_body.njm": {
+      "name": "De Rol Le",
+      "category": "Enemies",
+      "order": 27
+    },
+    "rattack_re1_b_base.njm": {
+      "name": "Grass Assasin",
+      "category": "Enemies",
+      "order": 21
+    },
+    "rattack_re7_b_body.njm": {
+      "name": "Dark Belra",
+      "category": "Enemies",
+      "order": 44
+    },
+    "re1_b_grass_base.nj": {
+      "name": "Grass Assasin",
+      "category": "Enemies",
+      "order": 21
+    },
+    "re1c_b_cgrass_base.nj": {
+      "name": "Mini Grass Assasin",
+      "category": "Enemies",
+      "order": 20
+    },
+    "re1c_b_cgrass_base.njm": {
+      "name": "Mini Grass Assasin",
+      "category": "Enemies",
+      "order": 20
+    },
+    "re2_b_flower_root.nj": {
+      "name": "Poison Lily",
+      "category": "Enemies",
+      "order": 23
+    },
+    "re3_b_lappy_base.nj": {
+      "name": "Rappy",
+      "category": "Enemies",
+      "order": 1
+    },
+    "re4_b_bit.nj": {
+      "name": "Chaos Sorcerer",
+      "category": "Enemies",
+      "order": 43
+    },
+    "re4_b_sorcer_body.nj": {
+      "name": "Chaos Sorcerer",
+      "category": "Enemies",
+      "order": 43
+    },
+    "re5_b_gunner_body.nj": {
+      "name": "Dark Gunner",
+      "category": "Enemies",
+      "order": 45
+    },
+    "re6_b_bal_body.nj": {
+      "name": "Bulclaw (Open)",
+      "category": "Enemies",
+      "order": 36
+    },
+    "re6_b_bcbody.nj": {
+      "name": "Bulclaw (Closed)",
+      "category": "Enemies",
+      "order": 37
+    },
+    "re6_b_claw_body.nj": {
+      "name": "Claw",
+      "category": "Enemies",
+      "order": 38
+    },
+    "re7_b_bell_body.nj": {
+      "name": "Dark Belra",
+      "category": "Enemies",
+      "order": 44
+    },
+    "re8_b_beast_wala_body.nj": {
+      "name": "Bartle",
+      "category": "Enemies",
+      "order": 89
+    },
+    "re8_b_beast_wola_body.nj": {
+      "name": "Booma",
+      "category": "Enemies",
+      "order": 3
+    },
+    "re8_b_rdbeast_wola_body.nj": {
+      "name": "GigaBooma",
+      "category": "Enemies",
+      "order": 5
+    },
+    "re8_b_srbeast_wala_body.nj": {
+      "name": "Barble",
+      "category": "Enemies",
+      "order": 90
+    },
+    "re8_b_srdbeast_wola_body.nj": {
+      "name": "GoBooma",
+      "category": "Enemies",
+      "order": 4
+    },
+    "re8_rdbeast_wala_body.nj": {
+      "name": "Tollaw",
+      "category": "Enemies",
+      "order": 91
+    },
+    "revival_b_me2_y_me2.njm": {
+      "name": "Dubchic",
+      "category": "Enemies",
+      "order": 28
+    },
+    "revival_f_me2_y_me2.njm": {
+      "name": "Dubchic",
+      "category": "Enemies",
+      "order": 28
+    },
+    "rico_body.bml": {
+      "name": "Red Ring Rico",
+      "category": "Player Bodies",
+      "order": 10
+    },
+    "rico_body.nj": {
+      "name": "Red Ring Rico",
+      "category": "Player Bodies",
+      "order": 10
+    },
+    "rico_ring3_rico_ring.nj": {
+      "name": "Red Ring",
+      "category": "Objects",
+      "order": 29
+    },
+    "rico_ring3_rico_ring.njm": {
+      "name": "Red Ring",
+      "category": "Objects",
+      "order": 29
+    },
+    "rkiri_df3_s_body.njm": {
+      "name": "Dark Falz Form 3 Body",
+      "category": "Enemies",
+      "order": 56
+    },
+    "rkiri_df3_s_wing.njm": {
+      "name": "Dark Falz Form 3 Wing",
+      "category": "Enemies",
+      "order": 57
+    },
+    "rljump_boss2_b_body.njm": {
+      "name": "De Rol Le",
+      "category": "Enemies",
+      "order": 27
+    },
+    "run_bm1_s_wala_body.njm": {
+      "name": "Booma",
+      "category": "Enemies",
+      "order": 3
+    },
+    "run_bm5_s_kem_body.njm": {
+      "name": "Savage Wolf",
+      "category": "Enemies",
+      "order": 6
+    },
+    "run_bm7_s_pal_body.njm": {
+      "name": "Hidoom",
+      "category": "Enemies",
+      "order": 18
+    },
+    "run_bm7_s_par_body.njm": {
+      "name": "Migium",
+      "category": "Enemies",
+      "order": 19
+    },
+    "run_bm8_s_kb_body.njm": {
+      "name": "Chaos Bringer",
+      "category": "Enemies",
+      "order": 46
+    },
+    "run_re3_b_base.njm": {
+      "name": "Rappy",
+      "category": "Enemies",
+      "order": 1
+    },
+    "runb_bm5_s_kem_body.njm": {
+      "name": "Savage Wolf",
+      "category": "Enemies",
+      "order": 6
+    },
+    "scatter_boss2_b_body.njm": {
+      "name": "De Rol Le",
+      "category": "Enemies",
+      "order": 27
+    },
+    "scratch01_me2_me2.njm": {
+      "name": "Dubchic",
+      "category": "Enemies",
+      "order": 28
+    },
+    "scratch02_me2_y_me2.njm": {
+      "name": "Dubchic",
+      "category": "Enemies",
+      "order": 28
+    },
+    "shoot01_me2_y_me2.njm": {
+      "name": "Dubchic",
+      "category": "Enemies",
+      "order": 28
+    },
+    "shoot02_me2_me2.njm": {
+      "name": "Dubchic",
+      "category": "Enemies",
+      "order": 28
+    },
+    "sleep_bm5_s_kem_body.njm": {
+      "name": "Savage Wolf",
+      "category": "Enemies",
+      "order": 6
+    },
+    "spit_re1_b_base.njm": {
+      "name": "Grass Assasin",
+      "category": "Enemies",
+      "order": 21
+    },
+    "stand_bm2f_s_moj_body.njm": {
+      "name": "Hildebaby",
+      "category": "Enemies",
+      "order": 10
+    },
+    "stand_boss1_s_nb_dragon.njm": {
+      "name": "Dragon",
+      "category": "Enemies",
+      "order": 13
+    },
+    "start_me5p02_y_all.njm": {
+      "name": "Vol Opt",
+      "category": "Enemies",
+      "order": 35
+    },
+    "starting_me2_y_me2.njm": {
+      "name": "Dubchic",
+      "category": "Enemies",
+      "order": 28
+    },
+    "stdup_bm5_s_kem_body.njm": {
+      "name": "Savage Wolf",
+      "category": "Enemies",
+      "order": 6
+    },
+    "stund_bm1_s_wala_body.njm": {
+      "name": "Booma",
+      "category": "Enemies",
+      "order": 3
+    },
+    "sword_me3_y_me3.njm": {
+      "name": "Sinow Beat",
+      "category": "Enemies",
+      "order": 33
+    },
+    "t_wait_me3_y_me3.njm": {
+      "name": "Sinow Beat",
+      "category": "Enemies",
+      "order": 33
+    },
+    "taiki_fe_obj_doa_laz_oya.nj": {
+      "name": "Forest Door",
+      "category": "Objects",
+      "order": 52
+    },
+    "taiki_fe_obj_doa_laz_oya.njm": {
+      "name": "Forest Door",
+      "category": "Objects",
+      "order": 52
+    },
+    "taiki_fe_obj_doa_oya.nj": {
+      "name": "Forest Door",
+      "category": "Objects",
+      "order": 52
+    },
+    "tatk_boss1_s_nb_dragon.njm": {
+      "name": "Dragon",
+      "category": "Enemies",
+      "order": 13
+    },
+    "tlatk_bm4_ps_ma_tail.njm": {
+      "name": "Pofuilly Slime (Blue)",
+      "category": "Enemies",
+      "order": 25
+    },
+    "tobidasi_boss1_s_nb_dragon.njm": {
+      "name": "Dragon",
+      "category": "Enemies",
+      "order": 13
+    },
+    "tpkyu_bm8_s_kb_body.njm": {
+      "name": "Chaos Bringer",
+      "category": "Enemies",
+      "order": 46
+    },
+    "trance_bm3_s_nest.njm": {
+      "name": "Monest",
+      "category": "Enemies",
+      "order": 8
+    },
+    "transform_me3_y_me3.njm": {
+      "name": "Sinow Beat",
+      "category": "Enemies",
+      "order": 33
+    },
+    "tukomi_boss1_s_nb_dragon.njm": {
+      "name": "Dragon",
+      "category": "Enemies",
+      "order": 13
+    },
+    "tumble_re3_b_base.njm": {
+      "name": "Rappy",
+      "category": "Enemies",
+      "order": 1
+    },
+    "wait01_me1_y_mb.njm": {
+      "name": "Canadine",
+      "category": "Enemies",
+      "order": 31
+    },
+    "wait01_me2_y_me2.njm": {
+      "name": "Dubchic",
+      "category": "Enemies",
+      "order": 28
+    },
+    "wait02_me1_y_mb.njm": {
+      "name": "Canadine",
+      "category": "Enemies",
+      "order": 31
+    },
+    "wait02_me2_y_me2.njm": {
+      "name": "Dubchic",
+      "category": "Enemies",
+      "order": 28
+    },
+    "wait2_bm4_ps_ma_body.njm": {
+      "name": "Pofuilly Slime (Blue)",
+      "category": "Enemies",
+      "order": 25
+    },
+    "wait2_re3_b_base.njm": {
+      "name": "Rappy",
+      "category": "Enemies",
+      "order": 1
+    },
+    "wait_bm3_s_nest.njm": {
+      "name": "Monest",
+      "category": "Enemies",
+      "order": 8
+    },
+    "wait_bm4_ps_ma_body.njm": {
+      "name": "Pofuilly Slime (Blue)",
+      "category": "Enemies",
+      "order": 25
+    },
+    "wait_bm4_ps_mb_body.njm": {
+      "name": "Pofuilly Slime (Blue)",
+      "category": "Enemies",
+      "order": 25
+    },
+    "wait_bm5_s_kem_body.njm": {
+      "name": "Savage Wolf",
+      "category": "Enemies",
+      "order": 6
+    },
+    "wait_bm6_s_drc_body.njm": {
+      "name": "Nano Dragoon",
+      "category": "Enemies",
+      "order": 22
+    },
+    "wait_bm7_s_paa_body.njm": {
+      "name": "Pan Arms",
+      "category": "Enemies",
+      "order": 17
+    },
+    "wait_bm7_s_pal_body.njm": {
+      "name": "Hidoom",
+      "category": "Enemies",
+      "order": 18
+    },
+    "wait_bm7_s_par_body.njm": {
+      "name": "Migium",
+      "category": "Enemies",
+      "order": 19
+    },
+    "wait_bm8_s_kb_body.njm": {
+      "name": "Chaos Bringer",
+      "category": "Enemies",
+      "order": 46
+    },
+    "wait_df1_s_body.njm": {
+      "name": "DarkFalz Form 1 Body",
+      "category": "Enemies",
+      "order": 47
+    },
+    "wait_df1_s_da_heada.njm": {
+      "name": "DarkFalz Form 1 Head A",
+      "category": "Enemies",
+      "order": 48
+    },
+    "wait_df1_s_dodai.njm": {
+      "name": "DarkFalz Form 1 Base",
+      "category": "Enemies",
+      "order": 51
+    },
+    "wait_df1_s_kil_body.njm": {
+      "name": "Delsaber",
+      "category": "Enemies",
+      "order": 39
+    },
+    "wait_df2_s_body.njm": {
+      "name": "Dark Falz Form 2 Body",
+      "category": "Enemies",
+      "order": 54
+    },
+    "wait_df2_s_dodai1.njm": {
+      "name": "Dark Falz Form 2 Base",
+      "category": "Enemies",
+      "order": 55
+    },
+    "wait_df3_s_body.njm": {
+      "name": "Dark Falz Form 3 Body",
+      "category": "Enemies",
+      "order": 56
+    },
+    "wait_df3_s_wing.njm": {
+      "name": "Dark Falz Form 3 Wing",
+      "category": "Enemies",
+      "order": 57
+    },
+    "wait_me3_y_me3.njm": {
+      "name": "Sinow Beat",
+      "category": "Enemies",
+      "order": 33
+    },
+    "wait_me4_y_me4.njm": {
+      "name": "Garanz",
+      "category": "Enemies",
+      "order": 30
+    },
+    "wait_me5p02_y_all.njm": {
+      "name": "Vol Opt",
+      "category": "Enemies",
+      "order": 35
+    },
+    "wait_re1_b_base.njm": {
+      "name": "Grass Assasin",
+      "category": "Enemies",
+      "order": 21
+    },
+    "wait_re3_b_base.njm": {
+      "name": "Rappy",
+      "category": "Enemies",
+      "order": 1
+    },
+    "wait_re4_b_body.njm": {
+      "name": "Chaos Sorcerer",
+      "category": "Enemies",
+      "order": 43
+    },
+    "wait_re5_b_body.njm": {
+      "name": "Dark Gunner",
+      "category": "Enemies",
+      "order": 45
+    },
+    "wait_re7_b_body.njm": {
+      "name": "Dark Belra",
+      "category": "Enemies",
+      "order": 44
+    },
+    "waitc_re2_b_root.njm": {
+      "name": "Poison Lily",
+      "category": "Enemies",
+      "order": 23
+    },
+    "waito_re2_b_root.njm": {
+      "name": "Poison Lily",
+      "category": "Enemies",
+      "order": 23
+    },
+    "wake2_re3_b_base.njm": {
+      "name": "Rappy",
+      "category": "Enemies",
+      "order": 1
+    },
+    "wake_re2_b_root.njm": {
+      "name": "Poison Lily",
+      "category": "Enemies",
+      "order": 23
+    },
+    "wake_re3_b_base.njm": {
+      "name": "Rappy",
+      "category": "Enemies",
+      "order": 1
+    },
+    "wakeup_bm1_s_wala_body.njm": {
+      "name": "Booma",
+      "category": "Enemies",
+      "order": 3
+    },
+    "walk01_me2_y_me2.njm": {
+      "name": "Dubchic",
+      "category": "Enemies",
+      "order": 28
+    },
+    "walk01_me4_y_me4.njm": {
+      "name": "Garanz",
+      "category": "Enemies",
+      "order": 30
+    },
+    "walk02_me2_y_me2.njm": {
+      "name": "Dubchic",
+      "category": "Enemies",
+      "order": 28
+    },
+    "walk02_me4_y_me4.njm": {
+      "name": "Garanz",
+      "category": "Enemies",
+      "order": 30
+    },
+    "walk03_me4_y_me4.njm": {
+      "name": "Garanz",
+      "category": "Enemies",
+      "order": 30
+    },
+    "walk_bm1_s_wala_body.njm": {
+      "name": "Booma",
+      "category": "Enemies",
+      "order": 3
+    },
+    "walk_bm2f_s_moj_body.njm": {
+      "name": "Hildebaby",
+      "category": "Enemies",
+      "order": 10
+    },
+    "walk_bm5_s_kem_body.njm": {
+      "name": "Savage Wolf",
+      "category": "Enemies",
+      "order": 6
+    },
+    "walk_bm6_s_drc_body.njm": {
+      "name": "Nano Dragoon",
+      "category": "Enemies",
+      "order": 22
+    },
+    "walk_bm7_s_paa_body.njm": {
+      "name": "Pan Arms",
+      "category": "Enemies",
+      "order": 17
+    },
+    "walk_bm7_s_pal_body.njm": {
+      "name": "Hidoom",
+      "category": "Enemies",
+      "order": 18
+    },
+    "walk_bm7_s_par_body.njm": {
+      "name": "Migium",
+      "category": "Enemies",
+      "order": 19
+    },
+    "walk_bm8_s_kb_body.njm": {
+      "name": "Chaos Bringer",
+      "category": "Enemies",
+      "order": 46
+    },
+    "walk_boss1_s_nb_dragon.njm": {
+      "name": "Dragon",
+      "category": "Enemies",
+      "order": 13
+    },
+    "walk_df1_s_kil_body.njm": {
+      "name": "Delsaber",
+      "category": "Enemies",
+      "order": 39
+    },
+    "walk_re1_b_base.njm": {
+      "name": "Grass Assasin",
+      "category": "Enemies",
+      "order": 21
+    },
+    "walk_re3_b_base.njm": {
+      "name": "Rappy",
+      "category": "Enemies",
+      "order": 1
+    },
+    "walk_re7_b_body.njm": {
+      "name": "Dark Belra",
+      "category": "Enemies",
+      "order": 44
+    },
+    "walkl_bm7_s_paa_body.njm": {
+      "name": "Pan Arms",
+      "category": "Enemies",
+      "order": 17
+    },
+    "walkr_bm7_s_paa_body.njm": {
+      "name": "Pan Arms",
+      "category": "Enemies",
+      "order": 17
+    },
+    "wgwalk_boss1_s_nb_dragon.njm": {
+      "name": "Dragon",
+      "category": "Enemies",
+      "order": 13
+    },
+    "wing_boss1_s_nb_dragon.njm": {
+      "name": "Dragon",
+      "category": "Enemies",
+      "order": 13
+    },
+    "wing_df2_s_body.njm": {
+      "name": "Dark Falz Form 2 Body",
+      "category": "Enemies",
+      "order": 54
+    },
+    "wing_df2_s_dodai1.njm": {
+      "name": "Dark Falz Form 2 Base",
+      "category": "Enemies",
+      "order": 55
+    },
+    "wngclose_boss1_s_nb_dragon.njm": {
+      "name": "Dragon",
+      "category": "Enemies",
+      "order": 13
+    },
+    "wngopn_boss1_s_nb_dragon.njm": {
+      "name": "Dragon",
+      "category": "Enemies",
+      "order": 13
+    },
+    "wxms01_d_w_bullet.nj": {
+      "name": "Shockwave",
+      "category": "Objects",
+      "order": 7
+    },
+    "yubi_df3_s_body.njm": {
+      "name": "Dark Falz Form 3 Body",
+      "category": "Enemies",
+      "order": 56
+    }
+  },
+  "by_archive": {
+    "itemmodel.afs#0000": {
+      "name": "Saber",
+      "category": "Weapons",
+      "order": 0
+    },
+    "itemmodel.afs#0001": {
+      "name": "Sword",
+      "category": "Weapons",
+      "order": 1
+    },
+    "itemmodel.afs#0002": {
+      "name": "Dagger",
+      "category": "Weapons",
+      "order": 2
+    },
+    "itemmodel.afs#0003": {
+      "name": "Partisan",
+      "category": "Weapons",
+      "order": 3
+    },
+    "itemmodel.afs#0004": {
+      "name": "Slicer",
+      "category": "Weapons",
+      "order": 4
+    },
+    "itemmodel.afs#0005": {
+      "name": "Handgun",
+      "category": "Weapons",
+      "order": 5
+    },
+    "itemmodel.afs#0006": {
+      "name": "Rifle",
+      "category": "Weapons",
+      "order": 6
+    },
+    "itemmodel.afs#0007": {
+      "name": "Mechgun",
+      "category": "Weapons",
+      "order": 7
+    },
+    "itemmodel.afs#0008": {
+      "name": "Shot",
+      "category": "Weapons",
+      "order": 8
+    },
+    "itemmodel.afs#0009": {
+      "name": "Cane",
+      "category": "Weapons",
+      "order": 9
+    },
+    "itemmodel.afs#0010": {
+      "name": "Rod",
+      "category": "Weapons",
+      "order": 10
+    },
+    "itemmodel.afs#0011": {
+      "name": "Wand",
+      "category": "Weapons",
+      "order": 11
+    },
+    "itemmodel.afs#0012": {
+      "name": "Claw",
+      "category": "Weapons",
+      "order": 12
+    },
+    "itemmodel.afs#0013": {
+      "name": "DoubleSaber",
+      "category": "Weapons",
+      "order": 13
+    },
+    "itemmodel.afs#0014": {
+      "name": "Sonic Knuckle",
+      "category": "Weapons",
+      "order": 14
+    },
+    "itemmodel.afs#0015": {
+      "name": "Orotiagito",
+      "category": "Weapons",
+      "order": 15
+    },
+    "itemmodel.afs#0016": {
+      "name": "Soul Eater",
+      "category": "Weapons",
+      "order": 16
+    },
+    "itemmodel.afs#0017": {
+      "name": "Spread Needle",
+      "category": "Weapons",
+      "order": 17
+    },
+    "itemmodel.afs#0018": {
+      "name": "Holy Ray",
+      "category": "Weapons",
+      "order": 18
+    },
+    "itemmodel.afs#0019": {
+      "name": "Inferno Bazooka",
+      "category": "Weapons",
+      "order": 19
+    },
+    "itemmodel.afs#0020": {
+      "name": "Flame Visit",
+      "category": "Weapons",
+      "order": 20
+    },
+    "itemmodel.afs#0021": {
+      "name": "Akiko",
+      "category": "Weapons",
+      "order": 21
+    },
+    "itemmodel.afs#0022": {
+      "name": "Sorcerer",
+      "category": "Weapons",
+      "order": 22
+    },
+    "itemmodel.afs#0023": {
+      "name": "S-Beat",
+      "category": "Weapons",
+      "order": 23
+    },
+    "itemmodel.afs#0024": {
+      "name": "P-Arm",
+      "category": "Weapons",
+      "order": 24
+    },
+    "itemmodel.afs#0025": {
+      "name": "Delsaber",
+      "category": "Weapons",
+      "order": 25
+    },
+    "itemmodel.afs#0026": {
+      "name": "Bringer Rifle",
+      "category": "Weapons",
+      "order": 26
+    },
+    "itemmodel.afs#0027": {
+      "name": "Egg Blaster",
+      "category": "Weapons",
+      "order": 27
+    },
+    "itemmodel.afs#0028": {
+      "name": "Psycho Wand",
+      "category": "Weapons",
+      "order": 28
+    },
+    "itemmodel.afs#0029": {
+      "name": "Heavens Punisher",
+      "category": "Weapons",
+      "order": 29
+    },
+    "itemmodel.afs#0030": {
+      "name": "Lavis Cannon",
+      "category": "Weapons",
+      "order": 30
+    },
+    "itemmodel.afs#0031": {
+      "name": "Victor Axe",
+      "category": "Weapons",
+      "order": 31
+    },
+    "itemmodel.afs#0032": {
+      "name": "Chain Sawd",
+      "category": "Weapons",
+      "order": 32
+    },
+    "itemmodel.afs#0033": {
+      "name": "Caduceus",
+      "category": "Weapons",
+      "order": 33
+    },
+    "itemmodel.afs#0034": {
+      "name": "Sting Tip",
+      "category": "Weapons",
+      "order": 34
+    },
+    "itemmodel.afs#0035": {
+      "name": "Magical Piece",
+      "category": "Weapons",
+      "order": 35
+    },
+    "itemmodel.afs#0036": {
+      "name": "Technical Crozier",
+      "category": "Weapons",
+      "order": 36
+    },
+    "itemmodel.afs#0037": {
+      "name": "Suppressed Gun",
+      "category": "Weapons",
+      "order": 37
+    },
+    "itemmodel.afs#0038": {
+      "name": "Ancient Saber",
+      "category": "Weapons",
+      "order": 38
+    },
+    "itemmodel.afs#0039": {
+      "name": "Harisen Battle Fan",
+      "category": "Weapons",
+      "order": 39
+    },
+    "itemmodel.afs#0040": {
+      "name": "Yamigarasu",
+      "category": "Weapons",
+      "order": 40
+    },
+    "itemmodel.afs#0041": {
+      "name": "Akiko Wok",
+      "category": "Weapons",
+      "order": 41
+    },
+    "itemmodel.afs#0042": {
+      "name": "Toy Hammer",
+      "category": "Weapons",
+      "order": 42
+    },
+    "itemmodel.afs#0043": {
+      "name": "Elysion",
+      "category": "Weapons",
+      "order": 43
+    },
+    "itemmodel.afs#0044": {
+      "name": "Red Saber",
+      "category": "Weapons",
+      "order": 44
+    },
+    "itemmodel.afs#0045": {
+      "name": "Meteor Cudgel",
+      "category": "Weapons",
+      "order": 45
+    },
+    "itemmodel.afs#0046": {
+      "name": "Monkey King Bar",
+      "category": "Weapons",
+      "order": 46
+    },
+    "itemmodel.afs#0047": {
+      "name": "Double Cannon",
+      "category": "Weapons",
+      "order": 47
+    },
+    "itemmodel.afs#0048": {
+      "name": "Huge Battle Fan",
+      "category": "Weapons",
+      "order": 48
+    },
+    "itemmodel.afs#0049": {
+      "name": "Tsumikiri J-Sword",
+      "category": "Weapons",
+      "order": 49
+    },
+    "itemmodel.afs#0050": {
+      "name": "Sealed J-Sword",
+      "category": "Weapons",
+      "order": 50
+    },
+    "itemmodel.afs#0051": {
+      "name": "Red Sword",
+      "category": "Weapons",
+      "order": 51
+    },
+    "itemmodel.afs#0052": {
+      "name": "Crazy Tune",
+      "category": "Weapons",
+      "order": 52
+    },
+    "itemmodel.afs#0053": {
+      "name": "Twin Chakram",
+      "category": "Weapons",
+      "order": 53
+    },
+    "itemmodel.afs#0054": {
+      "name": "Wok of Akiko",
+      "category": "Weapons",
+      "order": 54
+    },
+    "itemmodel.afs#0055": {
+      "name": "Lavis Blade",
+      "category": "Weapons",
+      "order": 55
+    },
+    "itemmodel.afs#0056": {
+      "name": "Red Dagger",
+      "category": "Weapons",
+      "order": 56
+    },
+    "itemmodel.afs#0057": {
+      "name": "Maddam Pink",
+      "category": "Weapons",
+      "order": 57
+    },
+    "itemmodel.afs#0058": {
+      "name": "Maddam Purple",
+      "category": "Weapons",
+      "order": 58
+    },
+    "itemmodel.afs#0059": {
+      "name": "Imperial Pick",
+      "category": "Weapons",
+      "order": 59
+    },
+    "itemmodel.afs#0060": {
+      "name": "Berdysh",
+      "category": "Weapons",
+      "order": 60
+    },
+    "itemmodel.afs#0061": {
+      "name": "Red Partisan",
+      "category": "Weapons",
+      "order": 61
+    },
+    "itemmodel.afs#0062": {
+      "name": "Flight Cutter",
+      "category": "Weapons",
+      "order": 62
+    },
+    "itemmodel.afs#0063": {
+      "name": "Flight Fan",
+      "category": "Weapons",
+      "order": 63
+    },
+    "itemmodel.afs#0064": {
+      "name": "Red Slicer",
+      "category": "Weapons",
+      "order": 64
+    },
+    "itemmodel.afs#0065": {
+      "name": "Handgun Guld",
+      "category": "Weapons",
+      "order": 65
+    },
+    "itemmodel.afs#0066": {
+      "name": "Handgun Milla",
+      "category": "Weapons",
+      "order": 66
+    },
+    "itemmodel.afs#0067": {
+      "name": "Red Handgun",
+      "category": "Weapons",
+      "order": 67
+    },
+    "itemmodel.afs#0068": {
+      "name": "Frozen Shooter",
+      "category": "Weapons",
+      "order": 68
+    },
+    "itemmodel.afs#0069": {
+      "name": "Anti-Android Rifle",
+      "category": "Weapons",
+      "order": 69
+    },
+    "itemmodel.afs#0070": {
+      "name": "Rocket Punch",
+      "category": "Weapons",
+      "order": 70
+    },
+    "itemmodel.afs#0071": {
+      "name": "Samba Maracas",
+      "category": "Weapons",
+      "order": 71
+    },
+    "itemmodel.afs#0072": {
+      "name": "Twin Psychogun",
+      "category": "Weapons",
+      "order": 72
+    },
+    "itemmodel.afs#0073": {
+      "name": "Drill Launcher",
+      "category": "Weapons",
+      "order": 73
+    },
+    "itemmodel.afs#0074": {
+      "name": "Guld Milla",
+      "category": "Weapons",
+      "order": 74
+    },
+    "itemmodel.afs#0075": {
+      "name": "Red Mechguns",
+      "category": "Weapons",
+      "order": 75
+    },
+    "itemmodel.afs#0076": {
+      "name": "Belra Cannon",
+      "category": "Weapons",
+      "order": 76
+    },
+    "itemmodel.afs#0077": {
+      "name": "Panzer Faust",
+      "category": "Weapons",
+      "order": 77
+    },
+    "itemmodel.afs#0078": {
+      "name": "Summit Moon",
+      "category": "Weapons",
+      "order": 78
+    },
+    "itemmodel.afs#0079": {
+      "name": "Windmill",
+      "category": "Weapons",
+      "order": 79
+    },
+    "itemmodel.afs#0080": {
+      "name": "Evil Curst",
+      "category": "Weapons",
+      "order": 80
+    },
+    "itemmodel.afs#0081": {
+      "name": "Flower Cane",
+      "category": "Weapons",
+      "order": 81
+    },
+    "itemmodel.afs#0082": {
+      "name": "Hildebear",
+      "category": "Weapons",
+      "order": 82
+    },
+    "itemmodel.afs#0083": {
+      "name": "Hildeblue",
+      "category": "Weapons",
+      "order": 83
+    },
+    "itemmodel.afs#0084": {
+      "name": "Rabbit Wand",
+      "category": "Weapons",
+      "order": 84
+    },
+    "itemmodel.afs#0085": {
+      "name": "Plantain Leaf",
+      "category": "Weapons",
+      "order": 85
+    },
+    "itemmodel.afs#0086": {
+      "name": "Demonic Fork",
+      "category": "Weapons",
+      "order": 86
+    },
+    "itemmodel.afs#0087": {
+      "name": "Striker of Chao",
+      "category": "Weapons",
+      "order": 87
+    },
+    "itemmodel.afs#0088": {
+      "name": "Broom",
+      "category": "Weapons",
+      "order": 88
+    },
+    "itemmodel.afs#0089": {
+      "name": "Prophets of Motav",
+      "category": "Weapons",
+      "order": 89
+    },
+    "itemmodel.afs#0090": {
+      "name": "The Sigh of a God",
+      "category": "Weapons",
+      "order": 90
+    },
+    "itemmodel.afs#0091": {
+      "name": "Twinkle Star",
+      "category": "Weapons",
+      "order": 91
+    },
+    "itemmodel.afs#0092": {
+      "name": "Plantain Fan",
+      "category": "Weapons",
+      "order": 92
+    },
+    "itemmodel.afs#0093": {
+      "name": "Twin Blaze",
+      "category": "Weapons",
+      "order": 93
+    },
+    "itemmodel.afs#0094": {
+      "name": "Marina",
+      "category": "Weapons",
+      "order": 94
+    },
+    "itemmodel.afs#0095": {
+      "name": "Dragon Claw",
+      "category": "Weapons",
+      "order": 95
+    },
+    "itemmodel.afs#0096": {
+      "name": "Panther Claw",
+      "category": "Weapons",
+      "order": 96
+    },
+    "itemmodel.afs#0097": {
+      "name": "S-Rank Dagger",
+      "category": "Weapons",
+      "order": 97
+    },
+    "itemmodel.afs#0098": {
+      "name": "Plantain Huge Fan",
+      "category": "Weapons",
+      "order": 98
+    },
+    "itemmodel.afs#0099": {
+      "name": "Chameleon Scythe",
+      "category": "Weapons",
+      "order": 99
+    },
+    "itemmodel.afs#0100": {
+      "name": "Yasminkov 3000r",
+      "category": "Weapons",
+      "order": 100
+    },
+    "itemmodel.afs#0101": {
+      "name": "Ano Rifle",
+      "category": "Weapons",
+      "order": 101
+    },
+    "itemmodel.afs#0102": {
+      "name": "Baranz Launcher",
+      "category": "Weapons",
+      "order": 102
+    },
+    "itemmodel.afs#0103": {
+      "name": "Branch of Paku Paku",
+      "category": "Weapons",
+      "order": 103
+    },
+    "itemmodel.afs#0104": {
+      "name": "Heart of Poumn",
+      "category": "Weapons",
+      "order": 104
+    },
+    "itemmodel.afs#0105": {
+      "name": "Yasminkov 2000h",
+      "category": "Weapons",
+      "order": 105
+    },
+    "itemmodel.afs#0106": {
+      "name": "Yasminkov 7000v",
+      "category": "Weapons",
+      "order": 106
+    },
+    "itemmodel.afs#0107": {
+      "name": "Yasminkov 9000m",
+      "category": "Weapons",
+      "order": 107
+    },
+    "itemmodel.afs#0108": {
+      "name": "Maser Beam",
+      "category": "Weapons",
+      "order": 108
+    },
+    "itemmodel.afs#0109": {
+      "name": "Game Magazine",
+      "category": "Weapons",
+      "order": 109
+    },
+    "itemmodel.afs#0110": {
+      "name": "Flower Bouquet",
+      "category": "Weapons",
+      "order": 110
+    },
+    "itemmodel.afs#0111": {
+      "name": "S-Rank Saber",
+      "category": "Weapons",
+      "order": 111
+    },
+    "itemmodel.afs#0112": {
+      "name": "S-Rank Sword",
+      "category": "Weapons",
+      "order": 112
+    },
+    "itemmodel.afs#0113": {
+      "name": "S-Rank Blade",
+      "category": "Weapons",
+      "order": 113
+    },
+    "itemmodel.afs#0114": {
+      "name": "S-Rank Partisan",
+      "category": "Weapons",
+      "order": 114
+    },
+    "itemmodel.afs#0115": {
+      "name": "S-Rank Slicer",
+      "category": "Weapons",
+      "order": 115
+    },
+    "itemmodel.afs#0116": {
+      "name": "S-Rank Gun",
+      "category": "Weapons",
+      "order": 116
+    },
+    "itemmodel.afs#0117": {
+      "name": "S-Rank Rifle",
+      "category": "Weapons",
+      "order": 117
+    },
+    "itemmodel.afs#0118": {
+      "name": "S-Rank Mechgun",
+      "category": "Weapons",
+      "order": 118
+    },
+    "itemmodel.afs#0119": {
+      "name": "S-Rank Shot",
+      "category": "Weapons",
+      "order": 119
+    },
+    "itemmodel.afs#0120": {
+      "name": "S-Rank Cane",
+      "category": "Weapons",
+      "order": 120
+    },
+    "itemmodel.afs#0121": {
+      "name": "S-Rank Rod",
+      "category": "Weapons",
+      "order": 121
+    },
+    "itemmodel.afs#0122": {
+      "name": "S-Rank Wand",
+      "category": "Weapons",
+      "order": 122
+    },
+    "itemmodel.afs#0123": {
+      "name": "S-Rank Twin",
+      "category": "Weapons",
+      "order": 123
+    },
+    "itemmodel.afs#0124": {
+      "name": "S-Rank Claw",
+      "category": "Weapons",
+      "order": 124
+    },
+    "itemmodel.afs#0125": {
+      "name": "S-Rank Bazooka",
+      "category": "Weapons",
+      "order": 125
+    },
+    "itemmodel.afs#0126": {
+      "name": "S-Rank Needle",
+      "category": "Weapons",
+      "order": 126
+    },
+    "itemmodel.afs#0127": {
+      "name": "S-Rank Scythe",
+      "category": "Weapons",
+      "order": 127
+    },
+    "itemmodel.afs#0128": {
+      "name": "S-Rank Hammer",
+      "category": "Weapons",
+      "order": 128
+    },
+    "itemmodel.afs#0129": {
+      "name": "S-Rank Moon",
+      "category": "Weapons",
+      "order": 129
+    },
+    "itemmodel.afs#0130": {
+      "name": "S-Rank Psychogun",
+      "category": "Weapons",
+      "order": 130
+    },
+    "itemmodel.afs#0131": {
+      "name": "S-Rank Punch",
+      "category": "Weapons",
+      "order": 131
+    },
+    "itemmodel.afs#0132": {
+      "name": "S-Rank Windmill",
+      "category": "Weapons",
+      "order": 132
+    },
+    "itemmodel.afs#0133": {
+      "name": "S-Rank Harisen",
+      "category": "Weapons",
+      "order": 133
+    },
+    "itemmodel.afs#0134": {
+      "name": "S-Rank Katana",
+      "category": "Weapons",
+      "order": 134
+    },
+    "itemmodel.afs#0135": {
+      "name": "S-Rank J-Cutter",
+      "category": "Weapons",
+      "order": 135
+    },
+    "itemmodel.afs#0136": {
+      "name": "Debug Saber",
+      "category": "Weapons",
+      "order": 136
+    },
+    "itemmodel.afs#0138": {
+      "name": "Debug Sword",
+      "category": "Weapons",
+      "order": 137
+    },
+    "itemmodel.afs#0139": {
+      "name": "Debug Dagger",
+      "category": "Weapons",
+      "order": 138
+    },
+    "itemmodel.afs#0140": {
+      "name": "Debug Partisan",
+      "category": "Weapons",
+      "order": 139
+    },
+    "itemmodel.afs#0141": {
+      "name": "Debug Slicer",
+      "category": "Weapons",
+      "order": 140
+    },
+    "itemmodel.afs#0142": {
+      "name": "Debug Handgun",
+      "category": "Weapons",
+      "order": 141
+    },
+    "itemmodel.afs#0143": {
+      "name": "Debug Rifle",
+      "category": "Weapons",
+      "order": 142
+    },
+    "itemmodel.afs#0144": {
+      "name": "Debug Mechgun",
+      "category": "Weapons",
+      "order": 143
+    },
+    "itemmodel.afs#0145": {
+      "name": "Debug Shot",
+      "category": "Weapons",
+      "order": 144
+    },
+    "itemmodel.afs#0146": {
+      "name": "Debug Cane",
+      "category": "Weapons",
+      "order": 145
+    },
+    "itemmodel.afs#0147": {
+      "name": "Debug Rod",
+      "category": "Weapons",
+      "order": 146
+    },
+    "itemmodel.afs#0148": {
+      "name": "Debug Wand",
+      "category": "Weapons",
+      "order": 147
+    },
+    "itemmodel.afs#0149": {
+      "name": "Debug Claw",
+      "category": "Weapons",
+      "order": 148
+    },
+    "itemmodel.afs#0150": {
+      "name": "Debug DoubleSaber",
+      "category": "Weapons",
+      "order": 149
+    },
+    "itemmodel.afs#0151": {
+      "name": "Mag",
+      "category": "Weapons",
+      "order": 150
+    },
+    "itemmodel.afs#0152": {
+      "name": "Varuna",
+      "category": "Weapons",
+      "order": 151
+    },
+    "itemmodel.afs#0153": {
+      "name": "Mitra",
+      "category": "Weapons",
+      "order": 152
+    },
+    "itemmodel.afs#0154": {
+      "name": "Surya",
+      "category": "Weapons",
+      "order": 153
+    },
+    "itemmodel.afs#0155": {
+      "name": "Vayu",
+      "category": "Weapons",
+      "order": 154
+    },
+    "itemmodel.afs#0156": {
+      "name": "Varaha",
+      "category": "Weapons",
+      "order": 155
+    },
+    "itemmodel.afs#0157": {
+      "name": "Kama",
+      "category": "Weapons",
+      "order": 156
+    },
+    "itemmodel.afs#0158": {
+      "name": "Ushasu",
+      "category": "Weapons",
+      "order": 157
+    },
+    "itemmodel.afs#0159": {
+      "name": "Apsaras",
+      "category": "Weapons",
+      "order": 158
+    },
+    "itemmodel.afs#0160": {
+      "name": "Kumara",
+      "category": "Weapons",
+      "order": 159
+    },
+    "itemmodel.afs#0161": {
+      "name": "Kaitabha",
+      "category": "Weapons",
+      "order": 160
+    },
+    "itemmodel.afs#0162": {
+      "name": "Tapas",
+      "category": "Weapons",
+      "order": 161
+    },
+    "itemmodel.afs#0163": {
+      "name": "Bhirava",
+      "category": "Weapons",
+      "order": 162
+    },
+    "itemmodel.afs#0164": {
+      "name": "Kalki",
+      "category": "Weapons",
+      "order": 163
+    },
+    "itemmodel.afs#0165": {
+      "name": "Rudra",
+      "category": "Weapons",
+      "order": 164
+    },
+    "itemmodel.afs#0166": {
+      "name": "Marutah",
+      "category": "Weapons",
+      "order": 165
+    },
+    "itemmodel.afs#0167": {
+      "name": "Yaksa",
+      "category": "Weapons",
+      "order": 166
+    },
+    "itemmodel.afs#0168": {
+      "name": "Sita",
+      "category": "Weapons",
+      "order": 167
+    },
+    "itemmodel.afs#0169": {
+      "name": "Garuda",
+      "category": "Weapons",
+      "order": 168
+    },
+    "itemmodel.afs#0170": {
+      "name": "Nandin",
+      "category": "Weapons",
+      "order": 169
+    },
+    "itemmodel.afs#0171": {
+      "name": "Ashvinau",
+      "category": "Weapons",
+      "order": 170
+    },
+    "itemmodel.afs#0172": {
+      "name": "Ribhava",
+      "category": "Weapons",
+      "order": 171
+    },
+    "itemmodel.afs#0173": {
+      "name": "Soma",
+      "category": "Weapons",
+      "order": 172
+    },
+    "itemmodel.afs#0174": {
+      "name": "Ila",
+      "category": "Weapons",
+      "order": 173
+    },
+    "itemmodel.afs#0175": {
+      "name": "Durga",
+      "category": "Weapons",
+      "order": 174
+    },
+    "itemmodel.afs#0176": {
+      "name": "Vritra",
+      "category": "Weapons",
+      "order": 175
+    },
+    "itemmodel.afs#0177": {
+      "name": "Namuci",
+      "category": "Weapons",
+      "order": 176
+    },
+    "itemmodel.afs#0178": {
+      "name": "Sumba",
+      "category": "Weapons",
+      "order": 177
+    },
+    "itemmodel.afs#0179": {
+      "name": "Naga",
+      "category": "Weapons",
+      "order": 178
+    },
+    "itemmodel.afs#0180": {
+      "name": "Pitri",
+      "category": "Weapons",
+      "order": 179
+    },
+    "itemmodel.afs#0181": {
+      "name": "Kabanda",
+      "category": "Weapons",
+      "order": 180
+    },
+    "itemmodel.afs#0182": {
+      "name": "Ravana",
+      "category": "Weapons",
+      "order": 181
+    },
+    "itemmodel.afs#0183": {
+      "name": "Marica",
+      "category": "Weapons",
+      "order": 182
+    },
+    "itemmodel.afs#0184": {
+      "name": "Soniti",
+      "category": "Weapons",
+      "order": 183
+    },
+    "itemmodel.afs#0185": {
+      "name": "Pretra",
+      "category": "Weapons",
+      "order": 184
+    },
+    "itemmodel.afs#0186": {
+      "name": "Andhaka",
+      "category": "Weapons",
+      "order": 185
+    },
+    "itemmodel.afs#0187": {
+      "name": "Bana",
+      "category": "Weapons",
+      "order": 186
+    },
+    "itemmodel.afs#0188": {
+      "name": "Naraka",
+      "category": "Weapons",
+      "order": 187
+    },
+    "itemmodel.afs#0189": {
+      "name": "Madhu",
+      "category": "Weapons",
+      "order": 188
+    },
+    "itemmodel.afs#0190": {
+      "name": "Churel",
+      "category": "Weapons",
+      "order": 189
+    },
+    "itemmodel.afs#0191": {
+      "name": "Robo Chao",
+      "category": "Weapons",
+      "order": 190
+    },
+    "itemmodel.afs#0192": {
+      "name": "Opa Opa",
+      "category": "Weapons",
+      "order": 191
+    },
+    "itemmodel.afs#0193": {
+      "name": "Pian",
+      "category": "Weapons",
+      "order": 192
+    },
+    "itemmodel.afs#0194": {
+      "name": "Chao",
+      "category": "Weapons",
+      "order": 193
+    },
+    "itemmodel.afs#0195": {
+      "name": "Chu Chu",
+      "category": "Weapons",
+      "order": 194
+    },
+    "itemmodel.afs#0196": {
+      "name": "Kapu Kapu",
+      "category": "Weapons",
+      "order": 195
+    },
+    "itemmodel.afs#0197": {
+      "name": "Angel Wings",
+      "category": "Weapons",
+      "order": 196
+    },
+    "itemmodel.afs#0198": {
+      "name": "Devil Wings",
+      "category": "Weapons",
+      "order": 197
+    },
+    "itemmodel.afs#0199": {
+      "name": "Elnoa",
+      "category": "Weapons",
+      "order": 198
+    },
+    "itemmodel.afs#0200": {
+      "name": "Mark III",
+      "category": "Weapons",
+      "order": 199
+    },
+    "itemmodel.afs#0201": {
+      "name": "Master System",
+      "category": "Weapons",
+      "order": 200
+    },
+    "itemmodel.afs#0202": {
+      "name": "Genesis",
+      "category": "Weapons",
+      "order": 201
+    },
+    "itemmodel.afs#0203": {
+      "name": "Sega Saturn",
+      "category": "Weapons",
+      "order": 202
+    },
+    "itemmodel.afs#0204": {
+      "name": "Dreamcast",
+      "category": "Weapons",
+      "order": 203
+    },
+    "itemmodel.afs#0205": {
+      "name": "Hamburger",
+      "category": "Weapons",
+      "order": 204
+    },
+    "itemmodel.afs#0206": {
+      "name": "Panzer Tail",
+      "category": "Weapons",
+      "order": 205
+    },
+    "itemmodel.afs#0207": {
+      "name": "Devil Tail",
+      "category": "Weapons",
+      "order": 206
+    },
+    "itemmodel.afs#0208": {
+      "name": "Debug Mag",
+      "category": "Weapons",
+      "order": 207
+    },
+    "itemmodel.afs#0209": {
+      "name": "Red Ring",
+      "category": "Weapons",
+      "order": 208
+    },
+    "itemmodel.afs#0210": {
+      "name": "Tripolic Shield",
+      "category": "Weapons",
+      "order": 209
+    },
+    "itemmodel.afs#0211": {
+      "name": "Standstill Shield",
+      "category": "Weapons",
+      "order": 210
+    },
+    "itemmodel.afs#0212": {
+      "name": "Safety Heart",
+      "category": "Weapons",
+      "order": 211
+    },
+    "itemmodel.afs#0213": {
+      "name": "Kasami Bracer",
+      "category": "Weapons",
+      "order": 212
+    },
+    "itemmodel.afs#0214": {
+      "name": "Gods Shield Suzaku",
+      "category": "Weapons",
+      "order": 213
+    },
+    "itemmodel.afs#0218": {
+      "name": "Hunter Shield",
+      "category": "Weapons",
+      "order": 217
+    },
+    "itemmodel.afs#0219": {
+      "name": "Rico Glasses",
+      "category": "Weapons",
+      "order": 218
+    },
+    "itemmodel.afs#0220": {
+      "name": "Rico Earings",
+      "category": "Weapons",
+      "order": 219
+    },
+    "itemmodel.afs#0221": {
+      "name": "Blue Ring",
+      "category": "Weapons",
+      "order": 220
+    },
+    "itemmodel.afs#0222": {
+      "name": "Yellow Ring",
+      "category": "Weapons",
+      "order": 221
+    },
+    "itemmodel.afs#0223": {
+      "name": "Secure Feet",
+      "category": "Weapons",
+      "order": 222
+    },
+    "itemmodel.afs#0224": {
+      "name": "Purple Ring",
+      "category": "Weapons",
+      "order": 223
+    },
+    "itemmodel.afs#0225": {
+      "name": "Green Ring",
+      "category": "Weapons",
+      "order": 224
+    },
+    "itemmodel.afs#0226": {
+      "name": "Black Ring",
+      "category": "Weapons",
+      "order": 225
+    },
+    "itemmodel.afs#0227": {
+      "name": "White Ring",
+      "category": "Weapons",
+      "order": 226
+    }
+  }
+}

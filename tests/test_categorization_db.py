@@ -8,24 +8,27 @@ Covers:
   * rule precedence (more-specific patterns must win over less-specific
     ones — load-bearing for ``bm_ene_boss09_*`` vs ``bm_ene_*`` etc.).
 
-The DB itself lives at ``_reports/categorization_db.json`` (relative to
-the editor root) and is treated as the source of truth for all category
-labels asserted in this file.
+The DB itself lives at ``data_meta/categorization_db.json`` (relative to
+the editor root — a COMMITTED path so a fresh clone keeps the good sorting)
+and is treated as the source of truth for all category labels asserted in
+this file.
 """
 from __future__ import annotations
 
-import json
 from pathlib import Path
-
-import pytest
 
 from manifest import (
     _CATEGORY_DB_PATH,
     _category_db_cache_clear,
+    _classify_dat_bin,
+    _classify_prs,
     _load_category_db,
     _match_pattern,
+    _psov2_names_cache_clear,
+    classify,
     infer_category,
     infer_category_full,
+    psov2_display_name,
 )
 
 
@@ -360,3 +363,177 @@ def test_archive_pattern_propagates_to_inner_blobs():
         "plZsmpnj.afs#0000_plZsmpnj_0000.nj",
         parent_archive="plZsmpnj.afs",
     ) == "Player Misc"
+
+
+# ---------------------------------------------------------------------------
+# .prs -> UI (not texture) classification
+#
+# A .prs is a PRS-compressed UI asset (XVMH atlas / PACD descriptor /
+# 0xFFFFFFFF 2D-line-draw), EXCEPT the unitxt_* / smutdata localization
+# string tables which are metadata. These assert the re-categorization the
+# old ``.prs -> texture`` _EXT_MAP entry got wrong.
+# ---------------------------------------------------------------------------
+
+def _make_prs(payload: bytes) -> bytes:
+    """Build a genuine PRS-compressed blob whose decompressed bytes start
+    with ``payload`` (the inner magic leaks into the compressed head)."""
+    from formats import prs
+    return prs.compress(payload)
+
+
+def test_prs_xvmh_is_ui(tmp_path):
+    """A .prs whose inner payload is an XVMH atlas -> category 'ui'."""
+    p = tmp_path / "f256_test.prs"
+    p.write_bytes(_make_prs(b"XVMH" + b"\x38\x00\x00\x00" + b"\x00" * 256))
+    e = classify(p, root=tmp_path)
+    assert e["category"] == "ui", e
+    assert e["format"] == "PRS", e
+    assert e["compressed"] is True, e
+    assert e["inner_format"] == "XVMH", e
+
+
+def test_prs_pacd_is_ui(tmp_path):
+    """A .prs whose inner payload is a PACD descriptor -> category 'ui'."""
+    p = tmp_path / "pacdescriptor.prs"
+    p.write_bytes(_make_prs(b"PACD" + b"\x1b\x00\x00\x00" + b"\x00" * 256))
+    e = classify(p, root=tmp_path)
+    assert e["category"] == "ui", e
+    assert e["inner_format"] == "PACD", e
+
+
+def test_prs_line2d_is_ui(tmp_path):
+    """addrawlinetask*.prs (inner magic 0xFFFFFFFF) -> 'ui' 2D-line-draw."""
+    p = tmp_path / "addrawlinetask.prs"
+    p.write_bytes(_make_prs(b"\xff\xff\xff\xff" + b"\x00" * 256))
+    e = classify(p, root=tmp_path)
+    assert e["category"] == "ui", e
+    assert e["inner_format"] == "LINE2D", e
+
+
+def test_prs_unitxt_is_metadata(tmp_path):
+    """unitxt_*.prs / smutdata.prs are localization string tables ->
+    'metadata', NOT 'ui' (and never 'texture')."""
+    for fname in ("unitxt_e.prs", "unitxt_ws_j.prs", "smutdata.prs"):
+        p = tmp_path / fname
+        # Count-prefixed offset table — no clean magic; routed by filename.
+        p.write_bytes(_make_prs(b"\x49\x00\x00\x00" + b"\x00" * 64))
+        e = classify(p, root=tmp_path)
+        assert e["category"] == "metadata", (fname, e)
+        assert e["inner_format"] == "UNITXT", (fname, e)
+
+
+def test_prs_is_never_texture(tmp_path):
+    """Regression guard: no .prs should classify as 'texture' anymore."""
+    for fname, payload in (
+        ("title.prs", b"XVMH" + b"\x00" * 64),
+        ("unitxt_j.prs", b"\x01\x00\x00\x00" + b"\x00" * 64),
+    ):
+        p = tmp_path / fname
+        p.write_bytes(_make_prs(payload))
+        e = classify(p, root=tmp_path)
+        assert e["category"] != "texture", (fname, e)
+
+
+def test_classify_prs_unit():
+    """Direct unit test of ``_classify_prs`` filename + magic dispatch."""
+    assert _classify_prs(Path("unitxt_e.prs"), b"")[0] == "metadata"
+    assert _classify_prs(Path("smutdata.prs"), b"")[0] == "metadata"
+    # magic-in-head, no decompress needed
+    assert _classify_prs(Path("x.prs"), b"....XVMH....")[0] == "ui"
+    assert _classify_prs(Path("x.prs"), b"PACD....")[0] == "ui"
+
+
+# ---------------------------------------------------------------------------
+# loose .dat / .bin are NOT quests
+#
+# The old over-broad ``.dat/.bin -> quest`` _EXT_MAP entry swept hundreds
+# of area-data files (map_*, fogentry*, ...) into Quests. They must now
+# default to a neutral non-quest bucket; only true quest data (under a
+# quest/ dir) gets the Quests inferred_category.
+# ---------------------------------------------------------------------------
+
+def test_loose_dat_bin_not_quest(tmp_path):
+    """fogentry/map_*/lightentry .dat/.bin classify as a neutral non-quest
+    canonical category (never 'quest')."""
+    for fname in (
+        "fogentry.dat", "lightentry.bin", "map_city00_00.dat",
+        "particleentrya.dat", "ws_data_e.bin", "ggerr_en.bin",
+    ):
+        p = tmp_path / fname
+        p.write_bytes(b"\x00" * 32)
+        e = classify(p, root=tmp_path)
+        assert e["category"] != "quest", (fname, e)
+        # inferred_category, when present, must also not be Quests.
+        assert e.get("inferred_category") != "Quests", (fname, e)
+
+
+def test_classify_dat_bin_families():
+    """``_classify_dat_bin`` routes known families to neutral buckets."""
+    assert _classify_dat_bin("map_city00.dat", "map") == "map"
+    assert _classify_dat_bin("fogentry.dat", "map") == "map"
+    assert _classify_dat_bin("ws_data_e.bin", "map") == "metadata"
+    assert _classify_dat_bin("ggerr_ja.bin", "map") == "metadata"
+    assert _classify_dat_bin("npcplayerchar.dat", "map") == "model"
+    # Unrecognized loose .dat keeps the neutral default — NOT quest.
+    assert _classify_dat_bin("mystery_blob.dat", "map") == "map"
+
+
+def test_dead_quest_dat_rule_removed():
+    """The dead ``*.dat (quest)`` no-op rule (literal space/parenthetical
+    that fnmatch never matched) must be gone, and no rule may route a bare
+    ``*.dat`` to Quests (that would re-introduce the over-broad mapping)."""
+    _category_db_cache_clear()
+    db = _load_category_db()
+    for r in db.get("rules") or []:
+        pat = (r.get("pattern") or "")
+        assert "(quest)" not in pat, f"dead rule still present: {pat!r}"
+        if r.get("category") == "Quests":
+            # A Quests rule may target events / specific names / a quest/
+            # subdir, but never an unscoped bare '*.dat' / '*.bin'.
+            assert pat not in ("*.dat", "*.bin"), (
+                f"over-broad quest rule re-introduced: {pat!r}"
+            )
+
+
+# ---------------------------------------------------------------------------
+# psov2 curated display-names
+# ---------------------------------------------------------------------------
+
+def test_psov2_weapon_name_by_archive_index():
+    """ItemModel.afs#0000 carries the curated psov2 name 'Saber' + order 0."""
+    _psov2_names_cache_clear()
+    hit = psov2_display_name(
+        "ItemModel.afs#0000_ItemModel_0000.nj",
+        parent_archive="ItemModel.afs",
+        inner_index=0,
+    )
+    assert hit is not None, "psov2 names table missing weapon #0000"
+    assert hit["name"] == "Saber", hit
+    assert hit["order"] == 0, hit
+    assert hit["category"] == "Weapons", hit
+
+
+def test_psov2_enemy_name_by_filename():
+    """bm_ene_lappy.bml gets the curated psov2 name 'Rappy'."""
+    _psov2_names_cache_clear()
+    hit = psov2_display_name("bm_ene_lappy.bml")
+    assert hit is not None, "psov2 names table missing bm_ene_lappy.bml"
+    assert hit["name"] == "Rappy", hit
+
+
+def test_psov2_display_name_stamped_on_entry(tmp_path):
+    """classify() stamps the curated display_name + sort_key on an entry
+    the psov2 table covers (here a known enemy .bml)."""
+    _psov2_names_cache_clear()
+    p = tmp_path / "bm_boss1_dragon.bml"
+    p.write_bytes(b"\x00" * 32)
+    e = classify(p, root=tmp_path)
+    assert e.get("display_name") == "Dragon", e
+    # The DB's specific Bosses rule wins for the inferred bucket.
+    assert e.get("inferred_category") == "Bosses", e
+
+
+def test_psov2_unknown_asset_has_no_display_name():
+    """An asset psov2 doesn't enumerate gets no curated display name."""
+    _psov2_names_cache_clear()
+    assert psov2_display_name("totally_made_up_asset_xyz.bml") is None

@@ -61,6 +61,18 @@ except Exception:  # pragma: no cover - defensive
     _afs_reader_mod = None  # type: ignore[assignment]
     _HAS_AFS_READER = False
 
+# PRS decompressor: used only as a FALLBACK when the cheap compressed-head
+# sniff can't pin a .prs file's inner format (the inner magic normally
+# leaks verbatim into the first ~64 compressed bytes, so the decompress
+# path rarely runs). Optional — if it fails to import, PRS sub-typing
+# falls back to the head sniff alone.
+try:
+    from formats import prs as _prs_mod  # type: ignore
+    _HAS_PRS = hasattr(_prs_mod, "decompress")
+except Exception:  # pragma: no cover - defensive
+    _prs_mod = None  # type: ignore[assignment]
+    _HAS_PRS = False
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -111,15 +123,26 @@ BACKUP_PATTERNS_PREFIX = (
 #
 # Any extension not in this table falls through to UNKNOWN/unknown/no.
 _EXT_MAP: dict[str, tuple[str, str, str]] = {
-    ".prs": ("texture",   "PRS",       "yes"),
+    # .prs is a PRS-compressed UI asset (XVMH atlas / PACD descriptor /
+    # 0xFFFFFFFF 2D-line-draw) — NOT a 3D/world texture. The unitxt_*
+    # / smutdata localization string tables also ship as .prs but are
+    # re-bucketed to "metadata" by ``_classify_prs`` below. .xvm/.xvr
+    # stay "texture" (those ARE 3D/world model textures).
+    ".prs": ("ui",        "PRS",       "yes"),
     ".xvm": ("texture",   "XVM",       "yes"),
     ".xvr": ("texture",   "XVR",       "yes"),
     ".afs": ("container", "AFS",       "no"),
     ".bml": ("model",     "BML",       "partial"),
     ".nj":  ("model",     "NJ_IFF",    "partial"),
     ".rel": ("map",       "REL",       "no"),
-    ".dat": ("quest",     "DAT_QUEST", "no"),
-    ".bin": ("quest",     "BIN_QUEST", "no"),
+    # Loose .dat/.bin are MOSTLY area data (map_*, fogentry*, lightentry,
+    # particleentry*, ws_data_*, etc.) — NOT quests. Default both to the
+    # neutral "map" (Maps / Terrain) bucket; the categorization_db +
+    # ``_classify_dat_bin`` refine the specific families, and the few
+    # actual quest .dat/.bin get the "Quests" inferred_category via the
+    # DB rules rather than the coarse extension default.
+    ".dat": ("map",       "DAT",       "no"),
+    ".bin": ("map",       "BIN",       "no"),
     ".evt": ("script",    "EVT",       "no"),
     ".pae": ("cinematic", "PAE",       "no"),
     ".gsl": ("script",    "GSL",       "no"),
@@ -147,12 +170,13 @@ _MAGIC_TABLE: list[tuple[bytes, str]] = [
 # ---------------------------------------------------------------------------
 # Inferred-category mapping (Phase B) — JSON-driven
 #
-# The categorizer now reads its rules from ``_reports/categorization_db.json``,
+# The categorizer now reads its rules from ``data_meta/categorization_db.json``,
 # the canonical asset-categorization database produced and maintained by
 # the research-agent pipeline. The DB carries 100+ prefix patterns plus
 # subcategory + in_game_name annotations, all sourced from PSOBB.exe
-# disasm + Phantasmal World + newserv. See ``_reports/categorization_db.md``
-# for the human-readable companion.
+# disasm + Phantasmal World + newserv. See ``data_meta/categorization_db.md``
+# for the human-readable companion. (Moved out of the .gitignored
+# ``_reports/`` so a fresh clone keeps the good sorting.)
 #
 # Each rule has the shape::
 #     {
@@ -181,7 +205,13 @@ _MAGIC_TABLE: list[tuple[bytes, str]] = [
 
 # Canonical location of the rule DB. Keep this as the single source of
 # truth — do NOT inline the rules into Python.
-_CATEGORY_DB_PATH = Path(__file__).parent / "_reports" / "categorization_db.json"
+#
+# Lives under ``data_meta/`` (a COMMITTED path) rather than the old
+# ``_reports/`` (which is .gitignored, so a fresh clone lost the good
+# sorting and fell back to the coarse _EXT_MAP). The DB carries only
+# game-derived category METADATA (names / glob rules / RE evidence
+# strings) — no copyrighted binary assets — so it is safe to track.
+_CATEGORY_DB_PATH = Path(__file__).parent / "data_meta" / "categorization_db.json"
 
 # Lazy-loaded cache: ``_load_category_db()`` populates this on first call,
 # subsequent calls return the cached dict. Tests that mutate the DB on
@@ -368,6 +398,103 @@ def infer_category(
     return info.get("category") if info else None
 
 
+# ---------------------------------------------------------------------------
+# psov2 curated display-names (Phase B) — JSON-driven
+#
+# ``data_meta/psov2_names.json`` (harvested from the psov2 reference asset
+# plugins by ``scripts/harvest_psov2_names.py``) maps on-disk asset
+# filenames + ItemModel.afs archive indices to CURATED human display names
+# ("Saber", "Booma", "Pioneer 2") and a declaration ORDER. We adopt psov2's
+# NAMES + ORDER and slot them onto OUR richer category structure; the
+# canonical/inferred category is still ours.
+#
+# Two index tables:
+#   by_file    : "<lowercased asset basename>" -> {name, category, order}
+#   by_archive : "itemmodel.afs#NNNN"          -> {name, category, order}
+#
+# Consumers prefer the curated ``display_name`` + ``sort_key`` over raw
+# filename inference when present (manifest entries carry them as optional
+# fields).
+# ---------------------------------------------------------------------------
+
+_PSOV2_NAMES_PATH = Path(__file__).parent / "data_meta" / "psov2_names.json"
+_PSOV2_NAMES: Optional[dict] = None
+
+
+def _load_psov2_names() -> dict:
+    """Load + cache the psov2 display-name table. Degrades to empty tables
+    on any read / parse failure (curated names just won't be applied)."""
+    global _PSOV2_NAMES
+    if _PSOV2_NAMES is None:
+        try:
+            with open(_PSOV2_NAMES_PATH, "r", encoding="utf-8") as f:
+                raw = json.load(f)
+            _PSOV2_NAMES = {
+                "by_file": raw.get("by_file") or {},
+                "by_archive": raw.get("by_archive") or {},
+            }
+        except (OSError, json.JSONDecodeError) as e:
+            log.warning("psov2_names unreadable, no curated names: %s", e)
+            _PSOV2_NAMES = {"by_file": {}, "by_archive": {}}
+    return _PSOV2_NAMES
+
+
+def _psov2_names_cache_clear() -> None:
+    """Drop the cached psov2 names so the next lookup reloads from disk."""
+    global _PSOV2_NAMES
+    _PSOV2_NAMES = None
+
+
+def psov2_display_name(
+    rel_path: str,
+    parent_archive: Optional[str] = None,
+    inner_index: Optional[int] = None,
+) -> Optional[dict]:
+    """Return the curated ``{name, category, order}`` for ``rel_path``.
+
+    Lookup order:
+      1. archive-index — when the entry is an ItemModel.afs inner blob
+         (parent_archive == ItemModel.afs and inner_index given), key on
+         ``itemmodel.afs#NNNN``.
+      2. filename — the lowercased basename of ``rel_path``. For synth AFS
+         inner paths ("ItemModel.afs#0042_inner.nj") we also try the inner
+         basename after the '#NNNN_' prefix.
+
+    Returns None when no curated name covers the asset.
+    """
+    if not rel_path:
+        return None
+    tbl = _load_psov2_names()
+    by_file = tbl["by_file"]
+    by_archive = tbl["by_archive"]
+
+    # 1. ItemModel.afs archive-index key.
+    arch = (parent_archive or "").lower()
+    if inner_index is not None and "itemmodel.afs" in arch:
+        # Match both ItemModel.afs and ItemModelEp4.afs onto the base table
+        # (psov2 only enumerates the EP1/2 ItemModel.afs indices).
+        if arch.startswith("itemmodel.afs"):
+            hit = by_archive.get(f"itemmodel.afs#{int(inner_index):04d}")
+            if hit:
+                return hit
+
+    # 2. Filename key. Strip any directory + AFS-synth "#NNNN_" prefix.
+    base = rel_path.replace("\\", "/").split("/")[-1].lower()
+    hit = by_file.get(base)
+    if hit:
+        return hit
+    if "#" in base:
+        # "itemmodel.afs#0042_inner.nj" -> inner basename "inner.nj"
+        tail = base.split("#", 1)[1]
+        # drop the leading "NNNN_" index prefix if present
+        if "_" in tail:
+            inner = tail.split("_", 1)[1]
+            hit = by_file.get(inner)
+            if hit:
+                return hit
+    return None
+
+
 # AFS-inner blob → top-level format key map. Used by ``classify_inner_blob``
 # to project the format-id sniffed by ``afs_reader`` to the same enum
 # values the rest of the manifest pipeline uses (so consumers that read
@@ -429,6 +556,113 @@ def _scan_inner_magic(prs_head: bytes) -> Optional[str]:
         if magic in prs_head[:PRS_SNIFF_BYTES]:
             return fmt
     return None
+
+
+# PRS inner-format signatures, in priority order. These are the magics of
+# the DECOMPRESSED payload — verified live against the PSOBB.IO data tree
+# (24 .prs files): every .prs decompresses to one of these. Each maps to
+# (inner_format_id, ui-vs-metadata category). The unitxt_* / smutdata
+# localization tables are count-prefixed (no clean 4-byte tag) so they are
+# matched by FILENAME in ``_classify_prs`` rather than appearing here.
+#   XVMH       -> UI sprite/texture atlas (LogoEP4, TitleEP4, f128_*, ...)
+#   PACD       -> UI panel/atlas descriptor (pacdescriptor.prs)
+#   0xFFFFFFFF -> UI 2D-line-draw task table (addrawlinetask*.prs)
+_PRS_INNER_MAGIC: list[tuple[bytes, str, str]] = [
+    (b"XVMH",             "XVMH",   "ui"),
+    (b"PACD",             "PACD",   "ui"),
+    (b"\xff\xff\xff\xff", "LINE2D", "ui"),
+]
+
+
+def _classify_prs(path: Path, head: bytes) -> tuple[str, str]:
+    """Sub-classify a ``.prs`` file into (category, inner_format).
+
+    A .prs is a PRS-compressed UI asset, with one exception: the
+    ``unitxt_*`` / ``smutdata`` localization string tables, which are
+    METADATA. We discriminate by, in order:
+
+      1. filename — ``unitxt_*`` / ``smutdata`` -> metadata (these inner
+         payloads are count-prefixed offset tables with no 4-byte magic).
+      2. compressed-head sniff — the inner magic (XVMH / PACD / 0xFFFFFFFF)
+         leaks verbatim into the first ~64 *compressed* bytes, so we can
+         pin it without decompressing.
+      3. decompress-and-peek fallback — only when (2) is inconclusive and
+         ``formats.prs`` is importable; bounded so a hostile file can't
+         blow up the manifest build.
+
+    Returns ``(category, inner_format)`` where category is "ui" or
+    "metadata" and inner_format is a short tag ("XVMH"/"PACD"/"LINE2D"/
+    "UNITXT"/"UNKNOWN").
+    """
+    name = path.name.lower()
+    # 1. Localization string tables ship as .prs but are metadata.
+    if name.startswith("unitxt") or name == "smutdata.prs":
+        return ("metadata", "UNITXT")
+
+    # 2. Cheap compressed-head sniff (no decompress).
+    window = head[:PRS_SNIFF_BYTES]
+    for magic, inner, cat in _PRS_INNER_MAGIC:
+        if magic in window:
+            return (cat, inner)
+
+    # 3. Fallback: decompress a bounded prefix and peek at the real magic.
+    if _HAS_PRS and _prs_mod is not None:
+        try:
+            raw = _read_magic(path, 4096)
+            # Bound the output so a pathological ratio can't OOM the walk.
+            dec = _prs_mod.decompress(raw, max_output_size=256, tolerant=True)
+        except Exception:  # pragma: no cover - defensive
+            dec = b""
+        for magic, inner, cat in _PRS_INNER_MAGIC:
+            if dec[:PRS_SNIFF_BYTES].find(magic) != -1:
+                return (cat, inner)
+
+    # Unknown inner payload — still a UI asset by extension (the .prs
+    # container is never a 3D/world texture), just with an unpinned inner.
+    return ("ui", "UNKNOWN")
+
+
+# Loose-.dat/.bin family routing. These are the area-data families that the
+# old over-broad ``.dat/.bin -> quest`` mapping wrongly swept into Quests.
+# Keyed by a basename-glob; value is a SCHEMA-LEGAL canonical category
+# (texture/model/container/quest/map/audio/ui/script/cinematic/metadata/
+# unknown — see MASTER_PLAN/manifest.schema.json). The richer user-facing
+# label (e.g. "Effects" for particleentry*) still comes from the
+# categorization_db's inferred_category; baking the family map here just
+# ensures the coarse ``category`` field is a sane non-quest bucket even
+# when the DB is unavailable on a fresh clone. Default (no match) is "map"
+# (Maps / Terrain) — NEVER quest.
+_DAT_BIN_FAMILY: list[tuple[str, str]] = [
+    ("map_*.dat",          "map"),       # area object placement
+    ("map_*.bin",          "map"),       # area map data
+    ("fogentry*.dat",      "map"),       # Maps / Terrain (fog)
+    ("fogentry*.bin",      "map"),
+    ("lightentry*.dat",    "map"),       # Maps / Terrain (lighting)
+    ("lightentry*.bin",    "map"),
+    ("particleentry*.dat", "map"),       # Effects (DB infers "Effects")
+    ("particleentry*.bin", "map"),
+    ("ws_data_*.dat",      "metadata"),  # word-select string data
+    ("ws_data_*.bin",      "metadata"),
+    ("ggerr_*.dat",        "metadata"),  # error-string tables
+    ("ggerr_*.bin",        "metadata"),
+    ("npcplayerchar.dat",  "model"),     # NPC player-char model data
+]
+
+
+def _classify_dat_bin(name: str, default_cat: str) -> str:
+    """Refine a loose ``.dat``/``.bin`` file's canonical category by family.
+
+    ``name`` is the basename; ``default_cat`` is the neutral fallback from
+    ``_EXT_MAP`` ("map"). Returns the family category, or ``default_cat``
+    when nothing matches — and CRUCIALLY never returns "quest" by default
+    (true quest .dat/.bin are tagged via the categorization_db's
+    inferred_category, not the coarse extension bucket).
+    """
+    nl = name.lower()
+    for pat, cat in _DAT_BIN_FAMILY:
+        if fnmatch.fnmatchcase(nl, pat):
+            return cat
+    return default_cat
 
 
 def _ascii_safe(buf: bytes, n: int = 4) -> str:
@@ -580,20 +814,26 @@ def classify(path: Path, root: Optional[Path] = None) -> dict:
     inner_format: Optional[str] = None
     if fmt == "PRS":
         compressed = True
-        # Sniff the head for a recognizable inner magic. We never run a
-        # full PRS decompress here — that's a job for the per-file
-        # endpoint when the user actually opens the file.
-        inner = _scan_inner_magic(head)
-        if inner is None:
-            # Read a slightly bigger window for files whose first literal
-            # run is shorter (rare, but cheap to handle).
-            bigger = _read_magic(path, PRS_SNIFF_BYTES)
-            inner = _scan_inner_magic(bigger)
-        if inner is not None:
-            inner_format = inner
-        else:
-            inner_format = "UNKNOWN"
-            warnings.append("PRS inner format not detected by head sniff")
+        # PRS is a compressed UI asset container. Sub-classify it into
+        # ui (XVMH atlas / PACD descriptor / 0xFFFFFFFF line-draw) vs
+        # metadata (unitxt / smutdata localization tables), and pin the
+        # inner format. ``_classify_prs`` prefers the cheap compressed-
+        # head sniff (need a slightly bigger window than the 16-byte
+        # magic probe) and only decompresses as a last resort.
+        prs_head = head if len(head) >= PRS_SNIFF_BYTES else _read_magic(
+            path, PRS_SNIFF_BYTES
+        )
+        cat, inner_format = _classify_prs(path, prs_head)
+        if inner_format == "UNKNOWN":
+            warnings.append("PRS inner format not detected by sniff")
+
+    # ------- loose .dat/.bin family refinement ----------------------------
+    # Most loose .dat/.bin are area data (map_*, fogentry*, particleentry*,
+    # etc.), NOT quests. Refine the neutral "map" default into the right
+    # family bucket; un-recognized files keep the neutral default (never
+    # "quest"). The categorization_db still supplies the inferred_category.
+    if ext in (".dat", ".bin"):
+        cat = _classify_dat_bin(path.name, cat)
 
     # ------- siblings ------------------------------------------------------
     # Phase A: leave empty. The matcher (Agent 3) will populate this in
@@ -650,7 +890,42 @@ def classify(path: Path, root: Optional[Path] = None) -> dict:
     if inf is not None:
         entry["inferred_category"] = inf
 
+    # Curated psov2 display-name + sort key (preferred over filename
+    # inference by the tree). Only emitted when the psov2 table covers
+    # this asset; its category maps onto our structure and, when we don't
+    # already have a DB-inferred bucket, seeds ``inferred_category``.
+    _apply_psov2_name(entry, rel)
+
     return entry
+
+
+def _apply_psov2_name(
+    entry: dict,
+    rel: str,
+    *,
+    parent_archive: Optional[str] = None,
+    inner_index: Optional[int] = None,
+) -> None:
+    """Stamp ``entry`` with the curated psov2 ``display_name`` + ``sort_key``
+    (and fill ``inferred_category`` from the curated category when we don't
+    already have a DB-inferred one). No-op when psov2 has no entry for the
+    asset, so unchanged files keep producing identical records."""
+    curated = psov2_display_name(
+        rel, parent_archive=parent_archive, inner_index=inner_index
+    )
+    if not curated:
+        return
+    name = curated.get("name")
+    if name:
+        entry["display_name"] = name
+        # Stable per-category ordering key from the psov2 declaration order.
+        order = curated.get("order")
+        if isinstance(order, int):
+            entry["sort_key"] = order
+    # Map the curated category onto our inferred bucket only if the DB
+    # didn't already supply one (DB rules are more specific / authoritative).
+    if "inferred_category" not in entry and curated.get("category"):
+        entry["inferred_category"] = curated["category"]
 
 
 def _synthesize_afs_entries(
@@ -725,6 +1000,11 @@ def _synthesize_afs_entries(
         inf = infer_category(synth, parent_archive=archive_name)
         if inf is not None:
             entry["inferred_category"] = inf
+        # Curated psov2 name for ItemModel.afs#NNNN weapons ("Saber",
+        # "Sword", ...) keyed on the archive index, plus per-weapon order.
+        _apply_psov2_name(
+            entry, synth, parent_archive=archive_name, inner_index=idx,
+        )
         out.append(entry)
     return out
 
@@ -1127,7 +1407,8 @@ def cache_path_for(install_root: Path, cache_dir: Optional[Path] = None) -> Path
 # the row is an AFS-inner blob); everything else is stripped.
 # ---------------------------------------------------------------------------
 
-LITE_KEYS = ("path", "category", "inferred_category", "size", "parent_archive")
+LITE_KEYS = ("path", "category", "inferred_category", "size", "parent_archive",
+             "display_name", "sort_key")
 
 
 def _to_lite_entry(entry: dict) -> dict:

@@ -1,0 +1,1273 @@
+{
+  "version": "1",
+  "generated_at": "2026-04-26",
+  "categories": [
+    "Player Bodies",
+    "Player Headgear",
+    "Player Misc",
+    "Enemies",
+    "Bosses",
+    "NPCs",
+    "Objects",
+    "Items",
+    "Mags",
+    "Weapons",
+    "Effects",
+    "Maps / Terrain",
+    "Audio",
+    "Quests",
+    "UI",
+    "Metadata",
+    "Set Pieces",
+    "Uncategorized"
+  ],
+  "fallback": "Uncategorized",
+  "areaIds": {
+    "0": "Pioneer 2 / Lobby",
+    "1": "Forest 1 (EP1)",
+    "2": "Forest 2 (EP1)",
+    "3": "Caves 1 (EP1)",
+    "4": "Caves 2 (EP1)",
+    "5": "Caves 3 (EP1)",
+    "6": "Mines 1 (EP1)",
+    "7": "Mines 2 (EP1)",
+    "8": "Ruins 1 (EP1)",
+    "9": "Ruins 2 (EP1)",
+    "10": "Ruins 3 (EP1)",
+    "11": "VR Temple Alpha (EP2)",
+    "12": "VR Temple Beta (EP2)",
+    "13": "VR Spaceship Alpha (EP2)",
+    "14": "VR Spaceship Beta (EP2)",
+    "15": "Central Control Area (CCA) (EP2)",
+    "16": "Jungle North (EP2)",
+    "17": "Jungle East (EP2)",
+    "18": "Mountain (EP2)",
+    "19": "Seaside (EP2)",
+    "20": "Seabed Upper (EP2)",
+    "21": "Seabed Lower (EP2)",
+    "22": "Cliffs of Gal Da Val",
+    "23": "Test Subterranean Desert 1 (EP4)",
+    "24": "Crater Route 1 (EP4)",
+    "25": "Crater Route 2 (EP4)",
+    "26": "Crater Route 3 (EP4)",
+    "27": "Crater Interior (EP4)",
+    "28": "Subterranean Desert 1 (EP4)",
+    "29": "Subterranean Desert 2 (EP4)",
+    "30": "Subterranean Desert 3 (EP4)"
+  },
+  "rules": [
+    {
+      "pattern": "ItemModel.afs#*",
+      "category": "Items",
+      "subcategory": "EP1/2 item models",
+      "in_game_name": "Equipment / Weapon / Mag / Tool model",
+      "source": "AFS archive containing item geometry (.nj) + textures (.xvm); index range covers weapons (00xx-0Cxx), armors/shields (~0Dxx-1Cxx), mags (~1Dxx-2Cxx + rare from 0x28), tools/units (~30xx+); newserv-sparse/src/ItemParameterTable.cc:146 first_rare_mag_index=0x28"
+    },
+    {
+      "pattern": "ItemModelEp4.afs#*",
+      "category": "Items",
+      "subcategory": "EP4 item models",
+      "in_game_name": "EP4 Equipment / Mag",
+      "source": "EP4-specific item AFS; indices cover EP4-only weapons + mags (e.g. Sato, etc.)"
+    },
+    {
+      "pattern": "ItemTexture.afs#*",
+      "category": "Items",
+      "subcategory": "EP1/2 item textures",
+      "in_game_name": "Item Texture (XVM)",
+      "source": "Per-index XVM textures matched 1:1 with ItemModel.afs entries"
+    },
+    {
+      "pattern": "ItemTextureEp4.afs#*",
+      "category": "Items",
+      "subcategory": "EP4 item textures",
+      "in_game_name": "EP4 Item Texture (XVM)"
+    },
+    {
+      "pattern": "ItemKT*.afs#*",
+      "category": "UI",
+      "subcategory": "Item icons",
+      "in_game_name": "Inventory Item Icon (KT atlas)",
+      "source": "ItemKT = Kit/icon atlas; XVM textures used by the inventory UI"
+    },
+    {
+      "pattern": "pl?bdy00.nj",
+      "category": "Player Bodies",
+      "subcategory": "Player class body",
+      "in_game_name": "Player class body geometry",
+      "source": "pl[A-Z] = canonical player-class slot (HUmar/HUnewearl/RAcaseal/etc.); bdy = body, 00 = base model. Confirmed by data tree directory structure."
+    },
+    {
+      "pattern": "pl?hed??.nj",
+      "category": "Player Headgear",
+      "subcategory": "Player class head",
+      "in_game_name": "Player class head/hair geometry",
+      "source": "pl[A-Z] hed[NN] = player head/hairstyle (00 = default, 01-09 = alternates)"
+    },
+    {
+      "pattern": "pl?hai??.nj",
+      "category": "Player Headgear",
+      "subcategory": "Player class hair",
+      "in_game_name": "Player class hair geometry"
+    },
+    {
+      "pattern": "pl?cap??.nj",
+      "category": "Player Headgear",
+      "subcategory": "Player class headgear",
+      "in_game_name": "Player class cap/headgear (FOmar etc.)"
+    },
+    {
+      "pattern": "pl?nj.bml",
+      "category": "Player Misc",
+      "subcategory": "Player skeleton bundle",
+      "in_game_name": "Player class NJ rig bundle"
+    },
+    {
+      "pattern": "pl?smp.rel",
+      "category": "Player Misc",
+      "subcategory": "Player skinned-mesh sample",
+      "in_game_name": "Player class .rel skin/animation map"
+    },
+    {
+      "pattern": "pl?tex.afs",
+      "category": "Player Misc",
+      "subcategory": "Player textures",
+      "in_game_name": "Player class XVM textures"
+    },
+    {
+      "pattern": "plZsmpnj.afs",
+      "category": "Player Misc",
+      "subcategory": "Generic player template",
+      "in_game_name": "Z-class generic player skeleton+samples (template/proto)"
+    },
+    {
+      "pattern": "bm_boss1_dragon*.bml",
+      "category": "Bosses",
+      "subcategory": "EP1 Forest boss",
+      "in_game_name": "Sil Dragon (Dragon)",
+      "source": "PsoBB.exe @0x4faeec — neighbors include draroar.adx, dradeath.adx; EnemyType DRAGON in newserv-sparse/src/EnemyType.cc"
+    },
+    {
+      "pattern": "bm_boss2_de_rol_le*.bml",
+      "category": "Bosses",
+      "subcategory": "EP1 Caves boss",
+      "in_game_name": "De Rol Le",
+      "source": "Confirmed via psobb_full_entity_map.md cls 0xA43CC8 area; phantasmal NpcType.DeRolLe"
+    },
+    {
+      "pattern": "bm_boss3_volopt*.bml",
+      "category": "Bosses",
+      "subcategory": "EP1 Mines boss",
+      "in_game_name": "Vol Opt (ver. 2)",
+      "source": "psobb_full_entity_map.md Vol Opt cluster 0xA447D4..0xA44A18 (Control/Body/DeadChecker/Display/Monitor/Pillar/Phase2)"
+    },
+    {
+      "pattern": "bm_boss5_gryphon.bml",
+      "category": "Bosses",
+      "subcategory": "EP2 Jungle boss",
+      "in_game_name": "Gal Gryphon",
+      "source": "Phantasmal NpcType.GalGryphon (Episode II Jungle)"
+    },
+    {
+      "pattern": "bm_boss7_crawfish.bml",
+      "category": "Bosses",
+      "subcategory": "EP2 Seabed boss",
+      "in_game_name": "Olga Flow / Crawfish-form",
+      "source": "Phantasmal NpcType.OlgaFlow (Episode II Seabed); 'crawfish' is dev-internal name"
+    },
+    {
+      "pattern": "bm_boss7_de_rol_le_c.bml",
+      "category": "Bosses",
+      "subcategory": "EP2 alt De Rol Le",
+      "in_game_name": "Barba Ray (De Rol Le clone)",
+      "source": "Phantasmal NpcType.BarbaRay; uses De Rol Le geometry with EP2 reskin"
+    },
+    {
+      "pattern": "bm_boss8_dragon.bml",
+      "category": "Bosses",
+      "subcategory": "EP4 Crater boss",
+      "in_game_name": "Gol Dragon (Episode IV)",
+      "source": "PsoBB.exe @0x5075b8 — neighbor goldeath.adx confirms 'gol' (gold) variant; phantasmal NpcType.GolDragon"
+    },
+    {
+      "pattern": "bm_obj_boss8_*.bml",
+      "category": "Bosses",
+      "subcategory": "EP4 Crater boss subparts",
+      "in_game_name": "Gol Dragon subpart (demoroom/monitor/piller)",
+      "source": "psobb_binary_scan.md note: bm_obj_boss8_*.bml are Gol Dragon assets, NOT Vol Opt despite similar naming"
+    },
+    {
+      "pattern": "bm_obj_ep4_boss09_*",
+      "category": "Bosses",
+      "subcategory": "EP4 final boss subparts",
+      "in_game_name": "Saint-Million / Shambertin / Kondrieu subpart",
+      "source": "Phantasmal NpcType.SaintMilion + Shambertin + Kondrieu (EP4 final). 'boss09' is the EP4 final-boss asset family."
+    },
+    {
+      "pattern": "bm_ene_boss09*",
+      "category": "Bosses",
+      "subcategory": "EP4 final boss",
+      "in_game_name": "Saint-Million / Shambertin / Kondrieu",
+      "source": "Phantasmal: typeId 332/333 boss. The 'tentacle' suffix is the spinner/satellite enemy."
+    },
+    {
+      "pattern": "boss06_plotfalz_dat.bml",
+      "category": "Bosses",
+      "subcategory": "EP1 Ruins boss",
+      "in_game_name": "Dark Falz (cinematic data)",
+      "source": "plotfalz = Plot Falz (Dark Falz cinematic plot data); pairs with darkfalz_dat.bml"
+    },
+    {
+      "pattern": "darkfalz_dat.bml",
+      "category": "Bosses",
+      "subcategory": "EP1 Ruins boss",
+      "in_game_name": "Dark Falz (entity data)",
+      "source": "PsoBB.exe @darkfalz string — pairs with df3_s_body neighbors"
+    },
+    {
+      "pattern": "bm_ene_balclaw.bml",
+      "category": "Enemies",
+      "subcategory": "EP1 Mines",
+      "in_game_name": "Bulclaw / Claw",
+      "source": "psobb_full_entity_map.md cls 0xA734CC; unitxt 38"
+    },
+    {
+      "pattern": "bm_ene_bm1_shark*",
+      "category": "Enemies",
+      "subcategory": "EP1 Caves",
+      "in_game_name": "Evil Shark / Pal Shark / Guil Shark",
+      "source": "psobb_full_entity_map.md shark_constructor → cls 0xA72D1C; unitxt 16/17/18; PsoBB.exe @0x578e80"
+    },
+    {
+      "pattern": "bm_ene_bm2_moja*",
+      "category": "Enemies",
+      "subcategory": "EP1 Forest",
+      "in_game_name": "Booma / Go-Booma / Gi-Booma",
+      "source": "psobb_full_entity_map.md set_booma_name_unitxt_index unitxt 9/10/11"
+    },
+    {
+      "pattern": "bm_ene_bm3_fly*",
+      "category": "Enemies",
+      "subcategory": "EP1 Forest",
+      "in_game_name": "Mothmant / Monest (fly form)",
+      "source": "Phantasmal NpcType.Mothmant + Monest (Forest); 'fly' in name"
+    },
+    {
+      "pattern": "bm_ene_bm5_wolf*",
+      "category": "Enemies",
+      "subcategory": "EP1 Forest",
+      "in_game_name": "Savage Wolf / Barbarous Wolf",
+      "source": "Phantasmal NpcType.SavageWolf + BarbarousWolf"
+    },
+    {
+      "pattern": "bm_ene_bm5_gibon*",
+      "category": "Enemies",
+      "subcategory": "EP2 Jungle",
+      "in_game_name": "Ul Gibbon / Zol Gibbon",
+      "source": "Phantasmal NpcType.UlGibbon + ZolGibbon"
+    },
+    {
+      "pattern": "bm_ene_bm9_s_mericarol*",
+      "category": "Enemies",
+      "subcategory": "EP2 Spaceship",
+      "in_game_name": "Mericarol / Merikle / Mericus",
+      "source": "Phantasmal NpcType.Mericarol; 'meri' = Merillia/Mericarol family"
+    },
+    {
+      "pattern": "bm_ene_re2_flower*",
+      "category": "Enemies",
+      "subcategory": "EP1 Forest / EP4",
+      "in_game_name": "Poison Lily / Nar Lily",
+      "source": "PsoBB.exe @re2_flower; phantasmal NpcType.PoisonLily (skin 0/1)"
+    },
+    {
+      "pattern": "bm_ene_dkflower.bml",
+      "category": "Enemies",
+      "subcategory": "EP4 Desert",
+      "in_game_name": "Del Lily (Dark Flower)",
+      "source": "PsoBB.exe SE_TOWER_DELLILY_*; phantasmal NpcType.DelLily (EP4 rare lily)"
+    },
+    {
+      "pattern": "bm_ene_re4_sorcerer*",
+      "category": "Enemies",
+      "subcategory": "EP1 Ruins",
+      "in_game_name": "Chaos Sorcerer (Bee R/L)",
+      "source": "PsoBB.exe @re4_sorcerer; phantasmal NpcType.ChaosSorcerer + BeeR/BeeL helpers"
+    },
+    {
+      "pattern": "bm_ene_re7_berura*",
+      "category": "Enemies",
+      "subcategory": "EP1 Ruins",
+      "in_game_name": "Dark Belra (Berura)",
+      "source": "PsoBB.exe @re7_berura: 'Error : Berura' string; phantasmal NpcType.DarkBelra"
+    },
+    {
+      "pattern": "bm_ene_re8_b_beast*",
+      "category": "Enemies",
+      "subcategory": "EP2 Spaceship/CCA",
+      "in_game_name": "Sinow Beat / Sinow Gold (EP2 reskin: Sinow Berill)",
+      "source": "PsoBB.exe @re8_b_beast: 'b_beast' / 'b_rdbeast' / 'b_srdbeast'; b_beast=Beat-form"
+    },
+    {
+      "pattern": "bm_ene_re8_merill_lia*",
+      "category": "Enemies",
+      "subcategory": "EP2 Temple",
+      "in_game_name": "Merillia / Meriltas",
+      "source": "psobb_full_entity_map.md merillia_constructor → cls 0xA74040; unitxt 52/53"
+    },
+    {
+      "pattern": "bm_ene_recobox*",
+      "category": "Enemies",
+      "subcategory": "EP2 Spaceship",
+      "in_game_name": "Recobox / Recon",
+      "source": "Phantasmal NpcType.Recobox + Recon (Recon spawns from Recobox)"
+    },
+    {
+      "pattern": "bm_ene_abgc01_wola_body*",
+      "category": "Enemies",
+      "subcategory": "EP1 Forest",
+      "in_game_name": "Hildebear / Hildeblue",
+      "source": "PsoBB.exe @abgc01: odori (taunt), wola_body; cls 0xA73A20 init_dimenian_subtypes... mislabeled — actually Hildebear via wola=wolf-related body? Confirmed by area-of-use."
+    },
+    {
+      "pattern": "bm_ene_biter_body*",
+      "category": "Enemies",
+      "subcategory": "EP4 Crater/Desert",
+      "in_game_name": "Astark biter (subpart)",
+      "source": "Astark has multiple biter subparts; phantasmal NpcType.Astark"
+    },
+    {
+      "pattern": "bm_ene_cgrass*",
+      "category": "Enemies",
+      "subcategory": "EP1 Forest",
+      "in_game_name": "Grass Assassin (Caves variant)",
+      "source": "psobb_full_entity_map.md grassassassin_constructor unitxt 12; cgrass = Caves Grass"
+    },
+    {
+      "pattern": "bm_ene_grass*",
+      "category": "Enemies",
+      "subcategory": "EP1 Caves",
+      "in_game_name": "Grass Assassin (Crimson Assassin)",
+      "source": "psobb_full_entity_map.md grassassassin_constructor cls 0xA72F24"
+    },
+    {
+      "pattern": "bm_ene_dubchik*",
+      "category": "Enemies",
+      "subcategory": "EP1 Mines",
+      "in_game_name": "Dubchic / Gilchic",
+      "source": "psobb_full_entity_map.md gilchic_constructor unitxt 24/50"
+    },
+    {
+      "pattern": "bm_ene_gyaranzo*",
+      "category": "Enemies",
+      "subcategory": "EP1 Mines",
+      "in_game_name": "Garanz",
+      "source": "Phantasmal NpcType.Garanz (Mines area)"
+    },
+    {
+      "pattern": "bm_ene_darkgunner*",
+      "category": "Enemies",
+      "subcategory": "EP1 Mines",
+      "in_game_name": "Dark Gunner",
+      "source": "psobb_full_entity_map.md dark_gunner_constructor cls 0xA7383C unitxt 34"
+    },
+    {
+      "pattern": "bm_ene_me1_gee*",
+      "category": "Enemies",
+      "subcategory": "EP2 Spaceship/Temple",
+      "in_game_name": "Gee",
+      "source": "PsoBB.exe @me1_gee; phantasmal NpcType.Gee"
+    },
+    {
+      "pattern": "bm_ene_me1_mb*",
+      "category": "Enemies",
+      "subcategory": "EP2 Spaceship",
+      "in_game_name": "Death Gunner / Sinow Beat (mech-bot variant)",
+      "source": "psobb_full_entity_map.md death_gunner_constructor cls 0xA737B0 unitxt 34/35"
+    },
+    {
+      "pattern": "bm_ene_me3_shinowa*",
+      "category": "Enemies",
+      "subcategory": "EP2 Temple",
+      "in_game_name": "Sinow Berill / Sinow Spigell",
+      "source": "PsoBB.exe @me3_shinowa: TEX:GOLD/NORMAL, MIRAGE flags; ghidra_psobb_findings.md set_sinowberill_name_unitxt_id @0x59E844"
+    },
+    {
+      "pattern": "bm_ene_me3_zoa*",
+      "category": "Enemies",
+      "subcategory": "EP2 Temple/Spaceship",
+      "in_game_name": "Sinow Zoa / Sinow Zele",
+      "source": "PsoBB.exe @me3_zoa: STELTH:ENABLE/DISABLE, APPEAR:GROUND/ROOF; phantasmal NpcType.SinowZoa + SinowZele"
+    },
+    {
+      "pattern": "bm_ene_me3_stelthshinowa.bml",
+      "category": "Enemies",
+      "subcategory": "EP2 Temple",
+      "in_game_name": "Stealth Sinow (variant)",
+      "source": "PsoBB.exe — stealth variant of me3_shinowa with STELTH animations"
+    },
+    {
+      "pattern": "bm_ene_me3_beril_low.bml",
+      "category": "Enemies",
+      "subcategory": "EP2 Temple LOD",
+      "in_game_name": "Sinow Berill (low-LOD)",
+      "source": "Confirmed via cls 0xA74790 → bm_ene_me3_beril_low.bml in entity_cls_table.h"
+    },
+    {
+      "pattern": "bm_ene_df1_saver.bml",
+      "category": "Enemies",
+      "subcategory": "EP1 Ruins",
+      "in_game_name": "Delsaber",
+      "source": "psobb_full_entity_map.md delsaber_constructor cls 0xA739A8 unitxt 30"
+    },
+    {
+      "pattern": "bm_ene_df2_bringer*",
+      "category": "Enemies",
+      "subcategory": "EP1 Ruins",
+      "in_game_name": "Chaos Bringer",
+      "source": "PsoBB.exe @df2_bringer; phantasmal NpcType.ChaosBringer"
+    },
+    {
+      "pattern": "bm_ene_df3_dimedian*",
+      "category": "Enemies",
+      "subcategory": "EP1 Ruins",
+      "in_game_name": "Dimenian / La Dimenian / So Dimenian",
+      "source": "psobb_full_entity_map.md dimenian_constructor cls 0xA739EC unitxt 41/42/43; uses sl/ssl/s sub-models"
+    },
+    {
+      "pattern": "bm_ene_ill_gill.bml",
+      "category": "Enemies",
+      "subcategory": "EP2 Seabed",
+      "in_game_name": "Ill Gill",
+      "source": "psobb_full_entity_map.md illgill_constructor cls 0xA733B8 unitxt 82"
+    },
+    {
+      "pattern": "bm_ene_epsilon.bml",
+      "category": "Enemies",
+      "subcategory": "EP2 Spaceship",
+      "in_game_name": "Epsilon",
+      "source": "psobb_full_entity_map.md epsilon_constructor cls 0xA73BEC unitxt 84"
+    },
+    {
+      "pattern": "bm_ene_gibbles*",
+      "category": "Enemies",
+      "subcategory": "EP1 Mines",
+      "in_game_name": "Gibbles",
+      "source": "psobb_full_entity_map.md gibbles_constructor cls 0xA73CFC unitxt 61"
+    },
+    {
+      "pattern": "bm_ene_gi_gue*",
+      "category": "Enemies",
+      "subcategory": "EP2 Temple/Spaceship",
+      "in_game_name": "Gi Gue",
+      "source": "psobb_full_entity_map.md gigue_constructor cls 0xA73DB4 unitxt 55"
+    },
+    {
+      "pattern": "bm_ene_nanodrago.bml",
+      "category": "Enemies",
+      "subcategory": "EP1 Caves",
+      "in_game_name": "Nano Dragon",
+      "source": "psobb_full_entity_map.md nanodragon_constructor cls 0xA74198 unitxt 15"
+    },
+    {
+      "pattern": "bm_ene_lappy*",
+      "category": "Enemies",
+      "subcategory": "EP1/2/4",
+      "in_game_name": "Rag Rappy / Al Rappy / Saint Rappy / Egg Rappy / Hallo Rappy / Love Rappy / Sand Rappy",
+      "source": "Lappy = Rappy. Suffixes: _es=Easter, _hw=Halloween, _xs=Xmas, _ap=alpha (special). Per phantasmal NpcType.* Rappy variants"
+    },
+    {
+      "pattern": "bm_ene_sandlappy.bml",
+      "category": "Enemies",
+      "subcategory": "EP4 Desert",
+      "in_game_name": "Sand Rappy",
+      "source": "Phantasmal NpcType.SandRappyDesert/Crater"
+    },
+    {
+      "pattern": "bm_ene_yowie.bml",
+      "category": "Enemies",
+      "subcategory": "EP4 Crater/Desert",
+      "in_game_name": "Yowie",
+      "source": "Phantasmal NpcType.YowieDesert + YowieCrater"
+    },
+    {
+      "pattern": "bm_ene_zu.bml",
+      "category": "Enemies",
+      "subcategory": "EP4 Crater/Desert",
+      "in_game_name": "Zu / Pazuzu (rare)",
+      "source": "psobb_full_entity_map.md zu_constructor cls 0xA749EC unitxt 94/95"
+    },
+    {
+      "pattern": "bm_ene_boota.bml",
+      "category": "Enemies",
+      "subcategory": "EP4 Crater",
+      "in_game_name": "Boota / Ze Boota / Ba Boota",
+      "source": "psobb_full_entity_map.md boota_constructor cls 0xA747F4 unitxt 96/97/98"
+    },
+    {
+      "pattern": "bm_ene_golan.bml",
+      "category": "Enemies",
+      "subcategory": "EP4 Desert",
+      "in_game_name": "Goran / Pyro Goran / Goran Detonator",
+      "source": "psobb_full_entity_map.md goran_constructor cls 0xA7490C unitxt 101/102/103"
+    },
+    {
+      "pattern": "bm_ene_astark.bml",
+      "category": "Enemies",
+      "subcategory": "EP4 Desert",
+      "in_game_name": "Astark",
+      "source": "psobb_full_entity_map.md astark_constructor cls 0xA747C8 unitxt 88"
+    },
+    {
+      "pattern": "bm_ene_girtablulu.bml",
+      "category": "Enemies",
+      "subcategory": "EP4 Desert",
+      "in_game_name": "Girtablulu",
+      "source": "Phantasmal NpcType.Girtablulu (EP4 Desert)"
+    },
+    {
+      "pattern": "bm_ene_dolphon.bml",
+      "category": "Enemies",
+      "subcategory": "EP4 Crater/Test",
+      "in_game_name": "Dolmolm / Dolmdarl (Dolphon)",
+      "source": "PsoBB.exe entity_cls_table.h cls 0xA74828; phantasmal NpcType.Dolmolm + Dolmdarl"
+    },
+    {
+      "pattern": "bm_ene_morfos*",
+      "category": "Enemies",
+      "subcategory": "EP2 Seabed",
+      "in_game_name": "Morfos",
+      "source": "Phantasmal NpcType.Morfos (EP2 Seabed)"
+    },
+    {
+      "pattern": "bm_ene_melissa.bml",
+      "category": "Enemies",
+      "subcategory": "EP2 Seabed",
+      "in_game_name": "Delbiter (Melissa)",
+      "source": "PsoBB.exe entity_cls_table.h cls 0xA74A18; phantasmal NpcType.Delbiter"
+    },
+    {
+      "pattern": "bm_ene_del_depth*",
+      "category": "Enemies",
+      "subcategory": "EP2 Seabed",
+      "in_game_name": "Del Depth",
+      "source": "Phantasmal NpcType.Deldepth (EP2 Seabed)"
+    },
+    {
+      "pattern": "bm_ene_common_all.bml",
+      "category": "Enemies",
+      "subcategory": "Shared rig",
+      "in_game_name": "Common enemy skeleton (shared)",
+      "source": "PsoBB.exe entity_cls_table.h cls 0xA740D8; container of common enemy bones"
+    },
+    {
+      "pattern": "bm_ene_npc_chao*",
+      "category": "Enemies",
+      "subcategory": "Quest-only NPC",
+      "in_game_name": "Chao (Sega Sonic guest enemy)",
+      "source": "Quest helper NPC; nps_chao_body neighbor"
+    },
+    {
+      "pattern": "bm_ene_npc_nights*",
+      "category": "Enemies",
+      "subcategory": "Quest-only NPC",
+      "in_game_name": "NiGHTS (Sega guest)",
+      "source": "Sega cross-promotional NPC; npc_nights_body neighbor with fly/uki anims"
+    },
+    {
+      "pattern": "bm4_ps_ma_body*",
+      "category": "Enemies",
+      "subcategory": "EP1 Caves (legacy prefix)",
+      "in_game_name": "Sinow Beat / Sinow Gold (legacy 'ma'/'mb' subparts)",
+      "source": "PsoBB.exe @0x528200: 'BLUE | RED | TYPE [0/1]' indicator + tail attack (tlatk_bm4_ps_ma_tail.njm) + apear/kie animations consistent with Sinow's stealth-warp behavior; cls cluster 0xA74658..0xA746B0 in NormalMob range; sits adjacent to me3_shinowa/zoa (Sinow EP2 reskins) in the binary's data layout. NOT a player body. The 'ps' prefix appears unique to this asset family ('psinow'?)."
+    },
+    {
+      "pattern": "bm7_s_paa_body*",
+      "category": "Enemies",
+      "subcategory": "EP1 Caves",
+      "in_game_name": "Pan Arms (combined form) / Hidoom / Migium",
+      "source": "psobb_full_entity_map.md panarms_constructor cls 0xA742A8 unitxt 21; init_hidoom_migium_bp cls 0xA74370 unitxt 22/23. paa = Pan Arms Assembled, pal/par = left/right halves"
+    },
+    {
+      "pattern": "bm_eff_*",
+      "category": "Effects",
+      "subcategory": "Particle/effect models",
+      "in_game_name": "Effect geometry (ice/fire/etc)",
+      "source": "bm_eff_ice.bml in data tree; eff = effects"
+    },
+    {
+      "pattern": "eff_*",
+      "category": "Effects",
+      "subcategory": "Effect data",
+      "in_game_name": "Effect descriptor"
+    },
+    {
+      "pattern": "fe_obj_*",
+      "category": "Objects",
+      "subcategory": "Forest exterior props",
+      "in_game_name": "Forest/exterior environment object",
+      "source": "fe = forest exterior; covers fences, trees, rocks, capsules, doors. Common shared models."
+    },
+    {
+      "pattern": "bm_fe_obj_*",
+      "category": "Objects",
+      "subcategory": "Forest exterior props (BML-wrapped)",
+      "in_game_name": "Forest exterior object (.bml-wrapped)"
+    },
+    {
+      "pattern": "bm_fs_obj_*",
+      "category": "Objects",
+      "subcategory": "Forest scene props",
+      "in_game_name": "Forest scene object (interior/labo)",
+      "source": "fs = forest scene (indoor/lab)"
+    },
+    {
+      "pattern": "fs_obj_*",
+      "category": "Objects",
+      "subcategory": "Forest scene props",
+      "in_game_name": "Forest scene object"
+    },
+    {
+      "pattern": "bm_fd_obj_*",
+      "category": "Objects",
+      "subcategory": "Force-field doors / fences",
+      "in_game_name": "Force-field door / Saku-fence",
+      "source": "fd = force-door, saku=fence; switches and barriers"
+    },
+    {
+      "pattern": "bm_o_*",
+      "category": "Objects",
+      "subcategory": "Common world objects",
+      "in_game_name": "Generic shared object (mine/container/door/rock/trap/warp)",
+      "source": "bm_o_ = bare-models common across areas (containers, mines, doors, rocks, traps)"
+    },
+    {
+      "pattern": "bm_obj_warpboss.bml",
+      "category": "Objects",
+      "subcategory": "Boss-area warp (generic)",
+      "in_game_name": "Boss Teleporter (generic)",
+      "source": "PsoBB.exe @0x538878 — pairs with fs_obj_warp_dai_beam02"
+    },
+    {
+      "pattern": "bm_obj_warpboss_ancient.bml",
+      "category": "Objects",
+      "subcategory": "Boss-area warp",
+      "in_game_name": "Dark Falz Boss Teleporter (Ruins/Ancient)",
+      "source": "PsoBB.exe @0x538908 — neighbors include de_obj_df_warp_beam, de_obj_df_warp_sbeam (df = Dark Falz)"
+    },
+    {
+      "pattern": "bm_obj_warpboss_jungle.bml",
+      "category": "Objects",
+      "subcategory": "Boss-area warp",
+      "in_game_name": "Gal Gryphon Boss Teleporter (EP2 Jungle)",
+      "source": "PsoBB.exe @0x538974 — neighbors include fe_obj_warp4_dodai, fe_obj_warp4_jogo_light"
+    },
+    {
+      "pattern": "bm_obj_warp_jung.bml",
+      "category": "Objects",
+      "subcategory": "Area warp",
+      "in_game_name": "Jungle Warp",
+      "source": "PsoBB.exe @0x535098 area: warp_obj01.gj + warp_jogo_light"
+    },
+    {
+      "pattern": "bm_obj_warp_labo.bml",
+      "category": "Objects",
+      "subcategory": "Area warp",
+      "in_game_name": "Lab/CCA Warp",
+      "source": "PsoBB.exe @0x535098 — warp_citybeam.gj neighbor; SELECT TYPE NORMAL/VR/CTRL CENTER strings"
+    },
+    {
+      "pattern": "bm_obj_lobby_warp.bml",
+      "category": "Objects",
+      "subcategory": "Lobby warp",
+      "in_game_name": "Lobby Warp / Principal's Warp",
+      "source": "PsoBB.exe; phantasmal ObjectType.LobbyWarpObject"
+    },
+    {
+      "pattern": "bm_obj_meka_fish_*",
+      "category": "Objects",
+      "subcategory": "EP2 Jungle/Seaside",
+      "in_game_name": "Mechanical Fish (Sakana)",
+      "source": "PsoBB.exe @0x53159c — neighbors uotitti_30_a (EP2 jungle fish), bm_obj_jungle_biwamushi"
+    },
+    {
+      "pattern": "bm_obj_partition_*",
+      "category": "Objects",
+      "subcategory": "EP2 CCA / Lab City",
+      "in_game_name": "Lab City partition wall (army/normal)",
+      "source": "PsoBB.exe @0x5375e4 — labocity_partition_army.gj/labocity_partition_norm.gj neighbors"
+    },
+    {
+      "pattern": "bm_obj_ruins_pillar.bml",
+      "category": "Objects",
+      "subcategory": "EP1 Ruins / EP2 reused",
+      "in_game_name": "Ruins Pillar",
+      "source": "PsoBB.exe @0x532e00 — obj_o_tarabasami02 neighbor"
+    },
+    {
+      "pattern": "bm_obj_ruins_turiten.bml",
+      "category": "Objects",
+      "subcategory": "EP1 Ruins",
+      "in_game_name": "Ruins Trap-trigger Plate (Turiten = swing/dangle)",
+      "source": "PsoBB.exe @0x530b78 — fe_obj_gc_turiten_moto neighbor; turiten = dangling/hanging"
+    },
+    {
+      "pattern": "bm_obj_seabed_pillar.bml",
+      "category": "Objects",
+      "subcategory": "EP2 Seabed / EP4 Crater",
+      "in_game_name": "Seabed Pillar (recycled in Maximum Attack)",
+      "source": "PsoBB.exe @0x532e00 — obj_o_tarabasami03 neighbor"
+    },
+    {
+      "pattern": "bm_obj_door_ruins.bml",
+      "category": "Objects",
+      "subcategory": "EP1 Ruins",
+      "in_game_name": "Ruins Door"
+    },
+    {
+      "pattern": "bm_obj_door_space.bml",
+      "category": "Objects",
+      "subcategory": "EP2 Spaceship",
+      "in_game_name": "Spaceship Door"
+    },
+    {
+      "pattern": "bm_obj_ep4_*",
+      "category": "Objects",
+      "subcategory": "EP4 environment",
+      "in_game_name": "EP4 environmental object",
+      "source": "EP4-specific objects (bee/bohu/cactus/crystal/door/flower/iwa=rock/saboten=cactus/sakana=fish/syounyuuseki=stalactite)"
+    },
+    {
+      "pattern": "bm_obj_jungle_*",
+      "category": "Objects",
+      "subcategory": "EP2 Jungle",
+      "in_game_name": "Jungle environment object (biwamushi/mkey/nokogiri=saw/tree)",
+      "source": "PsoBB.exe @0x53159c neighbors"
+    },
+    {
+      "pattern": "bm_obj_city_*",
+      "category": "Objects",
+      "subcategory": "Pioneer 2 / Lobby",
+      "in_game_name": "Pioneer 2 / Lobby object (board/sonic/easter/valen/xmas/pump/21st)",
+      "source": "Lobby/event decorations"
+    },
+    {
+      "pattern": "bm_obj_lobby_*",
+      "category": "Objects",
+      "subcategory": "Pioneer 2 / Lobby",
+      "in_game_name": "Lobby decorative object (rainbow, etc.)"
+    },
+    {
+      "pattern": "bm_obj_labo_*",
+      "category": "Objects",
+      "subcategory": "Lab / CCA",
+      "in_game_name": "Lab info-capsule"
+    },
+    {
+      "pattern": "bm_obj_geenest.bml",
+      "category": "Objects",
+      "subcategory": "EP2 Spaceship/Temple",
+      "in_game_name": "Gee Nest (spawner)",
+      "source": "PsoBB.exe @bm3_s_nest neighbors"
+    },
+    {
+      "pattern": "bm_obj_comp_*",
+      "category": "Objects",
+      "subcategory": "EP2 CCA",
+      "in_game_name": "Computer/console (army/normal lab variant)"
+    },
+    {
+      "pattern": "bm_obj_desk.bml",
+      "category": "Objects",
+      "subcategory": "EP2 Lab",
+      "in_game_name": "Desk (Lab interior)"
+    },
+    {
+      "pattern": "bm_obj_table_labo.bml",
+      "category": "Objects",
+      "subcategory": "EP2 Lab",
+      "in_game_name": "Lab Table"
+    },
+    {
+      "pattern": "bm_obj_beamdoa.bml",
+      "category": "Objects",
+      "subcategory": "Generic door",
+      "in_game_name": "Beam Door"
+    },
+    {
+      "pattern": "bm_obj_hako01.bml",
+      "category": "Objects",
+      "subcategory": "Generic container",
+      "in_game_name": "Box / Container (hako=box)",
+      "source": "hako = Japanese for 'box'"
+    },
+    {
+      "pattern": "bm_sakana_obj_*",
+      "category": "Objects",
+      "subcategory": "EP2 ambient fish",
+      "in_game_name": "Ambient Fish (jungle/lobby/seabed)",
+      "source": "sakana = fish (background creature deco)"
+    },
+    {
+      "pattern": "bm_n_*_body.bml",
+      "category": "NPCs",
+      "subcategory": "Pioneer 2 NPCs",
+      "in_game_name": "City NPC body (Hakase=Professor / Hisyo=Secretary / Kantei=Appraiser / Kanteib=Male / Kanteif=Female / Karen / Leo / Michel / Momoka / Nol / Paganini / Soutoku=Governor / Trunk / Karen=Karen Erra / Nurse / Gunb=Gun-shop / Gunm=Gun-master / Elly / Delta)",
+      "source": "PsoBB.exe @bm_n_ — comprehensive NPC list. Suffixes: _i_body=interior pose, _t_body=team pose, _w_body=walking pose. Tier suffix (b/f/m/o/t) likely body-class."
+    },
+    {
+      "pattern": "bm_npc_*",
+      "category": "NPCs",
+      "subcategory": "Pioneer 2 NPCs (rigged)",
+      "in_game_name": "City NPC rigged body (Hosa=Helper / Kenkyu=Researcher / Momoka / Soutoku-fu=Governor's office)",
+      "source": "PsoBB.exe @bm_npc_; npc_d00_data.rel/npc_d01_data.rel = NPC dialog data"
+    },
+    {
+      "pattern": "bm_nc*_body.bml",
+      "category": "NPCs",
+      "subcategory": "Pioneer 2 civilians",
+      "in_game_name": "Civilian (NC = NPC-Civilian; child/man/woman/trunk variants)",
+      "source": "Generic civilian background NPCs"
+    },
+    {
+      "pattern": "bm_gunsinei_body.bml",
+      "category": "NPCs",
+      "subcategory": "Pioneer 2 / Quest NPC",
+      "in_game_name": "Gunsinei (gun shopkeeper, sub-variant)",
+      "source": "Pioneer 2 NPC body"
+    },
+    {
+      "pattern": "bm_kenkyuw2_body.bml",
+      "category": "NPCs",
+      "subcategory": "Pioneer 2 / Quest NPC",
+      "in_game_name": "Researcher woman variant 2 (Kenkyu = research)",
+      "source": "Pioneer 2 NPC; w2 = woman v2"
+    },
+    {
+      "pattern": "rico_body.bml",
+      "category": "NPCs",
+      "subcategory": "Story NPC",
+      "in_game_name": "Red Ring Rico (story protagonist)",
+      "source": "PsoBB.exe @rico_body; story-critical NPC"
+    },
+    {
+      "pattern": "rico_ring.bml",
+      "category": "NPCs",
+      "subcategory": "Story NPC accessory",
+      "in_game_name": "Red Ring Rico's ring",
+      "source": "Rico's distinctive red ring accessory"
+    },
+    {
+      "pattern": "biri_ball.bml",
+      "category": "Objects",
+      "subcategory": "Quest-trap",
+      "in_game_name": "Electric Ball / Biri Ball (Lobby/Quest projectile)",
+      "source": "PsoBB.exe @biri_ball; biri = electric/zap onomatopoeia in Japanese; pairs with fd_obj804"
+    },
+    {
+      "pattern": "abeniji_*",
+      "category": "Objects",
+      "subcategory": "Lobby decoration",
+      "in_game_name": "Rainbow object (niji=rainbow, abe=Abe-event lobby)",
+      "source": "PsoBB.exe @abeniji_fe_obj001_niji"
+    },
+    {
+      "pattern": "bm_ply_photon_chair.bml",
+      "category": "Objects",
+      "subcategory": "Lobby decoration",
+      "in_game_name": "Photon Chair (Lobby seating)",
+      "source": "PsoBB.exe @bm_ply_photon_chair, fs_obj_lobby_isu (isu=chair)"
+    },
+    {
+      "pattern": "pm_mdl.bml",
+      "category": "Effects",
+      "subcategory": "Photon",
+      "in_game_name": "Photon Magic projectile model (FARLLA/ESTLLA/GOLLA/PILLA/LEILLA/MYLLA)",
+      "source": "PsoBB.exe @pm_mdl: PHOTON_FARLLA, PHOTON_ESTLLA, etc.; pm = Photon Magic; covers all techniques' projectiles"
+    },
+    {
+      "pattern": "re_b_mark_base.bml",
+      "category": "Objects",
+      "subcategory": "EP1 Ruins boss-trigger",
+      "in_game_name": "Ruins boss pre-warp markers (boss-room mark)",
+      "source": "PsoBB.exe @re_b_mark_base"
+    },
+    {
+      "pattern": "item.bml",
+      "category": "Items",
+      "subcategory": "Drop visual",
+      "in_game_name": "Generic item drop placeholder model",
+      "source": "PsoBB.exe @item.bml: armor_scan.njm + ItemTextureEp4.afs neighbors; the on-ground item visual"
+    },
+    {
+      "pattern": "fogentry*.dat",
+      "category": "Maps / Terrain",
+      "subcategory": "Per-area fog table",
+      "in_game_name": "Area fog descriptor",
+      "source": "PsoBB.exe @fogentry"
+    },
+    {
+      "pattern": "lightentry.bin",
+      "category": "Maps / Terrain",
+      "subcategory": "Per-area lighting",
+      "in_game_name": "Area lighting descriptor"
+    },
+    {
+      "pattern": "particleentrya*.dat",
+      "category": "Effects",
+      "subcategory": "Particle table",
+      "in_game_name": "Per-area particle descriptor"
+    },
+    {
+      "pattern": "map_*.bin",
+      "category": "Maps / Terrain",
+      "subcategory": "Area maps",
+      "in_game_name": "Area map data (forest/cave/mine/ruin/space/seabed/labo/jungle/desert/crater/wilds/city)",
+      "source": "Map binaries in data tree, suffix _e/_j = English/Japanese, _u = Ultimate variant"
+    },
+    {
+      "pattern": "map_*.dat",
+      "category": "Maps / Terrain",
+      "subcategory": "Area objects/enemies",
+      "in_game_name": "Area object placement data"
+    },
+    {
+      "pattern": "map_*.evt",
+      "category": "Quests",
+      "subcategory": "Area events",
+      "in_game_name": "Area event script"
+    },
+    {
+      "pattern": "set_*.rel",
+      "category": "Set Pieces",
+      "subcategory": "Set data tables",
+      "in_game_name": "SetData table (object/enemy spawn rules)",
+      "source": "SetDataTableOff/On/Ulti.rel = SetData tables for online/offline/ultimate"
+    },
+    {
+      "pattern": "*.gsl",
+      "category": "Set Pieces",
+      "subcategory": "GSL container",
+      "in_game_name": "Set/list container (gsl_set_object/enemy/event)",
+      "source": "PsoBB.exe @set_: gsl_set_object.gsl, gsl_set_enemy.gsl, gsl_set_event.gsl"
+    },
+    {
+      "pattern": "data.gsl",
+      "category": "Maps / Terrain",
+      "subcategory": "Top-level container",
+      "in_game_name": "Master data container (GSL)"
+    },
+    {
+      "pattern": "smutdata.prs",
+      "category": "Metadata",
+      "subcategory": "Word-filter data",
+      "in_game_name": "Profanity filter dictionary"
+    },
+    {
+      "pattern": "unitxt_*.prs",
+      "category": "Metadata",
+      "subcategory": "Localized strings",
+      "in_game_name": "Unit text (entity name / shop / WS dialog)",
+      "source": "PsoBB.exe enemy-name accessor 0x007879D0 reads from unitxt"
+    },
+    {
+      "pattern": "textjapanese.pr2",
+      "category": "Metadata",
+      "subcategory": "Localized strings",
+      "in_game_name": "Japanese text data (PR2)"
+    },
+    {
+      "pattern": "textjapanese.pr3",
+      "category": "Metadata",
+      "subcategory": "Localized strings",
+      "in_game_name": "Japanese text data (PR3)"
+    },
+    {
+      "pattern": "ws_data_*.bin",
+      "category": "Metadata",
+      "subcategory": "Word-Select dictionary",
+      "in_game_name": "Word Select chat dictionary (jp/us)"
+    },
+    {
+      "pattern": "ggerr_*.bin",
+      "category": "Metadata",
+      "subcategory": "Error strings",
+      "in_game_name": "Generic error message table (en/ja)"
+    },
+    {
+      "pattern": "help*.png",
+      "category": "UI",
+      "subcategory": "Help overlay images",
+      "in_game_name": "In-game help screenshot (e.g. tutorials)"
+    },
+    {
+      "pattern": "help*.lst",
+      "category": "Metadata",
+      "subcategory": "Help index",
+      "in_game_name": "Help screen index (city/lobby)"
+    },
+    {
+      "pattern": "title2.xvm",
+      "category": "UI",
+      "subcategory": "Title screen",
+      "in_game_name": "Title-screen background texture"
+    },
+    {
+      "pattern": "TitleEP4.prs",
+      "category": "UI",
+      "subcategory": "Title screen",
+      "in_game_name": "EP4 Title-screen splash (PRS-compressed XVM)",
+      "source": "Memory psobb_splash_state_objects.md: real splash source is TitleEP4.prs"
+    },
+    {
+      "pattern": "LogoEP4.prs",
+      "category": "UI",
+      "subcategory": "Logo asset (dead)",
+      "in_game_name": "EP4 Logo (dead asset; not used)",
+      "source": "Memory psobb_splash_state_objects.md: LogoEP4.prs is a dead asset; real splash is TitleEP4.prs"
+    },
+    {
+      "pattern": "ccconsole_j.xvm",
+      "category": "UI",
+      "subcategory": "Cinematic console",
+      "in_game_name": "Cinematic-console texture (Japanese)"
+    },
+    {
+      "pattern": "f256_*.prs",
+      "category": "UI",
+      "subcategory": "256x256 UI textures",
+      "in_game_name": "Font/UI atlas (PRS-compressed)"
+    },
+    {
+      "pattern": "f128_*.prs",
+      "category": "UI",
+      "subcategory": "128x128 UI textures",
+      "in_game_name": "Player-class portrait atlas"
+    },
+    {
+      "pattern": "f512_*.xvm",
+      "category": "UI",
+      "subcategory": "512x512 UI texture",
+      "in_game_name": "Hunters-screen background"
+    },
+    {
+      "pattern": "lobby_billboard*",
+      "category": "UI",
+      "subcategory": "Lobby billboard",
+      "in_game_name": "Lobby billboard texture"
+    },
+    {
+      "pattern": "no_lobby_billboard*",
+      "category": "UI",
+      "subcategory": "Lobby billboard fallback",
+      "in_game_name": "No-billboard fallback texture"
+    },
+    {
+      "pattern": "indtex.xvr",
+      "category": "UI",
+      "subcategory": "Indirect texture",
+      "in_game_name": "Indirect-rendering texture"
+    },
+    {
+      "pattern": "indirect_base.xvr",
+      "category": "UI",
+      "subcategory": "Indirect texture base",
+      "in_game_name": "Indirect-rendering base texture"
+    },
+    {
+      "pattern": "obj_lobby_main.xvm",
+      "category": "Objects",
+      "subcategory": "Lobby texture",
+      "in_game_name": "Main lobby object texture"
+    },
+    {
+      "pattern": "obj_boss1_common_a.xvm",
+      "category": "Bosses",
+      "subcategory": "Sil Dragon textures",
+      "in_game_name": "Sil Dragon shared texture"
+    },
+    {
+      "pattern": "o_grass_jungle.xvm",
+      "category": "Maps / Terrain",
+      "subcategory": "Jungle terrain texture",
+      "in_game_name": "Jungle grass texture"
+    },
+    {
+      "pattern": "o_rock_jungle_*.xvm",
+      "category": "Maps / Terrain",
+      "subcategory": "Jungle terrain texture",
+      "in_game_name": "Jungle rock texture"
+    },
+    {
+      "pattern": "texturejapanese.xvm",
+      "category": "UI",
+      "subcategory": "Localized text texture",
+      "in_game_name": "Japanese text texture"
+    },
+    {
+      "pattern": "openning_*.pae",
+      "category": "Quests",
+      "subcategory": "Opening cinematic",
+      "in_game_name": "Opening cinematic (e=English / j=Japanese)"
+    },
+    {
+      "pattern": "ending_jp.pae",
+      "category": "Quests",
+      "subcategory": "Ending cinematic",
+      "in_game_name": "Ending cinematic (Japanese)"
+    },
+    {
+      "pattern": "onlineending_dat.bml",
+      "category": "Quests",
+      "subcategory": "Online ending",
+      "in_game_name": "Online ending data"
+    },
+    {
+      "pattern": "NpcApcMot.bml",
+      "category": "NPCs",
+      "subcategory": "NPC motion bundle",
+      "in_game_name": "NPC + APC (NPC Companion) motion library",
+      "source": "Apc = APC = Auto-Player Character (companion NPCs); shared motion clips"
+    },
+    {
+      "pattern": "npcplayerchar.dat",
+      "category": "NPCs",
+      "subcategory": "NPC stat data",
+      "in_game_name": "NPC player-character stats / loadouts"
+    },
+    {
+      "pattern": "cam_*.rel",
+      "category": "Maps / Terrain",
+      "subcategory": "Camera scripts",
+      "in_game_name": "Boss/cinematic camera path"
+    },
+    {
+      "pattern": "fe_obj_cam.bml",
+      "category": "Objects",
+      "subcategory": "Camera trigger",
+      "in_game_name": "Camera trigger object"
+    },
+    {
+      "pattern": "scene/*",
+      "category": "Maps / Terrain",
+      "subcategory": "Scene geometry",
+      "in_game_name": "Per-area scene geometry/textures",
+      "source": "scene/ directory holds per-area .nrel/.xrel/.xvm static map geometry"
+    },
+    {
+      "pattern": "ogg/*",
+      "category": "Audio",
+      "subcategory": "Music (Ogg Vorbis)",
+      "in_game_name": "BGM track"
+    },
+    {
+      "pattern": "sound/*",
+      "category": "Audio",
+      "subcategory": "SFX",
+      "in_game_name": "Sound effect"
+    },
+    {
+      "pattern": "*.adx",
+      "category": "Audio",
+      "subcategory": "ADX audio",
+      "in_game_name": "ADX-encoded sound (boss roar/death/etc.)"
+    },
+    {
+      "pattern": "*.evt",
+      "category": "Quests",
+      "subcategory": "Event scripts",
+      "in_game_name": "Map event script"
+    },
+    {
+      "pattern": "quest*/*.dat",
+      "category": "Quests",
+      "subcategory": "Quest data",
+      "in_game_name": "Quest dat (only under a quest/ directory)",
+      "source": "Replaces the dead '*.dat (quest)' no-op rule (literal space + parenthetical never matched fnmatch). Scoped to a quest/ subdir so loose top-level map_*/fogentry*/particleentry* .dat are NOT swept into Quests."
+    },
+    {
+      "pattern": "vssver.scc",
+      "category": "Metadata",
+      "subcategory": "Version control vestige",
+      "in_game_name": "Visual SourceSafe metadata (devel leftover)"
+    },
+    {
+      "pattern": "newserv-test-bb.txt",
+      "category": "Metadata",
+      "subcategory": "Server test marker",
+      "in_game_name": "newserv test-server marker"
+    }
+  ],
+  "resolved_miscategorizations": [
+    {
+      "file": "bm4_ps_ma_body.bml",
+      "before": "Player Bodies",
+      "after": "Enemies / EP1 Caves (legacy 'ma'/'mb' subparts)",
+      "in_game_name": "Sinow Beat / Sinow Gold (caves)",
+      "evidence": "PsoBB.exe @0x528200 string block: 'BLUE | RED | TYPE [0/1]' (rare/normal selector); tail-attack animation (tlatk_bm4_ps_ma_tail.njm); apear/kie/atack/damage/wait animations consistent with monster behaviour. cls cluster 0xA74658..0xA746B0 in NormalMob range per entity_cls_table.h:470-475. Sits adjacent to me3_shinowa/me3_zoa (Sinow EP2 reskins) in the binary's data layout. The 'ps' prefix is unique to this asset family; the bm4_ prefix collides with no other prefix-rule in the editor. Editor's current rule `n.startswith('bm4_ps_')` matches the 'Player Bodies' bucket because its predicate (`bm4_ps_ or bm7_ps_ or bm_ps_`) catches it before any enemy rule. THIS RULE IS WRONG — bm4_ps_ is monster, not player."
+    },
+    {
+      "file": "ItemModelEp4.afs#0297_0297.nj",
+      "before": "Items / Weapons / Items (correct general bucket)",
+      "after": "Items / Mags",
+      "in_game_name": "EP4 Mag (Sato or other EP4 mag)",
+      "evidence": "ItemModel AFS index 0x297 (663 decimal) is in the mag-range slice of the AFS table — newserv-sparse/src/ItemParameterTable.cc:146 sets first_rare_mag_index=0x28 within the mag class. Indices 0x290+ in the EP4 AFS are typically the rare-mag subset (Sato, Striker Unit, etc.). NOTE: AFS-index→item-type mapping is not directly available in newserv (the mapping lives in the binary's ItemPMT). To definitively label, parse ItemPMT.bin's mag table from the binary."
+    },
+    {
+      "file": "bm_obj_warpboss_ancient.bml",
+      "before": "Objects (matches 'bm_obj_' rule, no further refinement)",
+      "after": "Objects / Boss-area warp / Dark Falz (Ruins) Boss Teleporter",
+      "in_game_name": "Dark Falz Boss Teleporter (EP1 Ruins)",
+      "evidence": "PsoBB.exe @0x538908 — surrounded by de_obj_df_warp_beam.gj, de_obj_df_warp_sbeam.gj (df = Dark Falz prefix); paired with bm_obj_warpboss.bml (generic) and bm_obj_warpboss_jungle.bml (Gal Gryphon EP2). Three warps form a sibling family per boss area: ancient=Dark Falz/Ruins, jungle=Gal Gryphon/EP2, generic=Vol Opt/Mines fallback."
+    },
+    {
+      "file": "bm_boss1_dragon.bml",
+      "before": "Bosses",
+      "after": "Bosses / EP1 Forest boss / Sil Dragon",
+      "in_game_name": "Sil Dragon (EP1 Forest)",
+      "evidence": "PsoBB.exe @0x4faeec — neighbors include draroar.adx, dradeath.adx (dra = dragon roar/death). Phantasmal NpcType.Dragon (EP1)."
+    },
+    {
+      "file": "bm_boss8_dragon.bml",
+      "before": "Bosses",
+      "after": "Bosses / EP4 Crater boss / Gol Dragon",
+      "in_game_name": "Gol Dragon (EP4)",
+      "evidence": "PsoBB.exe @0x5075b8 — neighbor goldeath.adx confirms 'gol' (gold) variant. Phantasmal NpcType.GolDragon (EP4); EnemyType GOL_DRAGON in newserv-sparse/src/EnemyType.cc."
+    },
+    {
+      "file": "bm_obj_meka_fish_0.bml + bm_obj_meka_fish_1.bml",
+      "before": "Objects (matches 'bm_obj_' rule)",
+      "after": "Objects / EP2 Jungle/Seaside / Mechanical Fish",
+      "in_game_name": "Mechanical Fish (Sakana)",
+      "evidence": "PsoBB.exe @0x53159c — adjacent to uotitti_30_a.gj (EP2 jungle fish 'uotitti') and bm_obj_jungle_biwamushi.bml; 0/1 = two color/type variants."
+    },
+    {
+      "file": "bm_obj_partition_army.bml + bm_obj_partition_norm.bml",
+      "before": "Objects",
+      "after": "Objects / EP2 Lab City / Partition Walls",
+      "in_game_name": "Lab City partition wall (army-tinted vs normal)",
+      "evidence": "PsoBB.exe @0x5375e4 — adjacent to labocity_partition_army.gj, labocity_partition_norm.gj"
+    },
+    {
+      "file": "bm_obj_ruins_pillar.bml + bm_obj_ruins_turiten.bml",
+      "before": "Objects",
+      "after": "Objects / EP1 Ruins / Pillar + Trap Plate",
+      "in_game_name": "Ruins Pillar; Ruins Trap-trigger Plate (Turiten)",
+      "evidence": "PsoBB.exe @0x532e00 / 0x530b78 — turiten = Japanese 'dangling/swing'; tarabasami = trap-related context"
+    },
+    {
+      "file": "bm_obj_seabed_pillar.bml",
+      "before": "Objects",
+      "after": "Objects / EP2 Seabed / Pillar (also reused in EP4 Crater Maximum Attack)",
+      "in_game_name": "Seabed Pillar",
+      "evidence": "PsoBB.exe @0x532e00"
+    },
+    {
+      "file": "bm_obj_warp_jung.bml + bm_obj_warp_labo.bml",
+      "before": "Objects",
+      "after": "Objects / Area warps",
+      "in_game_name": "Jungle Warp; Lab/CCA Warp",
+      "evidence": "PsoBB.exe @0x535098 — warp_obj01.gj + warp_jogo_light + warp_citybeam neighbors; SELECT TYPE NORMAL/VR/CTRL CENTER strings paint the whole warp-config menu"
+    }
+  ]
+}
