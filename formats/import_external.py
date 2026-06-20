@@ -119,6 +119,51 @@ class ImportedMesh:
 
 
 @dataclass
+class ImportedTexture:
+    """One texture recovered from an external import.
+
+    Sketchfab / Blender GLB exports embed their PNG/JPEG textures either
+    in the GLB binary buffer (``image.bufferView``), inline as a
+    ``data:`` URI, or — for ``.gltf``+sidecar exports — as an external
+    file reference we can't resolve from a single uploaded blob. The
+    importer records ALL three so the caller can report "N textures in
+    -> M textures embedded, K external (unresolved)" without silently
+    dropping any.
+
+    Attributes
+    ----------
+    index:
+        Source ``images[]`` index (stable id for material binding).
+    name:
+        Source-supplied image name, or a synthesised ``image_<i>``.
+    mime:
+        ``"image/png"`` / ``"image/jpeg"`` / ``""`` when unknown.
+    data:
+        Raw image bytes (the actual PNG/JPEG file content) when the
+        image was embedded. ``b""`` for external (unresolved) refs.
+    uri:
+        The source ``image.uri`` when present (external path or the
+        ``data:`` URI). ``None`` for bufferView-embedded images.
+    source:
+        How the bytes were obtained: ``"bufferView"`` | ``"data_uri"``
+        | ``"external"`` (no bytes) | ``"embedded_unknown"``.
+    width / height:
+        Decoded pixel dimensions when Pillow is available and the bytes
+        decode; ``0`` otherwise. Used by tests to confirm the embedded
+        PNG is real (non-empty) without shipping a decoder dependency
+        into the hot path.
+    """
+    index: int
+    name: str
+    mime: str = ""
+    data: bytes = b""
+    uri: Optional[str] = None
+    source: str = "external"
+    width: int = 0
+    height: int = 0
+
+
+@dataclass
 class ImportedBone:
     """One bone in the source hierarchy.
 
@@ -347,6 +392,36 @@ class ImportedModel:
     blend_shapes: List[BlendShape] = field(default_factory=list)
     spring_bones: List[SpringBoneChain] = field(default_factory=list)
     node_constraints: List[NodeConstraint] = field(default_factory=list)
+    # Embedded / referenced textures recovered from the source. One entry
+    # per source ``images[]`` slot (see ``ImportedTexture``). Empty for
+    # untextured sources.
+    textures: List[ImportedTexture] = field(default_factory=list)
+    # Map of ``material_id -> image index`` (into ``textures``). Lets the
+    # NJ exporter bind material slots to texture names without re-walking
+    # the glTF. ``-1`` (or a missing key) means "material has no base-
+    # colour texture".
+    material_textures: Dict[int, int] = field(default_factory=dict)
+    # Import accounting so callers can report no-silent-drop guarantees:
+    #   meshes_in   : source primitives that carried POSITION data.
+    #   meshes_out  : ImportedMesh entries actually produced.
+    #   textures_in : source ``images[]`` count.
+    #   textures_out: ImportedTexture entries with non-empty ``data``.
+    # These are 0 for formats that don't populate them (OBJ/FBX); the
+    # glTF path always sets them.
+    import_stats: Dict[str, int] = field(default_factory=dict)
+
+
+class GltfImportError(ValueError):
+    """Raised when a glTF/GLB import would silently drop geometry.
+
+    The importer is permissive about *cosmetic* gaps (missing normals,
+    missing UVs, external textures it can't resolve) — those are surfaced
+    as warnings. It is STRICT about anything that would lose actual mesh
+    geometry without telling the user: an accessor that fails to decode,
+    a primitive whose index buffer is corrupt, or a draw mode that can't
+    be triangulated. Those raise this exception with a precise message so
+    the caller never ends up with a quietly-incomplete model.
+    """
 
 
 # ---------------------------------------------------------------------------
@@ -678,18 +753,60 @@ def parse_gltf(data: bytes, *, glb: Optional[bool] = None) -> ImportedModel:
     else:
         warnings.append("glTF has no skin — emitting empty skeleton; converter will use template")
 
+    # ---- Resolve per-node world transforms ----
+    # Sketchfab / Blender merge-exports drop every submesh under its OWN
+    # scene node, each carrying a translation/rotation/scale (or a baked
+    # 4x4 matrix). The v1 importer assumed "exporters bake transforms
+    # into the vertices" and read ``gltf.meshes`` flat — which silently
+    # MIS-PLACES every node-transformed submesh (e.g. a crate lid offset
+    # by its node translation lands at the origin). We now build the full
+    # node->world-matrix map and bake it into positions + normals so the
+    # merged scene reassembles correctly.
+    node_world = _build_node_world_matrices(gltf)
+    # Map each mesh index -> list of (node_idx, world_matrix) that
+    # instance it. A mesh referenced by N nodes is emitted N times (real
+    # glTF instancing); a mesh referenced by no node still gets emitted
+    # once at identity so we never silently drop authored geometry.
+    mesh_instances: Dict[int, List[Tuple[int, np.ndarray]]] = {}
+    for ni, node in enumerate(gltf.nodes or []):
+        if node.mesh is not None:
+            mesh_instances.setdefault(node.mesh, []).append((ni, node_world[ni]))
+
     # ---- Parse meshes ----
     meshes: List[ImportedMesh] = []
+    prims_in = 0  # primitives carrying POSITION (the "meshes in" count)
     for mi, gmesh in enumerate(gltf.meshes or []):
+        instances = mesh_instances.get(mi)
+        if not instances:
+            # Authored but unreferenced by the scene graph — emit once at
+            # identity rather than dropping it.
+            instances = [(-1, np.eye(4, dtype=np.float64))]
         for pi, prim in enumerate(gmesh.primitives or []):
             attrs = prim.attributes
             if attrs is None or attrs.POSITION is None:
+                # No positions = nothing to render; this is not a silent
+                # geometry drop (there's no geometry), but record it.
+                if attrs is not None:
+                    warnings.append(f"mesh {mi}.prim{pi} has no POSITION attribute — skipped")
                 continue
-            pos = _accessor_array(attrs.POSITION).astype(np.float32, copy=False)
-            n_verts = pos.shape[0]
-            normals: Optional[np.ndarray] = None
+            prims_in += 1
+            try:
+                base_pos = _accessor_array(attrs.POSITION).astype(np.float32, copy=False)
+            except Exception as e:  # decode failure = real geometry loss
+                raise GltfImportError(
+                    f"mesh {mi}.prim{pi}: failed to decode POSITION accessor "
+                    f"{attrs.POSITION}: {e}"
+                ) from e
+            n_verts = base_pos.shape[0]
+            base_normals: Optional[np.ndarray] = None
             if attrs.NORMAL is not None:
-                normals = _accessor_array(attrs.NORMAL).astype(np.float32, copy=False)
+                try:
+                    base_normals = _accessor_array(attrs.NORMAL).astype(np.float32, copy=False)
+                except Exception as e:
+                    raise GltfImportError(
+                        f"mesh {mi}.prim{pi}: failed to decode NORMAL accessor "
+                        f"{attrs.NORMAL}: {e}"
+                    ) from e
             uvs: Optional[np.ndarray] = None
             if getattr(attrs, "TEXCOORD_0", None) is not None:
                 uvs = _accessor_array(attrs.TEXCOORD_0).astype(np.float32, copy=False)
@@ -706,34 +823,87 @@ def parse_gltf(data: bytes, *, glb: Optional[bool] = None) -> ImportedModel:
                 skin_weights = _accessor_array(attrs.WEIGHTS_0).astype(np.float32, copy=False)
             # Indices.
             if prim.indices is not None:
-                idx_flat = _accessor_array(prim.indices).astype(np.uint32, copy=False)
+                try:
+                    idx_flat = _accessor_array(prim.indices).astype(np.uint32, copy=False)
+                except Exception as e:
+                    raise GltfImportError(
+                        f"mesh {mi}.prim{pi}: failed to decode index accessor "
+                        f"{prim.indices}: {e}"
+                    ) from e
             else:
                 idx_flat = np.arange(n_verts, dtype=np.uint32)
             mode = prim.mode if prim.mode is not None else 4  # default = TRIANGLES
             if mode == 4:  # TRIANGLES
+                if idx_flat.size % 3 != 0:
+                    raise GltfImportError(
+                        f"mesh {mi}.prim{pi}: TRIANGLES index count "
+                        f"{idx_flat.size} is not a multiple of 3"
+                    )
                 triangles = idx_flat.reshape(-1, 3)
             elif mode == 5:  # TRIANGLE_STRIP
                 triangles = _strip_to_triangles(idx_flat)
             elif mode == 6:  # TRIANGLE_FAN
                 triangles = _fan_to_triangles(idx_flat)
-            else:
-                warnings.append(f"mesh {mi}.prim{pi} mode={mode} unsupported, skipping")
+            elif mode in (0, 1, 2, 3):
+                # POINTS / LINES / LINE_LOOP / LINE_STRIP — PSOBB renders
+                # neither; warn (these carry no triangles to lose) and skip.
+                warnings.append(
+                    f"mesh {mi}.prim{pi} mode={mode} (points/lines) — no "
+                    "triangles to import; skipped"
+                )
                 continue
+            else:
+                # An unknown mode WOULD drop triangle geometry silently —
+                # refuse rather than guess.
+                raise GltfImportError(
+                    f"mesh {mi}.prim{pi}: unsupported draw mode {mode}"
+                )
+            # Bounds-check indices so a corrupt buffer surfaces loudly
+            # instead of producing garbage triangles downstream.
+            if triangles.size and int(triangles.max()) >= n_verts:
+                raise GltfImportError(
+                    f"mesh {mi}.prim{pi}: triangle index "
+                    f"{int(triangles.max())} out of range (n_verts={n_verts})"
+                )
+            tris_u32 = triangles.astype(np.uint32, copy=False)
             # Material id from prim.material -> mat index, modulo 256.
             mat_id = (prim.material or 0) & 0xFF
-            meshes.append(ImportedMesh(
-                name=gmesh.name or f"mesh_{mi}",
-                vertices=pos,
-                indices=triangles.astype(np.uint32, copy=False),
-                uvs=uvs,
-                normals=normals,
-                skin_indices=skin_indices,
-                skin_weights=skin_weights,
-                material_id=mat_id,
-            ))
+            # Emit one ImportedMesh per scene instance, baking that
+            # instance's world transform into positions + normals.
+            for inst_no, (node_idx, world_mat) in enumerate(instances):
+                pos_t, nrm_t = _apply_world_matrix(world_mat, base_pos, base_normals)
+                inst_suffix = "" if len(instances) == 1 else f"_inst{inst_no}"
+                base_name = gmesh.name or f"mesh_{mi}"
+                node_name = ""
+                if node_idx >= 0 and (gltf.nodes or []):
+                    node_name = gltf.nodes[node_idx].name or ""
+                disp_name = node_name or base_name
+                meshes.append(ImportedMesh(
+                    name=f"{disp_name}{inst_suffix}",
+                    vertices=pos_t,
+                    indices=tris_u32.copy(),
+                    uvs=(uvs.copy() if uvs is not None else None),
+                    normals=nrm_t,
+                    skin_indices=(skin_indices.copy() if skin_indices is not None else None),
+                    skin_weights=(skin_weights.copy() if skin_weights is not None else None),
+                    material_id=mat_id,
+                ))
 
     if not meshes:
         warnings.append("glTF parsed but produced no meshes")
+
+    # ---- Extract embedded / referenced textures ----
+    textures, material_textures = _extract_gltf_textures(gltf, _buf, warnings)
+
+    # ---- Import accounting (no-silent-drop accountability) ----
+    import_stats = {
+        "meshes_in": prims_in,
+        "meshes_out": len(meshes),
+        "instances": sum(len(v) for v in mesh_instances.values()),
+        "textures_in": len(gltf.images or []),
+        "textures_out": sum(1 for t in textures if t.data),
+        "textures_external": sum(1 for t in textures if t.source == "external"),
+    }
 
     # ---- Parse VRM humanoid map (extension; optional) ----
     # VRM is a glTF extension popularised by VRoid Studio for CC0 anime
@@ -768,7 +938,275 @@ def parse_gltf(data: bytes, *, glb: Optional[bool] = None) -> ImportedModel:
         vrm_humanoid_map=vrm_humanoid_map,
         spring_bones=spring_bones,
         node_constraints=node_constraints,
+        textures=textures,
+        material_textures=material_textures,
+        import_stats=import_stats,
     )
+
+
+# ---------------------------------------------------------------------------
+# glTF scene-graph transform baking
+# ---------------------------------------------------------------------------
+
+
+def _node_local_matrix(node) -> np.ndarray:
+    """Compose a glTF node's local 4x4 matrix (column-major math, row layout).
+
+    A glTF node specifies its transform EITHER as an explicit 16-float
+    ``matrix`` OR as a translation / rotation(quat) / scale triple. We
+    return a 4x4 numpy matrix ``M`` such that ``world_point = M @ point``
+    (point as a column vector), composing T * R * S per the spec.
+    """
+    if node.matrix is not None and len(node.matrix) == 16:
+        # glTF matrices are COLUMN-major; reshape transposed to get the
+        # row-major form numpy's ``@`` expects.
+        return np.array(node.matrix, dtype=np.float64).reshape(4, 4).T
+
+    t = node.translation or [0.0, 0.0, 0.0]
+    r = node.rotation or [0.0, 0.0, 0.0, 1.0]  # (x, y, z, w)
+    s = node.scale or [1.0, 1.0, 1.0]
+
+    # Rotation matrix from quaternion (x, y, z, w).
+    qx, qy, qz, qw = (float(r[0]), float(r[1]), float(r[2]), float(r[3]))
+    n = math.sqrt(qx * qx + qy * qy + qz * qz + qw * qw)
+    if n > 1e-12:
+        qx /= n; qy /= n; qz /= n; qw /= n
+    rot = np.array([
+        [1 - 2 * (qy * qy + qz * qz), 2 * (qx * qy - qz * qw),     2 * (qx * qz + qy * qw)],
+        [2 * (qx * qy + qz * qw),     1 - 2 * (qx * qx + qz * qz), 2 * (qy * qz - qx * qw)],
+        [2 * (qx * qz - qy * qw),     2 * (qy * qz + qx * qw),     1 - 2 * (qx * qx + qy * qy)],
+    ], dtype=np.float64)
+
+    m = np.eye(4, dtype=np.float64)
+    m[:3, :3] = rot * np.array([float(s[0]), float(s[1]), float(s[2])], dtype=np.float64)
+    m[:3, 3] = [float(t[0]), float(t[1]), float(t[2])]
+    return m
+
+
+def _build_node_world_matrices(gltf) -> List[np.ndarray]:
+    """Return a per-node world 4x4 matrix for every node in the glTF.
+
+    Walks the scene graph from its roots (nodes referenced by the active
+    scene, or — if no scene is declared — every node not claimed as a
+    child) composing parent->child local matrices. Nodes unreachable from
+    any root still get their own LOCAL matrix as a best-effort world
+    transform so their geometry isn't dropped.
+
+    Cycles (illegal but seen in hand-edited files) are broken by a
+    visited set; the offending node keeps whatever matrix it had when
+    first reached.
+    """
+    nodes = gltf.nodes or []
+    n = len(nodes)
+    world: List[np.ndarray] = [None] * n  # type: ignore[list-item]
+    if n == 0:
+        return world
+
+    # Determine roots: prefer the active scene's node list; else the
+    # first scene; else every node that isn't anyone's child.
+    roots: List[int] = []
+    scenes = gltf.scenes or []
+    scene_idx = gltf.scene if gltf.scene is not None else (0 if scenes else None)
+    if scene_idx is not None and 0 <= scene_idx < len(scenes):
+        roots = [r for r in (scenes[scene_idx].nodes or []) if 0 <= r < n]
+    if not roots:
+        is_child = [False] * n
+        for node in nodes:
+            for c in (node.children or []):
+                if 0 <= c < n:
+                    is_child[c] = True
+        roots = [i for i in range(n) if not is_child[i]]
+
+    visited = [False] * n
+    # Iterative DFS carrying the parent world matrix.
+    stack: List[Tuple[int, np.ndarray]] = [(r, np.eye(4, dtype=np.float64)) for r in roots]
+    while stack:
+        idx, parent_world = stack.pop()
+        if idx < 0 or idx >= n or visited[idx]:
+            continue
+        visited[idx] = True
+        m = parent_world @ _node_local_matrix(nodes[idx])
+        world[idx] = m
+        for c in (nodes[idx].children or []):
+            if 0 <= c < n and not visited[c]:
+                stack.append((c, m))
+
+    # Any node never reached (disconnected) -> use its local matrix.
+    for i in range(n):
+        if world[i] is None:
+            world[i] = _node_local_matrix(nodes[i])
+    return world
+
+
+def _apply_world_matrix(
+    world_mat: np.ndarray,
+    positions: np.ndarray,
+    normals: Optional[np.ndarray],
+) -> Tuple[np.ndarray, Optional[np.ndarray]]:
+    """Transform positions (+normals) by a world matrix.
+
+    Positions are transformed affinely. Normals use the inverse-transpose
+    of the upper 3x3 so non-uniform scale doesn't shear them, then are
+    renormalised. Returns float32 arrays. Identity is a cheap fast path.
+    """
+    if world_mat is None or np.allclose(world_mat, np.eye(4)):
+        out_pos = positions.astype(np.float32, copy=True)
+        out_nrm = normals.astype(np.float32, copy=True) if normals is not None else None
+        return out_pos, out_nrm
+
+    pos = positions.astype(np.float64, copy=False)
+    homog = np.empty((pos.shape[0], 4), dtype=np.float64)
+    homog[:, :3] = pos
+    homog[:, 3] = 1.0
+    tpos = (homog @ world_mat.T)[:, :3].astype(np.float32)
+
+    tnrm: Optional[np.ndarray] = None
+    if normals is not None and normals.size:
+        upper = world_mat[:3, :3]
+        try:
+            nrm_mat = np.linalg.inv(upper).T
+        except np.linalg.LinAlgError:
+            nrm_mat = upper
+        tn = normals.astype(np.float64, copy=False) @ nrm_mat.T
+        lens = np.linalg.norm(tn, axis=1, keepdims=True)
+        lens[lens < 1e-9] = 1.0
+        tnrm = (tn / lens).astype(np.float32)
+    return tpos, tnrm
+
+
+# ---------------------------------------------------------------------------
+# glTF texture extraction (embedded PNG/JPEG + data-URI + external refs)
+# ---------------------------------------------------------------------------
+
+
+def _extract_gltf_textures(
+    gltf,
+    buf_fn,
+    warnings: List[str],
+) -> Tuple[List["ImportedTexture"], Dict[int, int]]:
+    """Recover every ``images[]`` entry + a material_id -> image-idx map.
+
+    ``buf_fn(buffer_idx) -> bytes`` resolves binary buffers (the closure
+    ``parse_gltf`` already built, which handles the GLB body + data-URI
+    buffers). We do NOT silently drop a texture: every image becomes an
+    ``ImportedTexture`` whose ``source`` records how (or whether) its
+    bytes were obtained. External-file URIs (``.gltf`` + sidecar PNG that
+    isn't part of the uploaded blob) are recorded as ``source="external"``
+    with empty bytes and a warning — never dropped.
+    """
+    textures: List[ImportedTexture] = []
+    images = gltf.images or []
+    for ii, img in enumerate(images):
+        name = img.name or f"image_{ii}"
+        mime = img.mimeType or ""
+        data = b""
+        uri = img.uri
+        source = "external"
+        if img.bufferView is not None:
+            # Embedded in a binary buffer (the common GLB case).
+            try:
+                bv = gltf.bufferViews[img.bufferView]
+                blob = buf_fn(bv.buffer)
+                start = bv.byteOffset or 0
+                length = bv.byteLength or 0
+                data = bytes(blob[start:start + length])
+                source = "bufferView"
+            except Exception as e:  # malformed bufferView ref
+                warnings.append(f"image {ii} ({name}): bufferView decode failed: {e}")
+                source = "embedded_unknown"
+        elif uri and uri.startswith("data:"):
+            # Inline data: URI (data:image/png;base64,....).
+            comma = uri.find(",")
+            if comma >= 0:
+                try:
+                    data = base64.b64decode(uri[comma + 1:])
+                    source = "data_uri"
+                    if not mime:
+                        # Pull mime out of the data: prefix when absent.
+                        semi = uri.find(";")
+                        if 5 < semi:
+                            mime = uri[5:semi]
+                except Exception as e:
+                    warnings.append(f"image {ii} ({name}): data-URI decode failed: {e}")
+                    source = "embedded_unknown"
+        elif uri:
+            # External sidecar file — can't resolve from a single blob.
+            warnings.append(
+                f"image {ii} ({name}): external uri {uri!r} not embedded — "
+                "texture not imported (re-export with embedded/GLB textures)"
+            )
+            source = "external"
+
+        if not mime and data[:8] == b"\x89PNG\r\n\x1a\n":
+            mime = "image/png"
+        elif not mime and data[:3] == b"\xff\xd8\xff":
+            mime = "image/jpeg"
+
+        width = height = 0
+        if data:
+            width, height = _probe_image_size(data)
+            if width == 0 or height == 0:
+                warnings.append(
+                    f"image {ii} ({name}): embedded bytes did not decode as a "
+                    f"valid image ({len(data)} bytes, mime={mime or '?'})"
+                )
+        textures.append(ImportedTexture(
+            index=ii, name=name, mime=mime, data=data,
+            uri=uri, source=source, width=width, height=height,
+        ))
+
+    # Build material_id -> image index via material.pbr.baseColorTexture
+    # -> textures[ti].source (the images[] index).
+    material_textures: Dict[int, int] = {}
+    gtex = gltf.textures or []
+    for mat_idx, mat in enumerate(gltf.materials or []):
+        pbr = getattr(mat, "pbrMetallicRoughness", None)
+        bct = getattr(pbr, "baseColorTexture", None) if pbr is not None else None
+        tex_idx = getattr(bct, "index", None) if bct is not None else None
+        if tex_idx is None:
+            # Fall back to emissive / normal so a material that only has
+            # those still binds *something* rather than nothing.
+            for alt_name in ("emissiveTexture", "normalTexture", "occlusionTexture"):
+                alt = getattr(mat, alt_name, None)
+                ai = getattr(alt, "index", None) if alt is not None else None
+                if ai is not None:
+                    tex_idx = ai
+                    break
+        if tex_idx is not None and 0 <= tex_idx < len(gtex):
+            img_src = gtex[tex_idx].source
+            if img_src is not None and 0 <= img_src < len(textures):
+                material_textures[mat_idx & 0xFF] = img_src
+
+    n_embedded = sum(1 for t in textures if t.data)
+    if images:
+        warnings.append(
+            f"textures: {len(images)} image(s) in source, {n_embedded} embedded/decoded"
+        )
+    return textures, material_textures
+
+
+def _probe_image_size(data: bytes) -> Tuple[int, int]:
+    """Return (width, height) of a PNG/JPEG blob, or (0, 0) on failure.
+
+    Uses Pillow when present (handles both PNG + JPEG robustly); falls
+    back to a tiny PNG IHDR parser so the size probe still works in a
+    Pillow-free environment for the dominant embedded-PNG case.
+    """
+    # PNG IHDR fast path (no dependency).
+    if data[:8] == b"\x89PNG\r\n\x1a\n" and len(data) >= 24:
+        try:
+            w, h = struct.unpack(">II", data[16:24])
+            if 0 < w < 1 << 20 and 0 < h < 1 << 20:
+                return int(w), int(h)
+        except struct.error:
+            pass
+    try:
+        import io
+        from PIL import Image  # type: ignore
+        with Image.open(io.BytesIO(data)) as im:
+            return int(im.width), int(im.height)
+    except Exception:
+        return (0, 0)
 
 
 def _extract_vrm_humanoid_map(
@@ -1450,6 +1888,96 @@ def _rebuild_strip65(triangles: np.ndarray, uvs: np.ndarray) -> NjChunk:
 
 
 # ---------------------------------------------------------------------------
+# Chunk splitting (keep each chunk's i16 size word in range)
+# ---------------------------------------------------------------------------
+#
+# The rendering parser (formats.xj) reads each sized chunk's body-word
+# count as a SIGNED 16-bit int, so a body whose word count exceeds 32767
+# wraps negative and corrupts the stream walk — silently dropping
+# geometry. (The round-trip writer reads it unsigned, which masked the
+# bug.) PSOBB's own authoring tools never emit a single chunk that large;
+# they split big meshes across several chunks. We do the same: a
+# conservative cap keeps every emitted chunk well inside the i16-positive
+# range with margin for the +2 header bytes.
+
+# Body bytes per chunk ceiling: 30000 words * 2 = 60000 bytes, leaving
+# headroom below the 65534-byte (32767-word) i16 ceiling.
+_MAX_STRIP_BODY_WORDS = 30000
+# Vertex chunks are u32-word counted; the same i16 read applies, so cap
+# the word count the same way.
+_MAX_VLIST_BODY_WORDS = 30000
+
+
+def _build_vlist_chunks_type41(
+    positions: np.ndarray, normals: np.ndarray
+) -> List[NjChunk]:
+    """Emit one-or-more type-41 vertex chunks, each within the i16 size cap.
+
+    Splits the vertex range so each chunk's body-word count stays under
+    ``_MAX_VLIST_BODY_WORDS``. Each chunk carries a correct ``base_idx``
+    so strip chunks (which use absolute vertex indices) still resolve —
+    PSOBB vertex chunks place verts at ``base_idx + i``.
+    """
+    n = int(positions.shape[0])
+    if n == 0:
+        return [_build_vlist_chunk_type41(positions, normals)]
+    # words per vertex = 6 (24 bytes); header = 1 word. Max verts/chunk:
+    max_verts = max(1, (_MAX_VLIST_BODY_WORDS - 1) // 6)
+    if n <= max_verts:
+        return [_build_vlist_chunk_type41(positions, normals)]
+    chunks: List[NjChunk] = []
+    for start in range(0, n, max_verts):
+        end = min(start + max_verts, n)
+        cnt = end - start
+        body = bytearray()
+        body_words = 1 + cnt * 6
+        body.extend(struct.pack("<H", body_words))
+        body.extend(struct.pack("<HH", start, cnt))  # base_idx=start
+        for i in range(start, end):
+            px, py, pz = float(positions[i, 0]), float(positions[i, 1]), float(positions[i, 2])
+            nx, ny, nz = float(normals[i, 0]), float(normals[i, 1]), float(normals[i, 2])
+            body.extend(struct.pack("<3f3f", px, py, pz, nx, ny, nz))
+        chunks.append(NjChunk(type_id=41, flags=0, body=bytes(body)))
+    return chunks
+
+
+def _build_strip_chunks_type64(triangles: np.ndarray) -> List[NjChunk]:
+    """Emit one-or-more type-64 strip chunks, each within the i16 size cap.
+
+    Per triangle: 8 body bytes (i16 len + 3*u16 idx) = 4 words. Header is
+    1 word. We pack as many triangles per chunk as fit under the cap.
+    """
+    n = int(triangles.shape[0]) if triangles.size else 0
+    if n == 0:
+        return [_build_strip_chunk_type64(triangles)]
+    max_tris = max(1, (_MAX_STRIP_BODY_WORDS - 1) // 4)
+    if n <= max_tris:
+        return [_build_strip_chunk_type64(triangles)]
+    return [
+        _build_strip_chunk_type64(triangles[start:start + max_tris])
+        for start in range(0, n, max_tris)
+    ]
+
+
+def _build_strip_chunks_type65(triangles: np.ndarray, uvs: np.ndarray) -> List[NjChunk]:
+    """Emit one-or-more type-65 (UV) strip chunks within the i16 size cap.
+
+    Per triangle: 20 body bytes (i16 len + 3*(u16 idx + u16 u + u16 v)) =
+    10 words. Header is 1 word.
+    """
+    n = int(triangles.shape[0]) if triangles.size else 0
+    if n == 0:
+        return [_rebuild_strip65(triangles, uvs)]
+    max_tris = max(1, (_MAX_STRIP_BODY_WORDS - 1) // 10)
+    if n <= max_tris:
+        return [_rebuild_strip65(triangles, uvs)]
+    return [
+        _rebuild_strip65(triangles[start:start + max_tris], uvs)
+        for start in range(0, n, max_tris)
+    ]
+
+
+# ---------------------------------------------------------------------------
 # Skeleton template loading
 # ---------------------------------------------------------------------------
 
@@ -1660,19 +2188,24 @@ def imported_to_nj(
         # Compute bounding sphere from positions.
         bbox = _bounding_sphere(verts)
 
-        # Vertex chunk: type 41 (POS + NORMAL).
-        vchunk = _build_vlist_chunk_type41(verts, normals)
+        # Vertex chunk(s): type 41 (POS + NORMAL). A single vertex chunk's
+        # body-word count must fit the i16 the rendering parser
+        # (formats.xj) uses to size it, so large meshes split across
+        # several chunks rather than overflow into a mis-parse.
+        vchunks = _build_vlist_chunks_type41(verts, normals)
 
-        # Strip chunk: type 65 (UV-flagged) when UVs are present, else 64.
+        # Strip chunk(s): type 65 (UV-flagged) when UVs are present, else
+        # 64. Split the same way so a >64 KB strip body never wraps the
+        # i16 size word (the bug that dropped 4000-tri meshes to ~200).
         if mesh.uvs is not None and mesh.uvs.size > 0:
-            schunk = _rebuild_strip65(tris, mesh.uvs.astype(np.float32, copy=False))
+            schunks = _build_strip_chunks_type65(tris, mesh.uvs.astype(np.float32, copy=False))
         else:
-            schunk = _build_strip_chunk_type64(tris)
+            schunks = _build_strip_chunks_type64(tris)
 
         nj_meshes.append(NjMeshChunks(
             bbox=bbox,
-            vlist=[vchunk],
-            plist=[schunk],
+            vlist=vchunks,
+            plist=schunks,
         ))
 
     # Attach the meshes to the root node — first one as root.mesh_index,
@@ -1736,7 +2269,265 @@ def imported_to_nj(
                 "is not encoded in the NJ output."
             ),
         }
+
+    # Bind textures into the NJTL chunk so the emitted .nj references its
+    # textures by name (PSOBB resolves these against the sibling .xvm/.pvm
+    # at load). We emit one NJTL entry per recovered ImportedTexture, in
+    # source-image order, so material_id -> image-idx stays a direct
+    # lookup into njtl_names. Names are sanitised to the 0..31-char ASCII
+    # PSOBB tooling expects (no path, no extension).
+    if model.textures:
+        nj.njtl_names = [_njtl_name_for(t) for t in model.textures]
     return nj
+
+
+def _njtl_name_for(tex: "ImportedTexture") -> str:
+    """Sanitise an ImportedTexture into a PSOBB NJTL texture name.
+
+    Strips any directory + extension, lowercases, and limits to ASCII
+    word characters (PSOBB texture names are short identifiers like
+    ``colormap`` / ``tex00``). Falls back to ``tex<index>`` when the
+    source name is empty or sanitises to nothing.
+    """
+    raw = tex.name or ""
+    # Drop directory + extension.
+    stem = Path(raw.replace("\\", "/")).name
+    dot = stem.rfind(".")
+    if dot > 0:
+        stem = stem[:dot]
+    safe = "".join(ch for ch in stem if ch.isalnum() or ch in ("_", "-")).strip("_-")
+    if not safe:
+        safe = f"tex{tex.index:02d}"
+    return safe[:28].lower()
+
+
+# ---------------------------------------------------------------------------
+# imported_model_to_nj — one-shot ImportedModel -> deployable .nj bytes
+# ---------------------------------------------------------------------------
+
+
+def imported_model_to_nj(
+    model: ImportedModel,
+    *,
+    target_class: Optional[str] = None,
+    axis_flip_z: bool = True,
+    scale: float = 1.0,
+) -> bytes:
+    """Build a single deployable ``.nj`` (NJCM + optional NJTL) from a model.
+
+    Thin wrapper over ``imported_to_nj`` + ``encode_nj_model``: it builds
+    the NJCM mesh-tree hierarchy (one root node + a child/sibling chain of
+    mesh-bearing nodes, positions/normals/UVs + material->texture binding
+    via NJTL) and serialises it to IFF-wrapped ``.nj`` bytes ready to drop
+    into PSOBB.IO.
+
+    The output round-trips back through ``formats.xj.parse_nj_file`` /
+    ``formats.nj_writer.parse_nj_for_writer`` — every triangle survives.
+
+    Args mirror ``imported_to_nj``. Returns the raw ``.nj`` file bytes.
+    """
+    from .nj_writer import encode_nj_model
+
+    nj = imported_to_nj(
+        model, target_class=target_class, axis_flip_z=axis_flip_z, scale=scale,
+    )
+    return encode_nj_model(nj)
+
+
+def import_glb_to_nj(
+    data: bytes,
+    *,
+    filename: str = "model.glb",
+    target_class: Optional[str] = None,
+    axis_flip_z: bool = True,
+    scale: float = 1.0,
+) -> Tuple[bytes, ImportedModel]:
+    """Parse GLB/glTF bytes and emit deployable ``.nj`` bytes in one call.
+
+    Returns ``(nj_bytes, imported_model)`` so the caller can inspect the
+    import accounting (``imported_model.import_stats``, ``.warnings``,
+    ``.textures``) alongside the deployable output.
+
+    Raises ``GltfImportError`` if any geometry would be silently dropped.
+    """
+    model = parse_gltf(data, glb=(data[:4] == b"glTF" or filename.lower().endswith(".glb")))
+    nj_bytes = imported_model_to_nj(
+        model, target_class=target_class, axis_flip_z=axis_flip_z, scale=scale,
+    )
+    return nj_bytes, model
+
+
+# ---------------------------------------------------------------------------
+# Fit-to-budget: import + decimate to <= N tris / <= B bytes
+# ---------------------------------------------------------------------------
+
+
+def fit_model_to_budget(
+    model: ImportedModel,
+    *,
+    max_tris: Optional[int] = None,
+    max_bytes: Optional[int] = None,
+    target_class: Optional[str] = None,
+    axis_flip_z: bool = True,
+    scale: float = 1.0,
+    preserve_border: bool = True,
+) -> Tuple[bytes, ImportedModel, dict]:
+    """Decimate an imported model to fit a triangle / byte budget, then emit .nj.
+
+    Merges every mesh into a single position+UV buffer, decimates it (QEM
+    via ``formats.decimate``) to satisfy ``max_tris`` and/or ``max_bytes``,
+    rebuilds a one-mesh ``ImportedModel``, and returns its ``.nj`` bytes.
+
+    Exactly one of ``max_tris`` / ``max_bytes`` may be None; at least one
+    must be set. When ``max_bytes`` is set we binary-search the tri count
+    via ``decimate_to_byte_budget`` against the REAL ``.nj`` encoder size
+    (not an estimate) so the result is guaranteed to fit. When only
+    ``max_tris`` is set we do a single QEM pass to that count.
+
+    Returns ``(nj_bytes, decimated_model, meta)``. ``meta`` carries the
+    decimation accounting (in/out tris, backend, encoded_bytes,
+    over_budget). ``over_budget=True`` means even the floor tri count
+    didn't fit the byte budget — the caller should split into multiple
+    .nj nodes (the returned bytes are still the smallest we could make).
+    """
+    from .decimate import decimate_mesh, decimate_to_byte_budget
+
+    if max_tris is None and max_bytes is None:
+        raise ValueError("fit_model_to_budget: set at least one of max_tris / max_bytes")
+
+    # Merge all meshes into one (positions, faces, uvs). Material binding
+    # collapses to the first mesh's material (the budget path is for big
+    # static lobby props where a single atlas texture is the norm).
+    merged_v, merged_f, merged_uv, first_mat = _merge_meshes(model.meshes)
+    n_in = len(merged_f)
+
+    if n_in == 0:
+        # Nothing to decimate — emit as-is.
+        nj_bytes = imported_model_to_nj(
+            model, target_class=target_class, axis_flip_z=axis_flip_z, scale=scale,
+        )
+        return nj_bytes, model, {
+            "in_tris": 0, "out_tris": 0, "backend": "empty",
+            "over_budget": False, "encoded_bytes": len(nj_bytes),
+        }
+
+    meta: dict
+    if max_bytes is not None:
+        # Encoder-accurate byte budget search: the size function builds a
+        # real .nj from the candidate decimated mesh and measures it.
+        def _encode_size(vs: np.ndarray, fs: np.ndarray) -> int:
+            cand = _single_mesh_model(model, vs, fs, merged_v, merged_uv, first_mat)
+            return len(imported_model_to_nj(
+                cand, target_class=target_class, axis_flip_z=axis_flip_z, scale=scale,
+            ))
+
+        floor = max(4, (max_tris if max_tris else 200))
+        out_v, out_f, meta = decimate_to_byte_budget(
+            merged_v, merged_f,
+            encode_size_fn=_encode_size,
+            budget_bytes=int(max_bytes),
+            floor_tris=floor,
+            preserve_border=preserve_border,
+            uvs=merged_uv,
+        )
+        # Honour an explicit tri ceiling on top of the byte budget.
+        if max_tris is not None and len(out_f) > max_tris:
+            out_v, out_f, _uv, dmeta = decimate_mesh(
+                out_v, out_f, target_tris=int(max_tris),
+                preserve_border=preserve_border, uvs=merged_uv, return_meta=True,
+            )
+            meta["out_tris"] = int(len(out_f))
+            meta["final_tris"] = int(len(out_f))
+            meta["backend"] = dmeta.get("backend", meta.get("backend"))
+    else:
+        out_v, out_f, _uv, dmeta = decimate_mesh(
+            merged_v, merged_f, target_tris=int(max_tris),
+            preserve_border=preserve_border, uvs=merged_uv, return_meta=True,
+        )
+        meta = {
+            "in_tris": n_in, "out_tris": int(len(out_f)),
+            "backend": dmeta.get("backend", "unknown"), "over_budget": False,
+        }
+
+    out_model = _single_mesh_model(model, out_v, out_f, merged_v, merged_uv, first_mat)
+    nj_bytes = imported_model_to_nj(
+        out_model, target_class=target_class, axis_flip_z=axis_flip_z, scale=scale,
+    )
+    meta.setdefault("in_tris", n_in)
+    meta.setdefault("out_tris", int(len(out_f)))
+    meta["encoded_bytes"] = len(nj_bytes)
+    return nj_bytes, out_model, meta
+
+
+def _merge_meshes(
+    meshes: List[ImportedMesh],
+) -> Tuple[np.ndarray, np.ndarray, Optional[np.ndarray], int]:
+    """Concatenate meshes into one (vertices, faces, uvs, first_material).
+
+    Faces are reindexed into the merged vertex buffer. UVs survive only
+    when EVERY mesh has them (otherwise the merged UV is None — the
+    decimator then carries positions/faces only). Returns the first
+    mesh's material_id as the merged material.
+    """
+    if not meshes:
+        return (np.zeros((0, 3), np.float32), np.zeros((0, 3), np.uint32), None, 0)
+    vs: List[np.ndarray] = []
+    fs: List[np.ndarray] = []
+    uvs: List[np.ndarray] = []
+    all_have_uv = all(m.uvs is not None and m.uvs.size for m in meshes)
+    base = 0
+    for m in meshes:
+        v = m.vertices.astype(np.float32, copy=False)
+        f = m.indices.astype(np.uint32, copy=False)
+        vs.append(v)
+        fs.append(f + base)
+        if all_have_uv:
+            uvs.append(m.uvs.astype(np.float32, copy=False))
+        base += v.shape[0]
+    merged_v = np.concatenate(vs, axis=0)
+    merged_f = np.concatenate(fs, axis=0) if fs else np.zeros((0, 3), np.uint32)
+    merged_uv = np.concatenate(uvs, axis=0) if all_have_uv and uvs else None
+    return merged_v, merged_f, merged_uv, int(meshes[0].material_id)
+
+
+def _single_mesh_model(
+    src: ImportedModel,
+    out_v: np.ndarray,
+    out_f: np.ndarray,
+    orig_v: np.ndarray,
+    orig_uv: Optional[np.ndarray],
+    material_id: int,
+) -> ImportedModel:
+    """Build a 1-mesh ImportedModel from decimated (vertices, faces).
+
+    Re-samples UVs by nearest original vertex when the source had UVs
+    (the decimator drops them through the collapse). Carries the source
+    model's textures/material binding so the emitted .nj keeps its NJTL.
+    """
+    out_v = np.asarray(out_v, dtype=np.float32).reshape(-1, 3)
+    out_f = np.asarray(out_f, dtype=np.uint32).reshape(-1, 3)
+    uvs: Optional[np.ndarray] = None
+    if orig_uv is not None and orig_uv.size:
+        from .decimate import _resample_uvs
+        uvs = _resample_uvs(orig_v, orig_uv, out_v).astype(np.float32)
+    mesh = ImportedMesh(
+        name="merged_decimated",
+        vertices=out_v,
+        indices=out_f,
+        uvs=uvs,
+        normals=None,  # regenerated at NJ-emit time
+        material_id=material_id & 0xFF,
+    )
+    return ImportedModel(
+        meshes=[mesh],
+        bones=list(src.bones),
+        bone_root=src.bone_root,
+        source_format=src.source_format,
+        scale_factor=src.scale_factor,
+        warnings=list(src.warnings),
+        textures=list(src.textures),
+        material_textures=dict(src.material_textures),
+    )
 
 
 def _generate_normals(positions: np.ndarray, indices: np.ndarray) -> np.ndarray:
@@ -2498,6 +3289,7 @@ def export_spring_bones_json(model: ImportedModel) -> dict:
 __all__ = [
     "ImportedMesh",
     "ImportedBone",
+    "ImportedTexture",
     "ImportedModel",
     "ImportedTrack",
     "ImportedAnimation",
@@ -2507,6 +3299,7 @@ __all__ = [
     "SpringBoneCollider",
     "SpringBoneChain",
     "NodeConstraint",
+    "GltfImportError",
     "parse_obj",
     "parse_gltf",
     "parse_gltf_with_animations",
@@ -2515,6 +3308,9 @@ __all__ = [
     "rad_to_bams",
     "quantize_skin_weights",
     "imported_to_nj",
+    "imported_model_to_nj",
+    "import_glb_to_nj",
+    "fit_model_to_budget",
     "imported_to_json",
     "imported_from_json",
     "list_templates",
