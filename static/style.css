@@ -413,6 +413,23 @@ aside .pane-title #assetTreeCoverage {
    :host styles in tree.js, so the rules here only target the
    light-DOM wrapper <aside>. */
 
+/* 2026-06-20 (ui-polish): the custom element must FLEX into the space
+   left after the .pane-title banner, not take height:100% of the whole
+   aside. The :host{height:100%} in tree.js resolves against the aside's
+   full content box and ignores the ~28px pane-title above it, so the
+   element overflowed the aside by exactly the title's height and its
+   inner .body grew a stray scrollbar even when the (collapsed) tree had
+   plenty of room. flex:1 + min-height:0 lets it shrink correctly and
+   only scroll when the content genuinely exceeds the remaining space. */
+aside#assetTree pso-asset-tree {
+  flex: 1 1 auto;
+  min-height: 0;
+  /* host is display:flex; this keeps the light-DOM box block-level so
+     the flex sizing applies (a bare custom element is inline by default). */
+  display: block;
+  overflow: hidden;
+}
+
 /* ────────────────────────────────────────────────────────────── */
 
 /* ─────────────────────────────────────────────────────────────────
@@ -2470,7 +2487,12 @@ button.ghost:disabled { color: #4a5260; border-color: #1c2129; background: trans
 .model-overlay {
   position: absolute;
   bottom: 8px;
-  left: 8px;
+  /* 2026-06-20 (ui-polish): the texture panel (.pso-tex-panel) is a
+     280px box pinned to the same bottom-left corner, so the hint label
+     collided with / was hidden behind it. Clear the panel's width (280
+     + 8 gutter + 8 gap) so the hint sits to its right. The variant
+     strip already uses the same 296px offset. */
+  left: 296px;
   right: 8px;
   pointer-events: none;
 }
@@ -3192,6 +3214,10 @@ body.unified-viewport-mode #btnClassicUiToggle {
   #psoTexturePanel.pso-tex-panel > *:not(.pso-tex-panel-header) { display: none; }
   #psoTexturePanel.pso-tex-panel .pso-tex-panel-header strong,
   #psoTexturePanel.pso-tex-panel .pso-tex-panel-header .grow { display: none; }
+  /* 2026-06-20 (ui-polish): when the texture panel auto-collapses to a
+     40px strip, the bottom hint only needs to clear that strip — pull it
+     back left so it isn't stranded in the middle of the stage. */
+  .model-overlay { left: 56px; }
 }
 
 /* Inspector buttons + selects — reuse the existing button styles but
@@ -3314,7 +3340,11 @@ body.unified-viewport-mode #btnClassicUiToggle {
 }
 .bp-group-fields {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  /* 2026-06-20 (ui-polish): 220px min only fit 2 columns in the ~680px
+     stage (after group padding), making the form taller than it needed
+     and forcing more vertical scroll. 200px lets a 3rd column pack in at
+     680px+ while still being wide enough for the label + 90px input. */
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   gap: 6px;
 }
 
@@ -3626,7 +3656,11 @@ body.unified-viewport-mode #btnClassicUiToggle {
 }
 .mdsl-group-fields {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  /* 2026-06-20 (ui-polish): 280px min was too greedy for the ~680px
+     stage (2 columns only -> long vertical scroll). 240px keeps the
+     longer mob-AI field labels readable while letting a 3rd column pack
+     in once there's room (wider windows), trimming the scroll. */
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
   gap: 6px;
 }
 

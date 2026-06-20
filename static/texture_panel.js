@@ -219,6 +219,12 @@
       .pso-tex-panel-body {
         flex: 1;
         overflow-y: auto;
+        /* 2026-06-20 (ui-polish): setting only overflow-y makes the
+           browser compute overflow-x as 'auto' too, so a long unbreakable
+           string (the asset path in .meta) grew a horizontal scrollbar
+           inside this fixed-width (280px) panel. Pin overflow-x:hidden —
+           rows truncate with ellipsis instead. */
+        overflow-x: hidden;
       }
       .pso-tex-panel-empty {
         padding: 16px 12px;
@@ -231,6 +237,9 @@
         gap: 8px;
         padding: 6px 8px;
         border-bottom: 1px solid #1a1f26;
+        /* let the flex children (.pso-tex-info) actually shrink so the
+           long .meta path can't push the row wider than the panel. */
+        min-width: 0;
       }
       .pso-tex-row:last-child { border-bottom: none; }
       .pso-tex-thumb {
@@ -268,6 +277,13 @@
       .pso-tex-info .meta {
         color: #6c7785;
         font-size: 10px;
+        /* the asset path here is a long unbreakable token; truncate it
+           rather than let it widen the row past the panel (was the source
+           of the horizontal scrollbar in the model-viewer tex panel). */
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        min-width: 0;
       }
       .pso-tex-actions {
         display: flex;
