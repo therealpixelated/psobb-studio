@@ -4933,3 +4933,41 @@ header button.imp-header-btn { margin-right: 4px; }
 .arc-field input[type=text], .arc-field select { padding: 4px 6px; }
 .arc-opt { font-size: 0.85em; display: flex; align-items: center; gap: 6px; }
 .arc-modal-btns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+
+/* =====================================================================
+ * UX slop batch 1 (2026-06-20) — additive rules only.
+ * ===================================================================== */
+
+/* Mob AI: widen the number input now that the inline binary-mapping span
+ * is gone, so placeholders/values aren't cramped. */
+.mdsl-field input { width: 120px; }
+
+/* Battle Params: collapsed "Advanced / unknown bytes" group. Keeps the
+ * truly-unknown RE bytes editable but de-emphasized + folded by default. */
+.bp-advanced {
+  margin-top: 4px;
+  border-top: 1px dashed #2a3142;
+  padding-top: 4px;
+}
+.bp-advanced > summary {
+  cursor: pointer;
+  font-size: 10px;
+  list-style: none;
+  user-select: none;
+  padding: 2px 0;
+}
+.bp-advanced > summary::-webkit-details-marker { display: none; }
+.bp-advanced > summary::before {
+  content: "\25B8 ";   /* right-pointing triangle when collapsed */
+  color: #5a6478;
+}
+.bp-advanced[open] > summary::before {
+  content: "\25BE ";   /* down-pointing triangle when open */
+}
+
+/* Item PMT: "(none)" annotation for the 0xFFFF "none" sentinel. */
+.ipmt-sentinel {
+  font-size: 10px;
+  color: #6b748a;
+  white-space: nowrap;
+}

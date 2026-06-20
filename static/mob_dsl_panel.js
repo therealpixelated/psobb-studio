@@ -327,19 +327,25 @@
       for (const f of groups[grp]) {
         const isChanged = (f.label in patchFields);
         const cur = isChanged ? patchFields[f.label] : (f.default == null ? "" : f.default);
-        const tooltip = f.tooltip || "";
+        // The inline binary-mapping span was removed: it duplicated info and
+        // crowded each row. Fold the mapping into the label's title tooltip
+        // so nothing is lost — it stays available on hover.
+        const binMap = (f.binary_group != null && f.binary_name != null)
+          ? f.binary_group + '.' + f.binary_name + ' (' + f.kind + ')'
+          : '';
+        let tooltip = f.tooltip || '';
+        if (binMap && tooltip.indexOf(binMap) === -1) {
+          tooltip = tooltip ? (tooltip + ' — ' + binMap) : ('binary mapping: ' + binMap);
+        }
         const suffix = fieldKindHint(f.kind);
         html += '<label class="mdsl-field' + (isChanged ? " changed" : "") + '"' +
                 (tooltip ? ' title="' + escapeHtml(tooltip) + '"' : '') + '>';
         html += '<span class="mdsl-field-label">' + escapeHtml(f.label) + '</span>';
-        html += '<span class="mdsl-field-binary dim" title="binary mapping: ' +
-                escapeHtml(f.binary_group + '.' + f.binary_name + ' (' + f.kind + ')') +
-                '">' + escapeHtml(f.binary_group + '.' + f.binary_name) + '</span>';
         html += '<input type="number" data-label="' + escapeHtml(f.label) +
                 '" data-kind="' + escapeHtml(f.kind) +
                 '" value="' + (cur === "" ? "" : escapeHtml(String(cur))) + '"' +
                 ' step="' + fieldStep(f.kind) + '"' +
-                ' placeholder="(unset — keeps stock)" />';
+                ' placeholder="stock" />';
         if (suffix) {
           html += '<span class="mdsl-field-suffix dim">' + escapeHtml(suffix) + '</span>';
         }
@@ -454,7 +460,7 @@
     }
     const total = totalChangedFields();
     const payload = buildPatchPayload();
-    let html = '<div class="vp-insp-title">Mob AI Authoring (Tier 1)</div>';
+    let html = '<div class="vp-insp-title">Mob AI Authoring</div>';
     html += '<div class="vp-insp-help dim">' +
             'Pick a mob + difficulty, edit named fields. Each field maps ' +
             'back to a BattleParamEntry slot. Click "compile + deploy" to ' +

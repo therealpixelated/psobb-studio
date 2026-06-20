@@ -61,9 +61,9 @@
       { key: "dfp_modifier",  label: "DFP modifier",  type: "float", help: "BB Patch field_0x14" },
       { key: "hp_mst_modifier", label: "HP/MST mod",  type: "int",   help: "BB Patch unknown" },
       { key: "xp",  label: "XP",  type: "int", range: [-32768, 32767], help: "exp dropped" },
-      { key: "field_0x1e", label: "field 0x1e", type: "int", range: [-32768, 32767] },
-      { key: "field_0x20", label: "field 0x20", type: "int", range: [-32768, 32767] },
-      { key: "field_0x22", label: "field 0x22", type: "int", range: [-32768, 32767] },
+      { key: "field_0x1e", label: "reserved 0x1e", type: "int", range: [-32768, 32767], advanced: true },
+      { key: "field_0x20", label: "reserved 0x20", type: "int", range: [-32768, 32767], advanced: true },
+      { key: "field_0x22", label: "reserved 0x22", type: "int", range: [-32768, 32767], advanced: true },
     ],
     attacks: [
       { key: "min_atp", label: "min ATP", type: "int" },
@@ -73,15 +73,15 @@
       { key: "distance_x", label: "distance x", type: "float", help: "attack reach (units?)" },
       { key: "angle", label: "angle (bams)", type: "uint", help: "0x10000 = full revolution" },
       { key: "distance_y", label: "distance y", type: "float" },
-      { key: "unknown_a8",  label: "a8",  type: "uint" },
-      { key: "unknown_a9",  label: "a9",  type: "uint" },
-      { key: "unknown_a10", label: "a10", type: "uint" },
-      { key: "unknown_a11", label: "a11", type: "uint" },
-      { key: "unknown_a12", label: "a12", type: "uint" },
-      { key: "unknown_a13", label: "a13", type: "uint" },
-      { key: "unknown_a14", label: "a14", type: "uint" },
-      { key: "unknown_a15", label: "a15", type: "uint" },
-      { key: "unknown_a16", label: "a16", type: "uint" },
+      { key: "unknown_a8",  label: "reserved a8",  type: "uint", advanced: true },
+      { key: "unknown_a9",  label: "reserved a9",  type: "uint", advanced: true },
+      { key: "unknown_a10", label: "reserved a10", type: "uint", advanced: true },
+      { key: "unknown_a11", label: "reserved a11", type: "uint", advanced: true },
+      { key: "unknown_a12", label: "reserved a12", type: "uint", advanced: true },
+      { key: "unknown_a13", label: "reserved a13", type: "uint", advanced: true },
+      { key: "unknown_a14", label: "reserved a14", type: "uint", advanced: true },
+      { key: "unknown_a15", label: "reserved a15", type: "uint", advanced: true },
+      { key: "unknown_a16", label: "reserved a16", type: "uint", advanced: true },
     ],
     resists: [
       { key: "evp_bonus", label: "EVP bonus",   type: "int" },
@@ -90,10 +90,10 @@
       { key: "eth",  label: "ETH (thunder)",    type: "uint" },
       { key: "elt",  label: "ELT (light)",      type: "uint" },
       { key: "edk",  label: "EDK (dark)",       type: "uint" },
-      { key: "unknown_a6", label: "a6", type: "uint" },
-      { key: "unknown_a7", label: "a7", type: "uint" },
-      { key: "unknown_a8", label: "a8", type: "uint" },
-      { key: "unknown_a9", label: "a9", type: "uint" },
+      { key: "unknown_a6", label: "reserved a6", type: "uint", advanced: true },
+      { key: "unknown_a7", label: "reserved a7", type: "uint", advanced: true },
+      { key: "unknown_a8", label: "reserved a8", type: "uint", advanced: true },
+      { key: "unknown_a9", label: "reserved a9", type: "uint", advanced: true },
       { key: "dfp_bonus", label: "DFP bonus", type: "int" },
     ],
     animations: [
@@ -153,6 +153,15 @@
       return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;",
                 '"': "&quot;", "'": "&#39;" })[c];
     });
+  }
+
+  // Last path segment, for both / and \ separators. Keeps absolute dev
+  // paths (C:/Users/...) out of user-facing displays.
+  function basename(p) {
+    if (p == null) return "";
+    var s = String(p).replace(/[\\/]+$/, "");
+    var i = Math.max(s.lastIndexOf("/"), s.lastIndexOf("\\"));
+    return i >= 0 ? s.slice(i + 1) : s;
   }
 
   function deepClone(o) { return JSON.parse(JSON.stringify(o)); }
@@ -318,36 +327,61 @@
     html += '<span class="bp-mob-name">' + escapeHtml(ent.name || "") + '</span>';
     html += '</div>';
 
+    // Render one editable field. Kept editable for both the named and the
+    // de-emphasized "reserved" fields; only the grouping differs.
+    function renderField(group, m) {
+      const v = ent[group][m.key];
+      const ov = origEnt ? origEnt[group][m.key] : null;
+      const changed = (v !== ov);
+      const labelOverride = (group === "animations" &&
+                             ANIM_LABELS_BY_SLOT[state.slot] &&
+                             ANIM_LABELS_BY_SLOT[state.slot][m.key])
+                            ? ANIM_LABELS_BY_SLOT[state.slot][m.key]
+                            : null;
+      let s = '<label class="bp-field' + (changed ? " changed" : "") + '"' +
+              (m.help ? ' title="' + escapeHtml(m.help) + '"' : '') + '>';
+      s += '<span class="bp-field-label">' +
+           escapeHtml(m.label + (labelOverride ? " (" + labelOverride + ")" : "")) +
+           '</span>';
+      s += '<input type="number" data-group="' + group + '" data-key="' + m.key +
+           '" value="' + (v == null ? "" : v) +
+           '" step="' + (m.type === "float" ? "any" : "1") + '" />';
+      if (changed) {
+        s += '<span class="bp-orig dim" title="original">' +
+             (ov == null ? "(null)" : escapeHtml(String(ov))) + '</span>';
+      }
+      s += '</label>';
+      return s;
+    }
+
     const groups = ["stats", "attacks", "resists", "animations"];
     for (const group of groups) {
+      const meta = FIELD_META[group];
+      const named = meta.filter(function (m) { return !m.advanced; });
+      const advanced = meta.filter(function (m) { return m.advanced; });
+
       html += '<div class="bp-group">';
       html += '<div class="bp-group-title">' + group + '</div>';
       html += '<div class="bp-group-fields">';
-      const meta = FIELD_META[group];
-      for (const m of meta) {
-        const v = ent[group][m.key];
-        const ov = origEnt ? origEnt[group][m.key] : null;
-        const changed = (v !== ov);
-        const labelOverride = (group === "animations" &&
-                               ANIM_LABELS_BY_SLOT[state.slot] &&
-                               ANIM_LABELS_BY_SLOT[state.slot][m.key])
-                              ? ANIM_LABELS_BY_SLOT[state.slot][m.key]
-                              : null;
-        html += '<label class="bp-field' + (changed ? " changed" : "") + '"' +
-                (m.help ? ' title="' + escapeHtml(m.help) + '"' : '') + '>';
-        html += '<span class="bp-field-label">' +
-                escapeHtml(m.label + (labelOverride ? " (" + labelOverride + ")" : "")) +
-                '</span>';
-        html += '<input type="number" data-group="' + group + '" data-key="' + m.key +
-                '" value="' + (v == null ? "" : v) +
-                '" step="' + (m.type === "float" ? "any" : "1") + '" />';
-        if (changed) {
-          html += '<span class="bp-orig dim" title="original">' +
-                  (ov == null ? "(null)" : escapeHtml(String(ov))) + '</span>';
-        }
-        html += '</label>';
+      for (const m of named) html += renderField(group, m);
+      html += '</div>';
+
+      // Truly-unknown RE bytes: kept editable but collapsed by default so
+      // they don't read as broken. Highlight the summary if any have edits.
+      if (advanced.length) {
+        const anyChanged = advanced.some(function (m) {
+          const v = ent[group][m.key];
+          const ov = origEnt ? origEnt[group][m.key] : null;
+          return v !== ov;
+        });
+        html += '<details class="bp-advanced"' + (anyChanged ? ' open' : '') + '>';
+        html += '<summary class="dim">Advanced / unknown bytes (' +
+                advanced.length + ')</summary>';
+        html += '<div class="bp-group-fields">';
+        for (const m of advanced) html += renderField(group, m);
+        html += '</div></details>';
       }
-      html += '</div></div>';
+      html += '</div>';
     }
 
     host.innerHTML = html;
@@ -474,7 +508,11 @@
     html += '<div class="vp-insp-section bp-source">';
     html += '<dl class="bp-meta"><dt>variant</dt><dd>' + escapeHtml(state.variant) + '</dd>';
     if (state.config && state.config.newserv_dir) {
-      html += '<dt>source</dt><dd class="dim wrap">' + escapeHtml(state.config.newserv_dir) + '</dd>';
+      // Show only the basename — never leak the absolute dev path. The full
+      // path is still discoverable via the title tooltip for power users.
+      var srcName = basename(state.config.newserv_dir) || "newserv data";
+      html += '<dt>source</dt><dd class="dim wrap" title="' +
+              escapeHtml(srcName) + '">' + escapeHtml(srcName) + '</dd>';
     }
     html += '<dt>changes</dt><dd>' + changes.length + '</dd>';
     html += '</dl></div>';
@@ -541,7 +579,8 @@
       state.original = deepClone(resp.data);
       state.edited = deepClone(resp.data);
       renderEditor();
-      setStatus("loaded " + (resp.source_path || ""));
+      // Basename only — never surface the absolute newserv path in the status.
+      setStatus("loaded " + (basename(resp.source_path) || state.variant));
     } catch (e) {
       setStatus("error: " + e.message, true);
     }

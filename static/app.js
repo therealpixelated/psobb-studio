@@ -162,6 +162,25 @@ function saveAnimCfg(filename, idx, cfg) {
 }
 
 // =====================================================================
+// small formatting helpers
+// =====================================================================
+// plural(2, "tile") -> "2 tiles"; plural(1, "tile") -> "1 tile".
+// Pass an explicit plural form for irregular words: plural(3, "entry", "entries").
+function plural(n, singular, pluralForm) {
+  const word = (n === 1) ? singular : (pluralForm || singular + "s");
+  return `${n} ${word}`;
+}
+
+// basename(path) -> last path segment, for both / and \ separators.
+// Used to keep absolute dev paths out of user-facing displays.
+function basename(p) {
+  if (p == null) return "";
+  const s = String(p).replace(/[\\/]+$/, "");
+  const i = Math.max(s.lastIndexOf("/"), s.lastIndexOf("\\"));
+  return i >= 0 ? s.slice(i + 1) : s;
+}
+
+// =====================================================================
 // status banner
 // =====================================================================
 let statusTimer = null;
@@ -298,7 +317,7 @@ async function loadFiles() {
     $("#dataDir").textContent = data.data_dir || "";
     $("#dataDir").title = data.data_dir || "";
     filterFiles();
-    setStatus(`${state.files.length} file(s) in data/`, "ok");
+    setStatus(`${plural(state.files.length, "file")} in data/`, "ok");
     // Feed the onboarding empty-state callout + header data-dir pill.
     // The onboarding module gates the "assets found" chip on the
     // authoritative /api/health data_dir.exists (not health.ok).
@@ -398,12 +417,18 @@ async function openFile(name) {
     const dims = first ? `${first.width}x${first.height}` : "";
     $("#curMeta").textContent = `${data.tile_count} tile${data.tile_count === 1 ? "" : "s"}${dims ? " - first " + dims : ""}`;
     renderTileGrid();
-    setStatus(`${data.tile_count} tile(s) loaded from ${name}`, "ok");
+    setStatus(`${plural(data.tile_count, "tile")} loaded from ${name}`, "ok");
     updateEditsCounter();
   } catch (e) {
     if (!state.currentFile || state.currentFile.name !== name) return;
-    grid.innerHTML = `<div class="grid-msg err">extract failed: ${escapeHtml(e.message)}</div>`;
-    setStatus(`extract failed: ${e.message}`, "err", { sticky: true });
+    // Keep the raw exception (often a Python magic-bytes repr) in the console
+    // for debugging, but show the user a plain, auto-dismissing explanation.
+    console.warn(`[tiles] extract failed for ${name}:`, e);
+    const friendly = "This file isn't an editable texture container.";
+    grid.innerHTML = `<div class="grid-msg err">${escapeHtml(friendly)}</div>`;
+    // Auto-dismissing toast (not a sticky status banner) + clear the busy state.
+    toast(friendly, "err");
+    setStatus("", "info");
   }
 }
 
@@ -1182,7 +1207,7 @@ function revertAllInCurrentFile() {
   const fname = state.currentFile.name;
   const before = Object.keys(state.tileEdits).filter((k) => k.startsWith(fname + ":"));
   if (before.length === 0) return;
-  if (!confirm(`Revert ${before.length} edited tile(s) in ${fname}? This only clears in-memory edits.`)) return;
+  if (!confirm(`Revert ${plural(before.length, "edited tile")} in ${fname}? This only clears in-memory edits.`)) return;
   for (const k of before) {
     delete state.tileEdits[k];
     delete state.cardSliderPcts[k];
@@ -1190,20 +1215,20 @@ function revertAllInCurrentFile() {
   renderTileGrid();
   updateEditsCounter();
   renderFiles();
-  setStatus(`reverted ${before.length} tile(s) in ${fname}`, "ok");
+  setStatus(`reverted ${plural(before.length, "tile")} in ${fname}`, "ok");
 }
 
 function clearAllEdits() {
   const n = Object.keys(state.tileEdits).length;
   if (n === 0) return;
-  if (!confirm(`Discard all ${n} pending edit(s) across every file?`)) return;
+  if (!confirm(`Discard all ${plural(n, "pending edit")} across every file?`)) return;
   state.tileEdits = {};
   state.cardSliderPcts = {};
   if (state.currentFile) renderTileGrid();
   updateEditsCounter();
   renderFiles();
   if (state.modalTileIdx !== null) refreshModalImages();
-  setStatus(`cleared ${n} edit(s)`, "ok");
+  setStatus(`cleared ${plural(n, "edit")}`, "ok");
 }
 
 async function upscaleAll() {
@@ -1243,7 +1268,7 @@ async function upscaleAll() {
   } else if (fail > 0) {
     setStatus(`upscale all done: ${ok} ok, ${fail} failed`, "err", { sticky: true });
   } else {
-    setStatus(`upscale all done: ${ok} tile(s)`, "ok");
+    setStatus(`upscale all done: ${plural(ok, "tile")}`, "ok");
   }
 }
 
@@ -1307,7 +1332,7 @@ async function doRepackDeploy() {
   const btn = $("#btnRepack");
   btn.disabled = true;
   btn.textContent = "repacking...";
-  setStatus(`repacking ${fname} (${edits.length} tile(s))...`, "busy", { sticky: true });
+  setStatus(`repacking ${fname} (${plural(edits.length, "tile")})...`, "busy", { sticky: true });
   try {
     const r = await api("/api/repack", {
       method: "POST",
@@ -2054,7 +2079,7 @@ async function batchUpscaleSelected() {
   if (fail > 0) {
     toast(`batch upscale: ${ok} ok, ${fail} failed`, "err");
   } else {
-    toast(`batch upscale: ${ok} tile(s)`, "ok");
+    toast(`batch upscale: ${plural(ok, "tile")}`, "ok");
   }
 }
 
@@ -2067,7 +2092,7 @@ function batchRevertSelected() {
     toast("no edited tiles in selection", "info");
     return;
   }
-  if (!confirm(`Revert ${eligible.length} edited tile(s) in selection?`)) return;
+  if (!confirm(`Revert ${plural(eligible.length, "edited tile")} in selection?`)) return;
   for (const i of eligible) {
     delete state.tileEdits[editKey(fname, i)];
     delete state.cardSliderPcts[editKey(fname, i)];
@@ -2076,7 +2101,7 @@ function batchRevertSelected() {
   updateEditsCounter();
   renderFiles();
   applyTileFilter();
-  toast(`reverted ${eligible.length} tile(s)`, "ok");
+  toast(`reverted ${plural(eligible.length, "tile")}`, "ok");
 }
 
 // =====================================================================
@@ -2262,7 +2287,7 @@ async function showDeployDiff() {
         return `<div class="row"><span class="idx">tile ${String(i).padStart(2, "0")}</span><span class="meta dim">${escapeHtml(dims)} — unchanged</span></div>`;
       }).join("");
   const unknownNote = (diff.unknown_indices && diff.unknown_indices.length)
-    ? `<div class="deploy-warning">${diff.unknown_indices.length} edit(s) reference tile indices not present in this file: ${diff.unknown_indices.join(", ")}. Those will be ignored.</div>`
+    ? `<div class="deploy-warning">${plural(diff.unknown_indices.length, "edit")} reference tile indices not present in this file: ${diff.unknown_indices.join(", ")}. Those will be ignored.</div>`
     : "";
   body.innerHTML = `
     <dl class="deploy-summary">
@@ -2466,7 +2491,7 @@ async function doPromote() {
   const createBackup = !!$("#promoteCreateBackup").checked;
   _promoteInFlight = true;
   updatePromoteConfirmState();
-  setStatus(`promoting ${names.length} file(s) to live install...`, "busy", { sticky: true });
+  setStatus(`promoting ${plural(names.length, "file")} to live install...`, "busy", { sticky: true });
   let r;
   try {
     r = await api("/api/deploy/promote", {
@@ -2487,7 +2512,7 @@ async function doPromote() {
   const fail = Number(r.fail_count) || 0;
   if (fail === 0) {
     toast(`promoted ${ok} file${ok === 1 ? "" : "s"} to live game install`, "ok");
-    setStatus(`promoted ${ok} file(s) to live`, "ok");
+    setStatus(`promoted ${plural(ok, "file")} to live`, "ok");
   } else {
     toast(`promoted ${ok} ok, ${fail} failed — see modal`, "err", { ttl: 7000 });
     setStatus(`promote: ${ok} ok, ${fail} failed`, "err", { sticky: true });
@@ -2611,7 +2636,7 @@ function exportSession() {
     URL.revokeObjectURL(a.href);
     if (a.parentNode) a.parentNode.removeChild(a);
   }, 200);
-  toast(`exported ${n} edit(s)`, "ok");
+  toast(`exported ${plural(n, "edit")}`, "ok");
 }
 
 async function importSession(file) {
@@ -2640,7 +2665,7 @@ async function importSession(file) {
   }
   const existing = Object.keys(state.tileEdits).length;
   if (existing > 0) {
-    if (!confirm(`Replace ${existing} pending edit(s) with ${incomingCount} from session file?\n\n(Cancel to keep current edits.)`)) {
+    if (!confirm(`Replace ${plural(existing, "pending edit")} with ${incomingCount} from session file?\n\n(Cancel to keep current edits.)`)) {
       return;
     }
   }
@@ -2698,7 +2723,7 @@ async function importSession(file) {
   }
   updateEditsCounter();
   renderFiles();
-  toast(`imported ${incomingCount} edit(s) from session`, "ok");
+  toast(`imported ${plural(incomingCount, "edit")} from session`, "ok");
 }
 
 // =====================================================================
@@ -2831,7 +2856,7 @@ async function refreshAtlasView() {
   _setAtlasViewVisible(true);
   $("#atlasMetaText").textContent =
     `composite ${at.composite_w}x${at.composite_h} - ` +
-    `${at.placements.length} placed tile(s), ${at.skip_tiles.length} skipped`;
+    `${plural(at.placements.length, "placed tile")}, ${at.skip_tiles.length} skipped`;
   $("#atlasWrap").style.setProperty("--atlas-aspect", `${at.composite_w}/${at.composite_h}`);
   $("#atlasSrc").src = at.src_b64;
 
@@ -3033,9 +3058,9 @@ async function atlasUpscaleComposite() {
       body: JSON.stringify(body),
     });
     _registerAtlasResultEdits(r, "atlas_upscale");
-    toast(`composite upscaled: ${r.tiles.length} tile(s) updated`, "ok");
+    toast(`composite upscaled: ${plural(r.tiles.length, "tile")} updated`, "ok");
     setStatus(
-      `composite upscaled (${r.upscaled_w}x${r.upscaled_h}); ${r.tiles.length} tile edit(s) staged`,
+      `composite upscaled (${r.upscaled_w}x${r.upscaled_h}); ${plural(r.tiles.length, "tile edit")} staged`,
       "ok"
     );
   } catch (e) {
@@ -3079,9 +3104,9 @@ async function atlasImportComposite(file) {
       }),
     });
     _registerAtlasResultEdits(r, "atlas_import");
-    toast(`composite imported (${r.imported_w}x${r.imported_h}, ${r.scale_factor}x): ${r.tiles.length} tile(s) updated`, "ok");
+    toast(`composite imported (${r.imported_w}x${r.imported_h}, ${r.scale_factor}x): ${plural(r.tiles.length, "tile")} updated`, "ok");
     setStatus(
-      `composite imported (${r.imported_w}x${r.imported_h}); ${r.tiles.length} tile edit(s) staged`,
+      `composite imported (${r.imported_w}x${r.imported_h}); ${plural(r.tiles.length, "tile edit")} staged`,
       "ok"
     );
   } catch (e) {

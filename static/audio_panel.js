@@ -29,6 +29,13 @@
   function rawUrl(path) {
     return "/api/raw/" + String(path).split("/").map(encodeURIComponent).join("/");
   }
+  // Last path segment (/ or \) — keeps absolute dev paths out of toasts.
+  function basename(p) {
+    if (p == null) return "";
+    var s = String(p).replace(/[\\/]+$/, "");
+    var i = Math.max(s.lastIndexOf("/"), s.lastIndexOf("\\"));
+    return i >= 0 ? s.slice(i + 1) : s;
+  }
   function apiUrl(base, path, extra) {
     var u = base + "?path=" + encodeURIComponent(path);
     if (extra) u += extra;
@@ -148,7 +155,7 @@
           return;
         }
         if (j.deployed) {
-          setStatus("deployed to DEV: " + (j.path || "") +
+          setStatus("deployed to DEV: " + (basename(j.path) || "ok") +
             (j.backup_path ? " (backup saved)" : ""), "ok");
         } else {
           setStatus("preview ready", "ok");
@@ -286,11 +293,12 @@
         })
         .catch(function (e) {
           // Graceful fallback: a bare raw <audio> so the user can still play.
+          // The HTTP-status detail is noise to the user (the file plays fine);
+          // keep it in the console for debugging only.
+          console.warn("[audio] info unavailable for", path, "-", e);
           stage.innerHTML =
             '<div class="vp-stage-card"><div class="vp-stage-card-title">' + esc(path) + '</div>' +
-            '<audio id="audPlayer" controls preload="metadata" style="width:100%"></audio>' +
-            '<div class="dim" style="margin-top:8px">audio info unavailable (' +
-            esc(String(e && e.message || e)) + '); streaming raw bytes.</div></div>';
+            '<audio id="audPlayer" controls preload="metadata" style="width:100%"></audio></div>';
           var a = stage.querySelector("#audPlayer");
           if (a) { a.src = rawUrl(path); a.play().catch(function () {}); }
           insp.innerHTML = '<div class="vp-insp-title">Audio</div>' +

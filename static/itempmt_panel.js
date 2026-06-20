@@ -71,8 +71,8 @@
       { key: "color",        label: "color",       type: "uint" },
       { key: "tech_boost",   label: "tech boost",  type: "uint" },
       { key: "behavior_flags", label: "behavior flags", type: "hex" },
-      { key: "unknown_a4",   label: "unknown_a4",  type: "uint" },
-      { key: "unknown_a5",   label: "unknown_a5",  type: "uint" },
+      { key: "unknown_a4",   label: "reserved a4",  type: "uint", advanced: true },
+      { key: "unknown_a5",   label: "reserved a5",  type: "uint", advanced: true },
     ],
     armors: [
       { key: "dfp",                    label: "DFP base",      type: "uint" },
@@ -91,7 +91,7 @@
       { key: "stat_boost_entry_index", label: "stat boost #",  type: "uint" },
       { key: "tech_boost",             label: "tech boost",    type: "uint" },
       { key: "flags_type",             label: "flags type",    type: "uint", help: "0=armor, 1/2/3=variant" },
-      { key: "unknown_a4",             label: "unknown_a4",    type: "uint" },
+      { key: "unknown_a4",             label: "reserved a4",   type: "uint", advanced: true },
     ],
     shields: [], // same as armors below
     units: [
@@ -161,6 +161,15 @@
       return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;",
                 '"': "&quot;", "'": "&#39;" })[c];
     });
+  }
+
+  // Last path segment, for both / and \ separators. Keeps absolute dev
+  // paths (C:/Users/...) out of user-facing displays.
+  function basename(p) {
+    if (p == null) return "";
+    var s = String(p).replace(/[\\/]+$/, "");
+    var i = Math.max(s.lastIndexOf("/"), s.lastIndexOf("\\"));
+    return i >= 0 ? s.slice(i + 1) : s;
   }
 
   function deepClone(o) { return JSON.parse(JSON.stringify(o)); }
@@ -458,6 +467,12 @@
             html += '<input type="number" data-key="' + m.key +
                     '" value="' + (v == null ? "" : v) +
                     '" step="' + (m.type === "float" ? "any" : "1") + '" />';
+            // 65535 / 0xFFFF is the engine's "none" sentinel for these index
+            // fields. Annotate it (input stays editable) so it doesn't read
+            // as a giant magic number.
+            if (v === 0xFFFF) {
+              html += '<span class="ipmt-sentinel dim" title="0xFFFF">(none)</span>';
+            }
           }
           if (changed) {
             html += '<span class="ipmt-orig dim" title="original">' +
@@ -630,8 +645,10 @@
     html += '<div class="vp-insp-section ipmt-source">';
     html += '<dl class="ipmt-meta">';
     if (state.config && state.config.configured_path) {
-      html += '<dt>source</dt><dd class="dim wrap">' +
-              escapeHtml(state.config.configured_path) + '</dd>';
+      // Basename only — never leak the absolute dev path into the panel.
+      var srcName = basename(state.config.configured_path) || "newserv data";
+      html += '<dt>source</dt><dd class="dim wrap" title="' +
+              escapeHtml(srcName) + '">' + escapeHtml(srcName) + '</dd>';
     }
     html += '<dt>changes</dt><dd>' + changes.length + '</dd>';
     html += '</dl></div>';
@@ -791,7 +808,7 @@
       const resp = await getPmt("newserv");
       state.original = deepClone(resp.data);
       state.edited = deepClone(resp.data);
-      setStatus("loaded " + (resp.source_path || "") +
+      setStatus("loaded " + (basename(resp.source_path) || "newserv data") +
                 " (raw=" + resp.raw_size + ")");
       // Default to the first non-empty weapon class
       const wc = state.edited.weapons.find((w) => (w.items || []).length > 0);

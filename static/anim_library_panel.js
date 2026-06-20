@@ -59,6 +59,15 @@
   // ------------------------------------------------------------------
   // Helpers
   // ------------------------------------------------------------------
+  // e2e / unit-test fixtures live in the same cache dir as authored
+  // animations (test_walk_endpoint, test_e2e_*, test_anim_editor_synth).
+  // Hide them from the displayed list without touching the files.
+  function isTestFixture(name) {
+    if (!name) return false;
+    const n = String(name).toLowerCase();
+    return n.startsWith("test_") || /(^|_)e2e_/.test(n);
+  }
+
   function escapeHtml(s) {
     return String(s).replace(/[&<>"']/g, function (c) {
       return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;",
@@ -164,7 +173,12 @@
     state.fetching = true;
     try {
       const data = await apiList();
-      state.items = Array.isArray(data.items) ? data.items : [];
+      const all = Array.isArray(data.items) ? data.items : [];
+      // Hide e2e / unit-test fixtures (test_walk_endpoint, test_e2e_*,
+      // test_anim_editor_synth, ...) — they're real cache files but pure
+      // test junk, not authored content. Frontend filter only; the cache
+      // files are left untouched on disk.
+      state.items = all.filter((it) => !isTestFixture(it.name));
       state.totals = data.totals || null;
       // Drop selections for items that no longer exist on disk.
       const live = new Set(state.items.map((it) => it.name));
