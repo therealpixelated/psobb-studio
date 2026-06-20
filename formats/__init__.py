@@ -7,6 +7,7 @@
 #   match         - texture<->model multi-rule matcher (R1..R6)
 #   prs           - PRS (Sega LZSS) encoder + decoder, pure Python
 #   battle_param  - BattleParamEntry*.dat parser + serializer
+#   quest_bin     - quest .bin/.qst container codec + PRS (de)compression
 #   audio_pac     - byte-exact .pac PCM SFX-bank codec (pure Python)
 #   audio_codec   - optional ffmpeg-backed .ogg/.sfd decode + .ogg encode
 #   audio         - thin facade re-exporting audio_pac + audio_codec
