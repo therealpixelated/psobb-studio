@@ -12054,6 +12054,34 @@ def _tile_png_cache_clear(*, drop_disk: bool = True) -> dict:
     }
 
 
+def _bml_obvious_textured_inner(bml_path: Path) -> Optional[str]:
+    """Return the unambiguous inner model name of a BML, or None.
+
+    Mirrors psov2's per-asset scripts, which always name a concrete
+    inner + its paired texture instead of asking a generic resolver
+    "what is THIS container's texture?". A BML is unambiguous when it
+    carries exactly one entry that has an inline texture appendix; if no
+    entry is textured but there is exactly one model entry, fall back to
+    that. Returns None when the BML is genuinely ambiguous (0 or >1
+    candidate) so the caller still produces a clean diagnostic rather
+    than guessing.
+    """
+    try:
+        entries = parse_bml(bml_path.read_bytes())
+    except Exception:  # pragma: no cover - defensive; resolver bails cleanly
+        return None
+    textured = [e for e in entries if getattr(e, "has_texture", False)]
+    if len(textured) == 1:
+        return textured[0].name
+    models = [
+        e for e in entries
+        if Path(e.name).suffix.lower() in (".nj", ".xj")
+    ]
+    if len(models) == 1:
+        return models[0].name
+    return None
+
+
 def _build_model_texture_binding(
     bml_path: Path,
     outer_ext: str,
@@ -12092,6 +12120,18 @@ def _build_model_texture_binding(
     xvm_records: list[dict] = []
     xvm_error: Optional[str] = None
     if outer_ext == ".bml":
+        # psov2 "the obvious inner" contract: a BML opened with no inner is
+        # ambiguous in general, but when it carries exactly ONE textured
+        # entry (or just one .nj/.xj model) the inner is unambiguous —
+        # auto-select it instead of bailing with "no inner specified". The
+        # model-mesh / model-textures endpoints already require an inner
+        # (they raise 400 first), so this branch is a robustness net for
+        # any path that reaches the resolver with effective_inner is None
+        # (and the momoka-class single-inner BML is exactly this case).
+        if not effective_inner:
+            auto = _bml_obvious_textured_inner(bml_path)
+            if auto is not None:
+                effective_inner = auto
         if effective_inner:
             try:
                 blob = bml_path.read_bytes()

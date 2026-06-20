@@ -878,10 +878,21 @@ function deriveTextureArchivePath(meshUrl, filename, hint) {
     // request for the texture sibling.
     return `${base}#${inner}.xvm`;
   }
-  // Top-level model: try a same-stem .xvm. We don't actually verify
-  // that file exists here — the tile_png endpoint will 404 if not, and
-  // the frontend gracefully falls back to per-mesh tile 0 via the
-  // existing single-tile flow.
+  // Bare BML with NO inner: do NOT fabricate "<stem>.xvm". A BML's
+  // textures live in an inline XVM appendix keyed to a concrete inner
+  // (e.g. bm_npc_momoka.bml#n_momoka_t_body.nj.xvm), never in a
+  // top-level "<stem>.xvm" sibling. Fabricating one fed the bare BML
+  // header bytes to the XVMH reader (the momoka "garbage texture
+  // count" bug). Returning null hands resolution to the server-side
+  // /api/model_textures binding, which auto-selects the BML's sole
+  // textured inner (psov2 "the obvious inner" contract).
+  if (base.toLowerCase().endsWith(".bml")) {
+    return null;
+  }
+  // Top-level .nj/.xj model: try a same-stem .xvm. We don't actually
+  // verify that file exists here — the tile_png endpoint will 404 if
+  // not, and the frontend gracefully falls back to per-mesh tile 0 via
+  // the existing single-tile flow.
   const stem = base.replace(/\.[a-z0-9]+$/i, "");
   return `${stem}.xvm`;
 }

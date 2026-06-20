@@ -61,6 +61,18 @@ except Exception:  # pragma: no cover - defensive
     _afs_reader_mod = None  # type: ignore[assignment]
     _HAS_AFS_READER = False
 
+# BML unpacker: synthesizes one manifest entry per archived inner .nj/.xj
+# model (bm_npc_momoka.bml#n_momoka_t_body.nj etc.). Optional — if it fails
+# to import, BML archives just appear as their top-level entries with no
+# inner expansion (the historical behaviour that hid momoka-class textured
+# inners from the tree). Mirrors the AFS reader feature-flag above.
+try:
+    from formats import bml as _bml_mod  # type: ignore
+    _HAS_BML_READER = hasattr(_bml_mod, "parse_bml")
+except Exception:  # pragma: no cover - defensive
+    _bml_mod = None  # type: ignore[assignment]
+    _HAS_BML_READER = False
+
 # PRS decompressor: used only as a FALLBACK when the cheap compressed-head
 # sniff can't pin a .prs file's inner format (the inner magic normally
 # leaks verbatim into the first ~64 compressed bytes, so the decompress
@@ -1024,6 +1036,97 @@ def _synthesize_afs_entries(
     return out
 
 
+def _synthesize_bml_entries(
+    bml_path: Path, root: Path,
+) -> list[dict]:
+    """Walk one ``.bml`` archive and synthesise one AssetEntry per inner model.
+
+    PSOBB packs most enemy / NPC / object / player models inside a BML
+    container as one (occasionally several) ``.nj`` / ``.xj`` inner files,
+    each optionally carrying an INLINE XVM texture appendix. The
+    historical manifest only expanded ``.afs`` archives
+    (:func:`_synthesize_afs_entries`); BMLs appeared only as their bare
+    top-level entry, so a single-inner textured BML like
+    ``bm_npc_momoka.bml`` never offered its concrete inner
+    (``bm_npc_momoka.bml#n_momoka_t_body.nj``) in the tree. Opening the
+    bare ``.bml`` then drove the texture resolver with no inner and the
+    XVMH reader was fed the BML header bytes — the momoka-class
+    "garbage texture count" bug.
+
+    Mirrors :func:`_synthesize_afs_entries`: each entry's ``path`` is
+    ``<archive_relpath>#<inner_name>`` (NO numeric prefix — BML inners are
+    named and addressed by name, matching the editor's existing
+    ``deriveTextureArchivePath`` / ``extract_bml_inner_bytes`` ``#``
+    convention), with ``parent_archive`` pointing back at the BML and
+    ``inner_index`` the slot index. The ``has_texture`` flag is carried
+    through so a downstream resolver can auto-pair the inline XVM.
+
+    Inner blob bytes are NOT materialised here (lazy, like AFS) — only
+    the directory table is parsed, so a manifest rebuild over ~365 BMLs
+    (mostly single-entry) stays cheap.
+
+    Errors during BML parsing degrade into an empty list; the archive
+    itself still appears as a top-level entry via ``classify()``.
+    """
+    if not _HAS_BML_READER or _bml_mod is None:
+        return []
+    try:
+        buf = bml_path.read_bytes()
+    except OSError as e:
+        log.warning("BML read failed for %s: %s", bml_path, e)
+        return []
+    try:
+        bml_entries = _bml_mod.parse_bml(buf)
+    except (ValueError, OSError) as e:
+        log.warning("BML parse failed for %s: %s", bml_path, e)
+        return []
+    except Exception as e:  # pragma: no cover - defensive
+        log.warning("BML parse internal error for %s: %s", bml_path, e)
+        return []
+    try:
+        archive_rel = _rel_path(bml_path, root)
+    except ValueError:
+        archive_rel = bml_path.name
+    archive_name = bml_path.name
+    out: list[dict] = []
+    for idx, ent in enumerate(bml_entries):
+        inner_basename = Path(ent.name).name
+        ext_guess = Path(inner_basename).suffix.lower() or ".unknown"
+        # Only models are individually addressable + texture-resolvable.
+        # A BML can in principle carry other inner kinds, but in shipped
+        # PSOBB data the inners are .nj / .xj models; skip anything else
+        # so we don't fabricate bogus tree rows.
+        if ext_guess not in (".nj", ".xj"):
+            continue
+        synth = f"{archive_rel}#{inner_basename}"
+        fmt = "NJ_IFF"
+        cat, parsable = _INNER_FORMAT_TO_CATEGORY.get(fmt, ("model", "partial"))
+        entry: dict = {
+            "path": synth,
+            "size": int(ent.size_compressed),
+            # Inherit mtime from the parent archive (no per-inner mtime).
+            "mtime": int(bml_path.stat().st_mtime),
+            "extension": ext_guess,
+            "magic_hex": "",
+            "magic_ascii": "",
+            "category": cat,
+            "format": fmt,
+            "parsable": parsable,
+            "siblings": [],
+            "parent_archive": archive_rel,
+            "inner_index": idx,
+            "has_texture": bool(ent.has_texture),
+        }
+        inf = infer_category(synth, parent_archive=archive_name)
+        if inf is not None:
+            entry["inferred_category"] = inf
+        _apply_psov2_name(
+            entry, synth, parent_archive=archive_name, inner_index=idx,
+        )
+        out.append(entry)
+    return out
+
+
 def build_manifest(root: Path) -> dict:
     """Walk ``root`` and return the full Manifest dict.
 
@@ -1043,18 +1146,22 @@ def build_manifest(root: Path) -> dict:
     root = root.resolve()
     entries: list[dict] = []
     afs_paths: list[Path] = []
+    bml_paths: list[Path] = []
     for p in walk_install(root):
         try:
             entries.append(classify(p, root=root))
         except OSError as e:
             log.warning("classify failed for %s: %s", p, e)
             continue
-        # Collect AFS archives for second-pass inner-blob synthesis. We
-        # do this in two passes so a failed AFS parse can't disturb the
-        # main entry stream — every archive still has its top-level
+        # Collect AFS/BML archives for second-pass inner-blob synthesis.
+        # We do this in two passes so a failed archive parse can't disturb
+        # the main entry stream — every archive still has its top-level
         # entry from classify() above.
-        if p.suffix.lower() == ".afs":
+        suf = p.suffix.lower()
+        if suf == ".afs":
             afs_paths.append(p)
+        elif suf == ".bml":
+            bml_paths.append(p)
 
     # Second pass: synthesise per-inner-blob entries for each AFS.
     # Only Item* (weapons/items) and pl?tex (player textures) carry
@@ -1071,6 +1178,22 @@ def build_manifest(root: Path) -> dict:
         log.info(
             "manifest: %d AFS archive(s) expanded to %d inner-blob entries",
             len(afs_paths), afs_inner_count,
+        )
+
+    # Second pass (BML): synthesise one entry per inner .nj/.xj model so a
+    # textured single-inner BML (bm_npc_momoka.bml) offers its concrete
+    # inner row (bm_npc_momoka.bml#n_momoka_t_body.nj) — the granularity
+    # the texture resolver needs to pair the inline XVM. Lazy like AFS.
+    bml_inner_count = 0
+    for bml_path in bml_paths:
+        rows = _synthesize_bml_entries(bml_path, root)
+        if rows:
+            entries.extend(rows)
+            bml_inner_count += len(rows)
+    if bml_inner_count:
+        log.info(
+            "manifest: %d BML archive(s) expanded to %d inner-model entries",
+            len(bml_paths), bml_inner_count,
         )
 
     entries.sort(key=lambda e: e["path"].lower())
