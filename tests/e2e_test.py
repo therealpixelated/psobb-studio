@@ -42,8 +42,8 @@ DATA_DIR = Path(os.path.expanduser("~/PSOBB.IO/data")).resolve()
 TARGET_PRS = "LogoEP4.prs"
 TARGET_XVM = "bm_obj_ep4_boss09_core_tex.xvm"
 
-PUYO = Path(r"C:/Tools/re/upscale-lab/tools/puyotools/PuyoToolsCli.exe").resolve()
-XVR_CODEC = Path(r"C:/Tools/re/upscale-lab/tools/xvr_codec.py").resolve()
+PUYO = Path(os.environ.get("PSO_PUYOTOOLS") or r"C:/Tools/re/upscale-lab/tools/puyotools/PuyoToolsCli.exe").resolve()
+XVR_CODEC = Path(os.environ.get("PSO_XVR_CODEC") or r"C:/Tools/re/upscale-lab/tools/xvr_codec.py").resolve()
 PYEXE = Path(sys.executable).resolve()
 
 WORK = Path(__file__).parent.parent / "_e2e_work"

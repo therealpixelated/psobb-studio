@@ -264,8 +264,8 @@ VERSION = "1.2.1-cleanup"
 ROOT = Path(__file__).parent.resolve()
 # Editor operates on a DEV mirror of the game install so the user can keep playing
 # while we iterate. Override with the PSO_DATA_DIR env var if needed.
-LIVE_DATA_DIR = Path(os.path.expanduser("~/PSOBB.IO/data")).resolve()
-DEV_DATA_DIR = Path(r"C:/tmp_pso_dev/data").resolve()
+LIVE_DATA_DIR = Path(os.path.expanduser(os.environ.get("PSO_LIVE_DATA_DIR") or "~/PSOBB.IO/data")).resolve()
+DEV_DATA_DIR = Path(os.path.expanduser(os.environ.get("PSO_DEV_DATA_DIR") or "C:/tmp_pso_dev/data")).resolve()
 DATA_DIR = Path(os.environ.get("PSO_DATA_DIR") or DEV_DATA_DIR).resolve()
 CACHE_DIR = ROOT / "cache"
 STATIC_DIR = ROOT / "static"
@@ -488,9 +488,9 @@ _EXPORT_TOKENS_LOCK = threading.Lock()
 EXPORT_TTL_SECONDS = 6 * 3600  # 6h
 
 # Tools (resolved up-front; reported by /api/health)
-PUYO = Path(r"C:/Tools/re/upscale-lab/tools/puyotools/PuyoToolsCli.exe").resolve()
-XVR_CODEC = Path(r"C:/Tools/re/upscale-lab/tools/xvr_codec.py").resolve()
-REALESRGAN = Path(r"C:/Tools/re/upscale-lab/tools/realesrgan_bundle/realesrgan-ncnn-vulkan.exe").resolve()
+PUYO = Path(os.environ.get("PSO_PUYOTOOLS") or r"C:/Tools/re/upscale-lab/tools/puyotools/PuyoToolsCli.exe").resolve()
+XVR_CODEC = Path(os.environ.get("PSO_XVR_CODEC") or r"C:/Tools/re/upscale-lab/tools/xvr_codec.py").resolve()
+REALESRGAN = Path(os.environ.get("PSO_REALESRGAN") or r"C:/Tools/re/upscale-lab/tools/realesrgan_bundle/realesrgan-ncnn-vulkan.exe").resolve()
 REALESRGAN_MODELS = REALESRGAN.parent / "models"
 PYEXE = Path(sys.executable).resolve()
 
