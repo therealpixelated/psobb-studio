@@ -35,6 +35,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+# Force UTF-8 stdout so non-ASCII output (asset names, symbols) can't crash the
+# run on Windows' default cp1252 console (as happens on GitHub Actions).
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
 # Third-party deps that are intentionally optional (lazy-imported by feature
 # code). If absent in CI, a module that imports one is skipped, not failed.
 OPTIONAL_DEPS = {
@@ -132,7 +140,7 @@ def main() -> int:
     if not ok:
         return 1
 
-    print("\nSMOKE PASSED ✓")
+    print("\nSMOKE PASSED")
     return 0
 
 
