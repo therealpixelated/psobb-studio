@@ -24,7 +24,7 @@ from pathlib import Path
 
 import pytest
 
-from formats.rel import is_c_rel, parse_rel
+from formats.rel import is_c_rel, is_n_rel, parse_rel
 from formats.rel_writer import (
     CrelFace,
     CrelModel,
@@ -34,8 +34,10 @@ from formats.rel_writer import (
     build_crel,
     decode_rel_pointer_table,
     encode_crel,
+    encode_nrel,
     encode_rel_pointer_table,
     parse_crel_for_writer,
+    parse_nrel_for_writer,
     simulate_rel_relocation,
 )
 
@@ -364,3 +366,197 @@ def test_mutate_node_flag_round_trips():
     re = parse_crel_for_writer(out)
     assert re.nodes[0].flags == 0x80000120
     assert set(parse_rel(out).pointer_offsets) == src_locs
+
+
+# ===========================================================================
+# STEP 3 — n.rel (NrelFmt2 node geometry) parse/encode
+# ===========================================================================
+
+# Worked n.rel fixtures with their proven trailer facts (from byte
+# inspection of the real files in PSOBB.IO/data/scene).
+_NREL_FIXTURES = [
+    # (filename, pointer_count, payload_off, chunk_count, tex_count)
+    ("map_lobby_01n.rel", 945, 0x52C, 1, 93),
+    ("map_lobby_02n.rel", None, None, None, None),
+    ("map_lobby_03n.rel", None, None, None, None),
+    ("map_lobby_04n.rel", None, None, None, None),
+    ("map_lobby_05n.rel", None, None, None, None),
+    ("map_lobby_06n.rel", None, None, None, None),
+    ("map_lobby_07n.rel", None, None, None, None),
+    ("map_lobby_08n.rel", None, None, None, None),
+    ("map_lobby_09n.rel", None, None, None, None),
+    ("map_lobby_10n.rel", None, None, None, None),
+    ("map_acave01_00n.rel", 2068, 0x1A38, 59, 94),
+    ("map_aboss01n.rel", 173, 0x1D8, 2, 13),
+]
+
+
+@pytest.mark.skipif(not HAS_PSOBB, reason="PSOBB.IO data not present")
+def test_nrel_lobby01_byte_exact():
+    """The canonical n.rel worked fixture: byte-exact AND the proven
+    trailer/structure facts are reproduced.
+
+    Dumps the first differing offset on failure (the single most useful
+    datum when a relocation entry or a header scalar drifts).
+    """
+    src = (SCENE_DIR / "map_lobby_01n.rel").read_bytes()
+    model = parse_nrel_for_writer(src)
+    # Verified facts from the spec / byte inspection.
+    assert model.chunk_count == 1
+    assert len(model.chunks) == 1
+    assert len(model.texture_names) == 93
+    assert model.unk1 == 64
+    assert model.radius == pytest.approx(800.0)
+    # first chunk references the 61-entry static tree array @0xa8 and a
+    # 4-entry animated tree array @0x478.
+    chunk = model.chunks[0]
+    assert chunk.static_count == 61
+    assert chunk.animated_count == 4
+    assert chunk.static_mesh_trees_ptr == 0xA8
+    assert chunk.animated_mesh_trees_ptr == 0x478
+
+    out = encode_nrel(model)
+    if out != src:
+        first = next((i for i in range(min(len(out), len(src)))
+                      if out[i] != src[i]), None)
+        raise AssertionError(
+            f"lobby_01n not byte-exact: first diff @ 0x{first:x}"
+            if first is not None
+            else f"lobby_01n length {len(out)} vs {len(src)}")
+
+    rel = parse_rel(out)
+    assert rel.pointer_count == 945
+    assert rel.payload_offset == 0x52C
+    # first reloc pointer is at 0xa8 (delta 42 words from base).
+    assert rel.pointer_offsets[0] == 0xA8
+
+
+@pytest.mark.skipif(not HAS_PSOBB, reason="PSOBB.IO data not present")
+@pytest.mark.parametrize("fname,ptr_count,payload,chunk_count,tex_count",
+                         _NREL_FIXTURES)
+def test_nrel_fixture_byte_exact(fname, ptr_count, payload, chunk_count,
+                                 tex_count):
+    """lobby_01..10n + acave01_00n + aboss01n all round-trip byte-exact."""
+    path = SCENE_DIR / fname
+    if not path.exists():
+        pytest.skip(f"{fname} not present")
+    src = path.read_bytes()
+    rel_in = parse_rel(src)
+    assert is_n_rel(rel_in), f"{fname} is not an n.rel"
+
+    model = parse_nrel_for_writer(src)
+    out = encode_nrel(model)
+    if out != src:
+        first = next((i for i in range(min(len(out), len(src)))
+                      if out[i] != src[i]), None)
+        raise AssertionError(
+            f"{fname} not byte-exact: first diff @ 0x{first:x}"
+            if first is not None
+            else f"{fname} length {len(out)} vs {len(src)}")
+
+    rel = parse_rel(out)
+    if ptr_count is not None:
+        assert rel.pointer_count == ptr_count
+    if payload is not None:
+        assert rel.payload_offset == payload
+    if chunk_count is not None:
+        assert model.chunk_count == chunk_count
+    if tex_count is not None:
+        assert len(model.texture_names) == tex_count
+
+
+@pytest.mark.skipif(not HAS_PSOBB, reason="PSOBB.IO data not present")
+@pytest.mark.parametrize("fname,_pc,_pl,_cc,_tc", _NREL_FIXTURES)
+def test_nrel_parse_encode_parse_stability(fname, _pc, _pl, _cc, _tc):
+    """parse -> encode -> parse: the relocation graph, payload offset,
+    pointer count, and table offset survive, cross-checked against the
+    trusted reader formats.rel.parse_rel."""
+    path = SCENE_DIR / fname
+    if not path.exists():
+        pytest.skip(f"{fname} not present")
+    src = path.read_bytes()
+    src_rel = parse_rel(src)
+    assert src_rel.pointer_offsets, "source has no pointers (bad fixture)"
+
+    out = encode_nrel(parse_nrel_for_writer(src))
+    out_rel = parse_rel(out)
+
+    assert out_rel.pointer_offsets == src_rel.pointer_offsets
+    assert out_rel.payload_offset == src_rel.payload_offset
+    assert out_rel.pointer_count == src_rel.pointer_count
+    assert out_rel.pointer_table_offset == src_rel.pointer_table_offset
+    # The relocatable data section is identical too.
+    assert out[:out_rel.pointer_table_offset] == \
+        src[:src_rel.pointer_table_offset]
+
+    # Engine relocation simulation lands every flagged word in-data/null.
+    base = 0x40000000
+    data_end = out_rel.pointer_table_offset
+    for v in simulate_rel_relocation(out, base):
+        assert v == base or base <= v < base + data_end
+
+
+@pytest.mark.skipif(not HAS_PSOBB, reason="PSOBB.IO data not present")
+def test_nrel_corpus_sweep_byte_exact_rate():
+    """Every ``*n.rel`` that classifies as n.rel must round-trip
+    byte-exact (>=99%).
+
+    Files that don't classify as n.rel are skipped, not counted against
+    the rate.  Any non-exact file is reported with its first differing
+    offset.
+    """
+    files = sorted(SCENE_DIR.glob("*n.rel"))
+    assert len(files) >= 100, f"only {len(files)} *n.rel — data missing?"
+
+    total = exact = skipped = 0
+    failures: list[str] = []
+    for path in files:
+        src = path.read_bytes()
+        try:
+            rel = parse_rel(src)
+        except Exception as e:  # noqa: BLE001
+            failures.append(f"{path.name}: parse_rel failed: {e}")
+            total += 1
+            continue
+        if not is_n_rel(rel):
+            skipped += 1
+            continue
+        total += 1
+        try:
+            out = encode_nrel(parse_nrel_for_writer(src))
+        except Exception as e:  # noqa: BLE001
+            failures.append(f"{path.name}: encode failed: {e}")
+            continue
+        if out == src:
+            exact += 1
+        else:
+            first = next((i for i in range(min(len(out), len(src)))
+                          if out[i] != src[i]), None)
+            failures.append(
+                f"{path.name}: first diff @ 0x{first:x}" if first is not None
+                else f"{path.name}: length {len(out)} vs {len(src)}")
+
+    rate = exact / total if total else 0.0
+    detail = "; ".join(failures[:20])
+    assert rate >= 0.99, (
+        f"n.rel byte-exact rate {rate * 100:.1f}% ({exact}/{total}, "
+        f"{skipped} non-nrel skipped) < 99%. Failures: {detail}")
+
+
+# ---- mutation (semantic, not byte-exact) ---------------------------------
+
+@pytest.mark.skipif(not HAS_PSOBB, reason="PSOBB.IO data not present")
+def test_nrel_mutate_radius_round_trips():
+    """Edit the fmt2 header radius scalar, re-encode, re-parse: the change
+    reads back and the relocation graph is unchanged."""
+    src = (SCENE_DIR / "map_aboss01n.rel").read_bytes()
+    model = parse_nrel_for_writer(src)
+    src_locs = list(parse_rel(src).pointer_offsets)
+
+    model.radius = 1234.0
+    out = encode_nrel(model)
+    re = parse_nrel_for_writer(out)
+    assert re.radius == pytest.approx(1234.0)
+    assert list(parse_rel(out).pointer_offsets) == src_locs
+    # Scalar edit must not move the data section size or payload offset.
+    assert parse_rel(out).payload_offset == parse_rel(src).payload_offset

@@ -8,17 +8,21 @@ trailer.  At load time PSOBB walks the delta table, advancing an
 u32 it lands on (decompile ``load_rel_asset`` / ``load_rel_asset2`` at
 ``Psobb.exe-05112026.c:404134-404214`` / ``:404642-404669``).
 
-This iteration implements the **c.rel (collision)** half:
+This module implements two REL halves on top of one shared container:
 
   STEP 0  :func:`encode_rel_pointer_table` / :func:`decode_rel_pointer_table`
-           — the load-bearing u16 word-delta codec.  Shared with n.rel.
+           — the load-bearing u16 word-delta codec.  Shared by c+n.rel.
   STEP 1  :func:`assemble_rel` — pad-to-32 + table + pad + 32-byte trailer.
-           Generic container framing; shared with n.rel.
+           Generic container framing; shared by c+n.rel.
   STEP 2  :func:`parse_crel_for_writer` / :func:`encode_crel` /
            :func:`build_crel` — the c.rel model + byte-exact emitter.
+  STEP 3  :func:`parse_nrel_for_writer` / :func:`encode_nrel` — the n.rel
+           (node geometry, ``NrelFmt2``) model + byte-exact emitter.
 
-The n.rel half is a *later iteration*; the STEP-0/STEP-1 primitives are
-written format-agnostic so n.rel can reuse them unchanged.
+The STEP-0/STEP-1 primitives are format-agnostic; the n.rel half reuses
+them unchanged (it does NOT touch POF0 — n.rel geometry is XJ buffer
+descriptors, not NJCM chunk streams, and the relocation table is the
+same raw u16 word-delta codec as c.rel, never the NJ/POF0 token form).
 
 c.rel on-disk layout (validated byte-exact against every ``*c.rel`` in
 ``PSOBB.IO/data/scene``)::
@@ -66,7 +70,17 @@ import struct
 from dataclasses import dataclass, field
 from typing import List, Optional, Sequence, Tuple
 
-from formats.rel import TRAILER_SIZE
+from formats.rel import (
+    NREL_FMT2_MAGIC,
+    TRAILER_SIZE,
+    RelParseError,
+    is_n_rel,
+    parse_rel,
+    read_mesh_trees,
+    read_nrel_chunks,
+    read_nrel_header,
+    read_texture_names,
+)
 
 
 class RelWriteError(ValueError):
@@ -620,6 +634,287 @@ def simulate_rel_relocation(buf: bytes, base: int = 0) -> List[int]:
     return out
 
 
+# ---------------------------------------------------------------------------
+# STEP 3 — n.rel (node geometry / NrelFmt2) model + byte-exact writer
+# ---------------------------------------------------------------------------
+#
+# n.rel geometry is **XJ (D3D buffer descriptors)**, NOT NJCM: there is
+# no IFF wrapper and no POF0 chunk.  The container framing is identical
+# to c.rel (data + u16 word-delta table + 32-byte trailer, all %32), so
+# the n.rel writer reuses STEP-0/STEP-1 unchanged.
+#
+# This is a ROUND-TRIP-PRESERVING (layout-hint) writer, exactly like
+# ``nj_writer.parse_nj_for_writer``: it captures every understood region
+# with its *source byte offset* plus the opaque bulk-geometry span, and
+# rebuilds the relocation table from the captured pointer locations.  It
+# does NOT re-derive XJ geometry from world-space triangles.  v1 must
+# byte-exact round-trip UNMODIFIED files first; pose/pointer-graph edits
+# layer in on top of the same layout.
+#
+# Data-section region order (lobby_01, all 32-byte aligned overall):
+#   0x000  TAM / texture-animation info block (opaque; no pointers into it)
+#   0xa8   static_mesh_trees[]  (16B each)   <- first reloc ptr
+#   0x478  animated_mesh_trees[] (16B each; interleaved ptr+float, opaque)
+#   0x4f8  NrelChunk[]          (52B each)
+#   0x52c  NrelFmt2 header      (24B)        <- payload_offset
+#   0x560  TextureList + entries (8B + 12B*count)
+#   …bulk… XjMesh / vertex buffers / strip index lists / RenderStateArgs
+#          (interleaved, NOT contiguous-by-type — kept as one opaque span)
+#   …tail  texture name strings; NUL pad to 32 -> pt_off.
+#
+# The structured regions (TAM, tree arrays, chunks, fmt2 header, texture
+# list, texture names) are parsed for *editability and validation*; the
+# byte-exact v1 emit re-lays every region from the captured source bytes
+# at its captured offset, fills any inter-region gap verbatim from the
+# source, and rebuilds the table+trailer from the captured pointer
+# locations.  Because every byte of the data section is sourced from the
+# original (regions + gaps), the round-trip is exact while the model
+# still exposes the structure the editor needs.
+
+NREL_FMT2_HEADER_SIZE = 24
+NREL_CHUNK_SIZE = 52
+NREL_MESH_TREE_SIZE = 16
+NREL_TEXLIST_ENTRY_SIZE = 12
+
+_NREL_FMT2_HEADER_FMT = "<4sIHHfII"   # magic,unk1,chunk_count,unk2,radius,chunks,tex
+_NREL_CHUNK_FMT = "<i3f3ifIIIII"      # id,pos3f,rot3i,radius,smt,amt,sc,ac,flags
+_NREL_MESH_TREE_FMT = "<IIII"         # root_node_ptr,unk1,tex_anim_ptr,tree_flags
+assert struct.calcsize(_NREL_FMT2_HEADER_FMT) == NREL_FMT2_HEADER_SIZE
+assert struct.calcsize(_NREL_CHUNK_FMT) == NREL_CHUNK_SIZE
+assert struct.calcsize(_NREL_MESH_TREE_FMT) == NREL_MESH_TREE_SIZE
+
+
+@dataclass
+class NrelMeshTreeRec:
+    """One 16-byte ``MeshTree`` record, captured with its source offset."""
+    src_offset: int
+    root_node_ptr: int
+    unk1: int
+    tex_anim_info_ptr: int
+    tree_flags: int
+
+
+@dataclass
+class NrelChunkRec:
+    """One 52-byte ``NrelChunk`` record (visibility chunk).
+
+    ``static_trees`` / ``animated_trees`` hold the parsed MeshTree
+    records the chunk's tree-array pointers reference (multiple chunks
+    may share the same tree array — e.g. ``map_aboss01n`` has two chunks
+    both pointing at the tree array at 0x30).  They are decoded for
+    inspection/editing; byte-exact emit reads the raw tree bytes back
+    from the source span, so shared arrays are reproduced once.
+    """
+    src_offset: int
+    id: int
+    pos: Tuple[float, float, float]
+    rot: Tuple[int, int, int]
+    radius: float
+    static_mesh_trees_ptr: int
+    animated_mesh_trees_ptr: int
+    static_count: int
+    animated_count: int
+    flags: int
+    static_trees: List[NrelMeshTreeRec] = field(default_factory=list)
+    animated_trees: List[NrelMeshTreeRec] = field(default_factory=list)
+
+
+@dataclass
+class NrelLayoutHint:
+    """Source-byte layout of an n.rel data section, for byte-exact emit.
+
+    ``raw_data`` is the entire relocatable data section verbatim
+    (``src[:pointer_table_offset]``); ``pointer_offsets`` is the ordered
+    relocation-graph the source declared.  Re-emitting ``raw_data`` and
+    rebuilding the table from ``pointer_offsets`` reproduces the file
+    byte-for-byte — this is the load-bearing guarantee.  The structured
+    fields above the hint expose the same data for editing.
+    """
+    raw_data: bytes
+    pointer_offsets: List[int]
+    payload_offset: int
+    data_size: int
+
+
+@dataclass
+class NrelModel:
+    """Round-trip-preserving n.rel (NrelFmt2) model.
+
+    The scalar header fields (``unk1``, ``unk2``, ``radius``) and the
+    decoded chunk / mesh-tree / texture-name structure are exposed for
+    inspection and future editing.  ``layout_hint`` carries the verbatim
+    source data section + relocation graph that :func:`encode_nrel` uses
+    to reproduce the file byte-for-byte.
+    """
+    unk1: int
+    unk2: int
+    radius: float
+    chunk_count: int
+    chunks: List[NrelChunkRec]
+    texture_names: List[str]
+    layout_hint: NrelLayoutHint
+
+
+# ---- parse (byte-exact capture) ------------------------------------------
+
+def parse_nrel_for_writer(src: bytes) -> NrelModel:
+    """Parse an n.rel byte buffer into a round-trip-preserving model.
+
+    Captures the verbatim data section + the full ordered relocation
+    graph (so :func:`encode_nrel` is byte-exact), plus the decoded
+    ``NrelFmt2`` header, chunks, mesh-trees, and texture names for
+    inspection.  This is the exact inverse of the n.rel reader in
+    :mod:`formats.rel`.
+
+    Raises
+    ------
+    RelWriteError
+        If the buffer is not a structurally valid n.rel (bad trailer,
+        OOB pointers, payload magic != ``"fmt2"``).
+    """
+    if not isinstance(src, (bytes, bytearray, memoryview)):
+        raise RelWriteError("input must be bytes-like")
+    src = bytes(src)
+    if len(src) < TRAILER_SIZE:
+        raise RelWriteError("buffer too small for REL trailer")
+
+    try:
+        rel = parse_rel(src)
+    except RelParseError as e:
+        raise RelWriteError(f"not a valid REL container: {e}") from e
+    if not is_n_rel(rel):
+        raise RelWriteError("payload magic != 'fmt2' (not an n.rel)")
+
+    pl_off = rel.payload_offset
+    if pl_off + NREL_FMT2_HEADER_SIZE > rel.data_size:
+        raise RelWriteError("n.rel payload header truncated")
+    magic, unk1, chunk_count, unk2, radius, chunks_ptr, _tex_ptr = \
+        struct.unpack_from(_NREL_FMT2_HEADER_FMT, src, pl_off)
+    if magic != NREL_FMT2_MAGIC:
+        raise RelWriteError(f"unexpected fmt2 magic {magic!r}")
+
+    # Decode the chunk / mesh-tree structure (for inspection + edit). The
+    # readers in formats.rel are tolerant; mirror their walk so a model
+    # exposes the same view, but treat any structural defect as a hard
+    # error here (the writer must understand what it round-trips).
+    try:
+        header = read_nrel_header(rel)
+        raw_chunks = read_nrel_chunks(rel, header)
+    except RelParseError as e:
+        raise RelWriteError(f"n.rel chunk walk failed: {e}") from e
+    if len(raw_chunks) != chunk_count:
+        raise RelWriteError(
+            f"chunk_count {chunk_count} but walked {len(raw_chunks)} chunks")
+
+    chunks: List[NrelChunkRec] = []
+    for i, c in enumerate(raw_chunks):
+        chunk_off = header.chunks_ptr + i * NREL_CHUNK_SIZE
+
+        def _trees(base_ptr: int, count: int) -> List[NrelMeshTreeRec]:
+            recs: List[NrelMeshTreeRec] = []
+            for t in read_mesh_trees(rel, base_ptr, count):
+                # read_mesh_trees returns records in order; recompute each
+                # source offset so an editor can locate them.
+                recs.append(NrelMeshTreeRec(
+                    src_offset=base_ptr + len(recs) * NREL_MESH_TREE_SIZE,
+                    root_node_ptr=t.root_node_ptr,
+                    unk1=t.unk1,
+                    tex_anim_info_ptr=t.texture_animation_info_ptr,
+                    tree_flags=t.tree_flags,
+                ))
+            return recs
+
+        chunks.append(NrelChunkRec(
+            src_offset=chunk_off,
+            id=c.id,
+            pos=(c.x, c.y, c.z),
+            rot=(c.rot_x, c.rot_y, c.rot_z),
+            radius=c.radius,
+            static_mesh_trees_ptr=c.static_mesh_trees_ptr,
+            animated_mesh_trees_ptr=c.animated_mesh_trees_ptr,
+            static_count=c.static_mesh_tree_count,
+            animated_count=c.animated_mesh_tree_count,
+            flags=c.flags,
+            static_trees=_trees(c.static_mesh_trees_ptr,
+                                c.static_mesh_tree_count),
+            animated_trees=_trees(c.animated_mesh_trees_ptr,
+                                  c.animated_mesh_tree_count),
+        ))
+
+    texture_names = read_texture_names(rel)
+
+    hint = NrelLayoutHint(
+        raw_data=src[:rel.pointer_table_offset],
+        pointer_offsets=list(rel.pointer_offsets),
+        payload_offset=pl_off,
+        data_size=rel.data_size,
+    )
+    return NrelModel(
+        unk1=unk1,
+        unk2=unk2,
+        radius=radius,
+        chunk_count=chunk_count,
+        chunks=chunks,
+        texture_names=texture_names,
+        layout_hint=hint,
+    )
+
+
+# ---- encode --------------------------------------------------------------
+
+def encode_nrel(model: NrelModel) -> bytes:
+    """Serialise an :class:`NrelModel` into a complete n.rel byte buffer.
+
+    Byte-exact inverse of :func:`parse_nrel_for_writer` for any vanilla
+    n.rel.  Re-lays the captured data section, then rebuilds the u16
+    word-delta table + 32-byte trailer via the shared
+    :func:`assemble_rel` framing from the captured pointer graph.
+
+    The pointer-graph SET emitted is exactly the one the source
+    declared (no more, no less) — a missing entry leaves a stale
+    file-relative offset and an extra entry corrupts a non-pointer word,
+    so the writer carries the source's relocation list verbatim rather
+    than re-deriving it from the wired graph.
+    """
+    hint = model.layout_hint
+    if hint is None:
+        raise RelWriteError(
+            "encode_nrel requires a layout_hint (synthetic n.rel geometry "
+            "authoring is a later phase)")
+
+    data = hint.raw_data
+    if len(data) != hint.data_size:
+        raise RelWriteError(
+            f"layout_hint data_size 0x{hint.data_size:x} != raw_data length "
+            f"0x{len(data):x}")
+
+    # The payload header still has to start with 'fmt2' and carry the
+    # model's scalar fields — re-pack it into the data buffer so edits to
+    # unk1/unk2/radius land while the rest of the region stays verbatim.
+    # (In pure byte-exact mode this rewrites the header to the identical
+    # bytes; it is what makes scalar edits possible without re-deriving
+    # the geometry.)
+    pl_off = hint.payload_offset
+    if pl_off + NREL_FMT2_HEADER_SIZE > len(data):
+        raise RelWriteError("payload header out of captured data section")
+    buf = bytearray(data)
+    magic, _u1, _cc, _u2, _rad, chunks_ptr, tex_ptr = struct.unpack_from(
+        _NREL_FMT2_HEADER_FMT, buf, pl_off)
+    struct.pack_into(
+        _NREL_FMT2_HEADER_FMT, buf, pl_off,
+        NREL_FMT2_MAGIC,
+        model.unk1 & 0xFFFFFFFF,
+        model.chunk_count & 0xFFFF,
+        model.unk2 & 0xFFFF,
+        float(model.radius),
+        chunks_ptr,
+        tex_ptr,
+    )
+
+    ptr_offsets = sorted(hint.pointer_offsets)
+    return assemble_rel(bytes(buf), ptr_offsets, pl_off)
+
+
 __all__ = [
     "RelWriteError",
     # STEP 0
@@ -641,4 +936,14 @@ __all__ = [
     "CREL_SIZE_BUDGET",
     "DEFAULT_FACE_FLAGS",
     "DEFAULT_NODE_FLAGS",
+    # STEP 3 — n.rel
+    "NrelMeshTreeRec",
+    "NrelChunkRec",
+    "NrelLayoutHint",
+    "NrelModel",
+    "parse_nrel_for_writer",
+    "encode_nrel",
+    "NREL_FMT2_HEADER_SIZE",
+    "NREL_CHUNK_SIZE",
+    "NREL_MESH_TREE_SIZE",
 ]
