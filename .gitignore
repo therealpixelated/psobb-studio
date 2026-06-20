@@ -68,6 +68,7 @@ TEXTURE_COVERAGE.csv
 /_*.py
 /_*.json
 /_*.bin
+/_*.txt
 /_investigate.py
 /_testjob.py
 /_bench_*.py
@@ -105,3 +106,6 @@ node_modules/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Local env (never commit secrets/paths)
+.env

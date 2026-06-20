@@ -444,6 +444,23 @@
       background: var(--pso-ms-bg-hover, rgba(217, 185, 110, 0.18));
     }
 
+    /* Persistent active-leaf highlight (the asset currently open). */
+    .item.active {
+      background: rgba(37, 99, 235, 0.20);
+      color: var(--tk-text-strong, #fff);
+      border-left-color: #2563eb;
+    }
+    .item.active:hover { background: rgba(37, 99, 235, 0.28); }
+
+    /* Keyboard focus ring — the global :focus-visible can't cross the
+       shadow boundary, so define it here for the tree's roving focus. */
+    .item:focus-visible,
+    .group > .header:focus-visible {
+      outline: 2px solid #4da3ff;
+      outline-offset: -2px;
+    }
+    .item:focus, .group > .header:focus { outline: none; }
+
     .empty-cat {
       padding: 4px var(--tk-sp-6, 2rem);
       color: var(--tk-text-dim, rgba(224,240,255,0.5));
@@ -476,9 +493,12 @@
       // current rendered order.
       this._selAnchor = null;
       this._lastRenderedPaths = [];
+      // Path of the currently-open leaf (persistent .active highlight).
+      this._activePath = null;
       this._onSearchInput = this._onSearchInput.bind(this);
       this._onRefreshClick = this._onRefreshClick.bind(this);
       this._onBodyClick = this._onBodyClick.bind(this);
+      this._onBodyKeydown = this._onBodyKeydown.bind(this);
       this._onTabClick = this._onTabClick.bind(this);
       this._onSelectionChanged = this._onSelectionChanged.bind(this);
     }
@@ -552,6 +572,10 @@
       this._refreshEl.addEventListener("click", this._onRefreshClick);
       this._tabStripEl.addEventListener("click", this._onTabClick);
       this._bodyEl.addEventListener("click", this._onBodyClick);
+      // Keyboard navigation (2026-06-19 a11y): the tree was mouse-only.
+      this._bodyEl.addEventListener("keydown", this._onBodyKeydown);
+      this._bodyEl.setAttribute("role", "tree");
+      this._bodyEl.setAttribute("aria-label", "asset tree");
       // Persist the body scroll position so a manifest refresh / tree
       // refresh / page reload doesn't lose the user's place in a long
       // (~9k-entry) tree.
@@ -687,7 +711,17 @@
         const cat = group.dataset.cat;
         const open = group.classList.toggle("expanded");
         this._expanded[cat] = open;
+        groupHeader.setAttribute("aria-expanded", open ? "true" : "false");
         saveExpandedState(this._expanded);
+        // 2026-06-19 perf: leaves are built on demand. If this group's
+        // <ul> is still empty (collapsed groups render no items), opening
+        // it requires a re-render to build the leaves. Collapsing keeps
+        // the items in the DOM until the next full render — fine.
+        if (open) {
+          const itemsEl = group.querySelector(".items");
+          const built = itemsEl && itemsEl.querySelector("li.item, li.empty-cat");
+          if (!built) { this._renderTree(); }
+        }
         return;
       }
       const item = ev.target.closest(".item");
@@ -734,30 +768,107 @@
           this._onSelectionChanged();
         }
         this._selAnchor = path;
+        this._openLeaf(item, path, entry);
+      }
+    }
 
-        // Bus is the public IPC surface — app.js subscribes and
-        // decides whether to delegate to openFile, model viewer, etc.
-        if (window.bus) {
-          window.bus.emit("asset.opened", { path, entry });
-          // When the manifest is the lite shape (Phase 0.5 perf),
-          // hydrate the FULL entry detail in the background and
-          // re-emit so consumers (asset_router.openModel needs
-          // matched_textures, the metadata panel needs warnings) can
-          // upgrade what they rendered. This is fire-and-forget; the
-          // dispatcher already opened the viewer with whatever the
-          // lite shape provided.
-          if (window.PSOManifest && typeof window.PSOManifest.isLite === "function"
-              && window.PSOManifest.isLite()
-              && typeof window.PSOManifest.fetchEntryDetail === "function") {
-            window.PSOManifest.fetchEntryDetail(path).then(function (full) {
-              if (full) {
-                window.bus.emit("asset.detail", { path, entry: full });
-              }
-            }).catch(function () {
-              // Silent — the lite-shape entry already drove the open.
-            });
-          }
+    // Open a leaf: mark it active (persistent highlight + aria-current)
+    // and route through the bus. Shared by mouse click + keyboard Enter.
+    _openLeaf(item, path, entry) {
+      this._setActive(path);
+
+      // Bus is the public IPC surface — app.js subscribes and
+      // decides whether to delegate to openFile, model viewer, etc.
+      if (window.bus) {
+        window.bus.emit("asset.opened", { path, entry });
+        // When the manifest is the lite shape (Phase 0.5 perf),
+        // hydrate the FULL entry detail in the background and re-emit so
+        // consumers can upgrade what they rendered. Fire-and-forget.
+        if (window.PSOManifest && typeof window.PSOManifest.isLite === "function"
+            && window.PSOManifest.isLite()
+            && typeof window.PSOManifest.fetchEntryDetail === "function") {
+          window.PSOManifest.fetchEntryDetail(path).then(function (full) {
+            if (full) {
+              window.bus.emit("asset.detail", { path, entry: full });
+            }
+          }).catch(function () {
+            // Silent — the lite-shape entry already drove the open.
+          });
         }
+      }
+    }
+
+    // Persistent active-leaf highlight. Only one item is active at a
+    // time; survives re-render via this._activePath.
+    _setActive(path) {
+      this._activePath = path;
+      if (!this._bodyEl) return;
+      const items = this._bodyEl.querySelectorAll("li.item");
+      for (const li of items) {
+        const on = li.dataset.path === path;
+        li.classList.toggle("active", on);
+        if (on) li.setAttribute("aria-current", "true");
+        else li.removeAttribute("aria-current");
+      }
+    }
+
+    // Keyboard navigation over the flat list of visible items + group
+    // headers. ArrowUp/Down move the roving tabindex; Enter/Space opens
+    // a leaf or toggles a group; ArrowLeft/Right collapse/expand groups.
+    _onBodyKeydown(ev) {
+      const focusables = Array.from(
+        this._bodyEl.querySelectorAll(".group > .header, li.item")
+      ).filter((el) => el.offsetParent !== null);
+      if (!focusables.length) return;
+      const active = this.shadowRoot.activeElement
+        || this._bodyEl.querySelector('[tabindex="0"]');
+      let idx = focusables.indexOf(active);
+
+      const focusAt = (i) => {
+        const clamped = Math.max(0, Math.min(focusables.length - 1, i));
+        for (const el of focusables) el.setAttribute("tabindex", "-1");
+        const tgt = focusables[clamped];
+        tgt.setAttribute("tabindex", "0");
+        tgt.focus();
+        tgt.scrollIntoView({ block: "nearest" });
+      };
+
+      switch (ev.key) {
+        case "ArrowDown": ev.preventDefault(); focusAt(idx + 1); break;
+        case "ArrowUp":   ev.preventDefault(); focusAt(idx - 1); break;
+        case "Home":      ev.preventDefault(); focusAt(0); break;
+        case "End":       ev.preventDefault(); focusAt(focusables.length - 1); break;
+        case "ArrowRight": {
+          const hdr = active && active.closest && active.closest(".group > .header");
+          if (hdr && !hdr.parentElement.classList.contains("expanded")) {
+            ev.preventDefault();
+            hdr.click();
+          }
+          break;
+        }
+        case "ArrowLeft": {
+          const hdr = active && active.closest && active.closest(".group > .header");
+          if (hdr && hdr.parentElement.classList.contains("expanded")) {
+            ev.preventDefault();
+            hdr.click();
+          }
+          break;
+        }
+        case "Enter":
+        case " ": {
+          if (!active) break;
+          ev.preventDefault();
+          if (active.classList.contains("header")) {
+            active.click();
+          } else if (active.classList.contains("item")) {
+            const path = active.dataset.path;
+            const entry = this._findEntry(path);
+            this._selAnchor = path;
+            this._openLeaf(active, path, entry);
+          }
+          break;
+        }
+        default: break;
       }
     }
 
@@ -839,14 +950,24 @@
 
         parts.push(
           `<div class="group${isExpanded ? " expanded" : ""}" data-cat="${esc(expandKey)}">`,
-          `  <div class="header" role="button" aria-expanded="${isExpanded}">`,
+          `  <div class="header" role="button" aria-expanded="${isExpanded}" tabindex="-1">`,
           `    <span class="twist">▶</span>`,
           `    <span class="label">${esc(label)}</span>`,
           `    <span class="count">${filtered.length}${q && filtered.length !== list.length ? " / " + list.length : ""}</span>`,
           `  </div>`,
-          `  <ul class="items">`,
+          `  <ul class="items" role="group">`,
         );
-        if (filtered.length === 0) {
+        // 2026-06-19 perf: only build the <li> leaves for groups that are
+        // actually open (expanded or matched by a search). Previously all
+        // ~9400 leaves were rendered into the DOM (28k shadow nodes) and
+        // merely display:none'd, which is the main on-load / filter jank.
+        // Collapsed groups now render an empty <ul>; the group toggle in
+        // _onBodyClick triggers a re-render to build a group on first
+        // expand. renderedPaths only tracks what's in the DOM, which is
+        // exactly the set shift-click range-select can operate on.
+        if (!isExpanded) {
+          // leave the <ul> empty; build on expand
+        } else if (filtered.length === 0) {
           parts.push(
             `    <li class="empty-cat">${q ? "no matches" : "(empty)"}</li>`,
           );
@@ -866,13 +987,16 @@
             }
             const cat = entry.category || "unknown";
             const isSelected = sel && sel.has(entry.path);
+            const isActive = entry.path === this._activePath;
             const cls = "item cat-" + esc(cat)
               + (entry.parsable === "no" ? " parsable-no" : "")
-              + (isSelected ? " ms-selected" : "");
+              + (isSelected ? " ms-selected" : "")
+              + (isActive ? " active" : "");
             renderedPaths.push(entry.path);
             const pill = `<span class="cat-pill">${esc(entry.format || cat || "?")}</span>`;
             parts.push(
-              `    <li class="${cls}" data-path="${esc(entry.path)}" title="${esc(entry.path)}">`,
+              `    <li class="${cls}" data-path="${esc(entry.path)}" title="${esc(entry.path)}"` +
+              ` role="treeitem" tabindex="-1"${isActive ? ' aria-current="true"' : ""}>`,
               `      ${pill}${esc(entry.path)}`,
               `      <span class="meta">${esc(meta)}</span>`,
               `      ${matchedHtml}`,
@@ -884,6 +1008,12 @@
       }
       this._lastRenderedPaths = renderedPaths;
       this._bodyEl.innerHTML = parts.join("\n");
+
+      // Roving-tabindex seed: make the first focusable element reachable
+      // by Tab so keyboard users can enter the tree. ArrowUp/Down then
+      // move focus (see _onBodyKeydown).
+      const firstFocusable = this._bodyEl.querySelector(".group > .header, li.item");
+      if (firstFocusable) firstFocusable.setAttribute("tabindex", "0");
 
       // Restore scroll position from localStorage. We do this on the
       // next tick so the new innerHTML actually has its final layout
@@ -898,8 +1028,13 @@
       }
 
       // Status footer reflects: {shown of total} {tab scope} · "{query}"
+      // 2026-06-19 anti-slop: the tree buckets by *inferred display
+      // group* (Bosses/Enemies/...), of which there are ~20 — a DIFFERENT
+      // axis from the 11 canonical categories shown in the pane title.
+      // Call these "groups" so the two counts no longer read as a
+      // contradictory "11 vs 20 categories".
       const tabLbl = activeTab && activeTab.match ? ` · ${activeTab.label}` : "";
-      const bucketLbl = labels.length > 1 ? ` · ${labels.length} categories` : "";
+      const bucketLbl = labels.length > 1 ? ` · ${labels.length} groups` : "";
       this._statsEl.textContent = q
         ? `${totalShown} of ${totalEntries} shown${tabLbl}${bucketLbl} · "${q}"`
         : (tabAllow ? `${totalShown} of ${totalEntries} shown${tabLbl}${bucketLbl}`

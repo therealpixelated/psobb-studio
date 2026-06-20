@@ -21,6 +21,7 @@ Usage:
 Default: scale=2, filter=xvm.
 """
 from __future__ import annotations
+import os
 
 import json
 import shutil

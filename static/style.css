@@ -383,25 +383,30 @@ aside .pane-title #assetTreeCoverage {
   text-transform: none;
 }
 
-/* Header toggles: pressed = pane visible. The buttons share visual
-   language; their pressed state mirrors the pane visibility. */
+/* Header toggles: pressed = pane visible. 2026-06-19 anti-slop: these
+   were the lone cyan-on-cyan buttons in a header row of gray ghosts.
+   Re-skinned to the slate ghost language so the whole header reads as
+   one set, with an accent-blue *active* (pane-visible) state. */
 #btnToggleTree, #btnToggleFiles {
   background: transparent;
-  border: 1px solid var(--tk-line);
-  color: var(--tk-blue);
-  border-radius: var(--tk-rad-1);
+  border: 1px solid #2a313a;
+  color: #c8ced9;
+  border-radius: var(--radius-sm, 4px);
   padding: 4px 10px;
   font-size: 12px;
   cursor: pointer;
-  transition: background-color var(--tk-d-2), box-shadow var(--tk-d-2), color var(--tk-d-2);
+  transition: background-color 0.12s, border-color 0.12s, color 0.12s;
 }
 #btnToggleTree:hover, #btnToggleFiles:hover {
-  background: rgba(0, 255, 255, 0.08);
-  box-shadow: var(--tk-glow-blue);
+  background: #1c2531;
+  border-color: #3a4452;
+  color: #fff;
 }
 #btnToggleTree.active, #btnToggleFiles.active {
-  background: var(--tk-blue);
-  color: #000;
+  background: #1c2531;
+  border-color: var(--accent, #2563eb);
+  color: #fff;
+  box-shadow: inset 0 0 0 1px var(--accent, #2563eb);
 }
 
 /* Inside the Web Component everything is shadow-DOM-scoped via
@@ -409,6 +414,38 @@ aside .pane-title #assetTreeCoverage {
    light-DOM wrapper <aside>. */
 
 /* ────────────────────────────────────────────────────────────── */
+
+/* ─────────────────────────────────────────────────────────────────
+ * Canonical slate design tokens (2026-06-19, anti-slop pass)
+ *
+ * The editor ships in the #0e1116 slate theme (NOT the cosmic --tk-*
+ * set above, which stays opt-in behind body.theme-psobb). These are
+ * the single source of truth for the slate palette so panels and new
+ * components stop hardcoding 5 different "dim grays" and 3 "blues".
+ * Existing rules keep their literal hexes; new/repaired code reads
+ * these. Each maps to a value already in heavy use below.
+ * ────────────────────────────────────────────────────────────── */
+:root {
+  --accent:       #2563eb;   /* primary action blue (button bg) */
+  --accent-hov:   #3b75ee;
+  --accent-2:     #4da3ff;   /* focus ring / link accent */
+  --ok:           #34d399;
+  --warn:         #fbbf24;
+  --err:          #f87171;
+  --text:         #e6e8eb;
+  --text-mute:    #c8ced9;
+  --text-dim:     #7a8290;
+  --bg:           #0e1116;
+  --surface:      #131820;   /* sidebar / settings panels */
+  --surface-2:    #181d24;   /* header / toolbars / cards */
+  --surface-3:    #11161e;
+  --border:       #2a313a;
+  --border-soft:  #1c2129;
+  --radius:       6px;       /* canonical corner radius */
+  --radius-sm:    4px;
+  --radius-pill:  999px;
+  --space:        8px;
+}
 
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; height: 100%; }
@@ -423,6 +460,29 @@ body {
 }
 
 [hidden] { display: none !important; }
+
+/* ─────────────────────────────────────────────────────────────────
+ * Global keyboard focus ring (2026-06-19, anti-slop pass)
+ *
+ * Previously every :focus rule did `outline:none`, leaving keyboard
+ * users with zero visible focus on buttons, tabs, A/B slider handles,
+ * and the asset tree. :focus-visible only paints for keyboard focus,
+ * so mouse clicks stay clean. This is intentionally high-specificity
+ * (and !important on the outline) so it wins over the scattered
+ * `outline:none` rules without having to delete each one.
+ * ────────────────────────────────────────────────────────────── */
+:focus-visible {
+  outline: 2px solid var(--accent-2) !important;
+  outline-offset: 1px;
+  border-radius: 2px;
+}
+/* Form fields already get a border-color swap on :focus; give them a
+   ring too when keyboard-focused so they match everything else. */
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline-offset: 0;
+}
 
 /* ---------- shared bits ---------- */
 .dim { color: #7a8290; font-size: 12px; }
@@ -458,13 +518,83 @@ kbd {
 header {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 8px 12px;
+  gap: 10px;
+  padding: 6px 12px;
   background: #181d24;
   border-bottom: 1px solid #2a313a;
+  /* 2026-06-19 anti-slop: was nowrap, which crushed buttons below their
+     text width (2-3 line wrap, mismatched 26-60px heights) and pushed
+     #status off-screen at <=1100px. Wrap onto a second row instead and
+     give every header button a shared baseline (see button rules). */
+  flex-wrap: wrap;
+  row-gap: 6px;
 }
-header h1 { margin: 0; font-size: 15px; font-weight: 600; }
-header #dataDir { max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+header h1 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+header #dataDir {
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex-shrink: 1;
+  min-width: 0;
+}
+/* Every direct-child control in the header is one consistent height on
+   one baseline, and never wraps its own label internally. */
+header > button,
+header > .hdr-tools > button {
+  white-space: nowrap;
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+/* #status keeps a slot at the end of the row; it can shrink-ellipsis but
+   the flex-wrap means it drops to its own line rather than overflowing. */
+header #status { flex-shrink: 1; min-width: 0; }
+
+/* Header "Tools ▾" overflow menu — collects the lower-frequency
+   perspective/session/import buttons so the primary bar stays a single
+   tidy row of: title · data-dir · view toggles · deploy · help · status. */
+.hdr-tools { position: relative; display: inline-flex; flex-shrink: 0; }
+.hdr-tools-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 1500;
+  background: #181d24;
+  border: 1px solid #2a313a;
+  border-radius: var(--radius, 6px);
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.55);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 200px;
+}
+.hdr-tools-menu[hidden] { display: none !important; }
+.hdr-tools-menu button {
+  width: 100%;
+  justify-content: flex-start;
+  text-align: left;
+}
+.hdr-tools-sep {
+  height: 1px;
+  background: #2a313a;
+  margin: 3px 0;
+}
+.hdr-tools-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #7a8290;
+  padding: 2px 4px 0;
+}
 
 .status {
   font-size: 12px;
@@ -658,6 +788,199 @@ section#workArea {
   padding-top: 6px;
 }
 
+/* ---------- onboarding: empty-state callout + actions (2026-06-19) ---------- */
+.wt-blurb {
+  max-width: 620px;
+  margin: 0 auto 16px;
+  text-align: center;
+  font-size: 13px;
+  color: #c8ced9;
+  line-height: 1.55;
+}
+.ob-datadir {
+  max-width: 620px;
+  margin: 0 auto 16px;
+  background: #131820;
+  border: 1px solid #2a313a;
+  border-radius: var(--radius, 6px);
+  padding: 12px 14px;
+  text-align: left;
+}
+.ob-datadir-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.ob-datadir-row .ob-dd-label {
+  color: #7a8290;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.ob-datadir-row code,
+.wt-blurb code,
+.ob-datadir code {
+  background: #0e1116;
+  border: 1px solid #2a313a;
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-family: var(--tk-font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: #c7d8ec;
+  word-break: break-all;
+}
+.ob-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 1px 8px;
+  border-radius: var(--radius-pill, 999px);
+  font-size: 11px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.ob-chip.ok   { background: #14241c; color: #34d399; border-color: #16a34a55; }
+.ob-chip.warn { background: #261f0f; color: #fbbf24; border-color: #f59e0b55; }
+.ob-datadir-hint {
+  margin-top: 8px;
+  font-size: 11px;
+  color: #7a8290;
+  line-height: 1.5;
+}
+.ob-datadir-hint code { color: #4ade80; }
+.wt-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  margin-top: 6px;
+}
+
+/* Data-dir header pill (loadFiles upgrades #dataDir state classes). */
+header #dataDir.dd-ok   { color: #79b58a; }
+header #dataDir.dd-warn { color: #fbbf24; }
+
+/* ---------- re-openable Help / walkthrough overlay (onboarding.js) ---------- */
+.ob-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(6, 9, 13, 0.62);
+  backdrop-filter: blur(2px);
+  padding: 24px;
+}
+.ob-overlay[hidden] { display: none !important; }
+.ob-card {
+  position: relative;
+  width: min(560px, 94vw);
+  background: #181d24;
+  border: 1px solid #2a313a;
+  border-radius: 10px;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.6);
+  padding: 22px 24px 18px;
+  color: #e6e8eb;
+  animation: obCardIn 0.18s ease-out;
+}
+@keyframes obCardIn {
+  from { opacity: 0; transform: translateY(10px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0)    scale(1);    }
+}
+.ob-card-spot {
+  position: absolute;
+  top: -10px;
+  left: 22px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--accent, #2563eb);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 13px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+}
+.ob-card-close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  background: transparent;
+  border: 0;
+  color: #7a8290;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.ob-card-close:hover { background: #1c2531; color: #fff; }
+.ob-card-title {
+  font-size: 17px;
+  font-weight: 600;
+  color: #fff;
+  margin: 6px 0 8px;
+}
+.ob-card-body {
+  font-size: 13px;
+  color: #c8ced9;
+  line-height: 1.55;
+  margin-bottom: 16px;
+}
+.ob-card-body code {
+  background: #0e1116;
+  border: 1px solid #2a313a;
+  border-radius: 3px;
+  padding: 0 4px;
+  font-size: 11px;
+  color: #4ade80;
+}
+.ob-card-body kbd {
+  background: #232a35;
+  border: 1px solid #2a313a;
+  border-bottom-width: 2px;
+  border-radius: 3px;
+  padding: 0 5px;
+  font-size: 11px;
+  color: #c8ced9;
+}
+.ob-card-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.ob-dots {
+  display: flex;
+  gap: 6px;
+  flex: 1;
+}
+.ob-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #2a313a;
+  transition: background-color 0.15s;
+}
+.ob-dot.active { background: var(--accent-2, #4da3ff); }
+.ob-cat-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin: 10px 0 0;
+}
+.ob-cat {
+  font-size: 10px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #11161e;
+  border: 1px solid #2a313a;
+  color: #c8ced9;
+}
+.ob-cat .ob-cat-n { color: #7a8290; margin-left: 4px; }
+
 #fileWorkspace {
   flex: 1;
   display: flex;
@@ -695,6 +1018,9 @@ button {
   cursor: pointer;
   font: inherit;
   font-size: 12px;
+  /* 2026-06-19 anti-slop: stop flexbox from wrapping button labels to
+     2-3 lines. Buttons size to their text on one line. */
+  white-space: nowrap;
   transition: background-color 0.12s, transform 0.06s;
 }
 button:hover:not(:disabled) { background: #3b75ee; }
@@ -926,6 +1252,38 @@ button.ghost:disabled { color: #4a5260; border-color: #1c2129; background: trans
   line-height: 1;
   z-index: 5;
 }
+/* Decode-suspect badge (2026-06-19). The fmt6/DXT1 banding bug is
+   server-side (formats/xvr_decode.py), but the frontend now flags a
+   tile whose decoded PNG looks like a solid band / low-entropy noise
+   so the user can tell a bad decode from intended art. JS adds
+   .decode-suspect to the card and this badge. */
+.tile-card .pic .decode-badge {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  background: #261f0f;
+  color: #fbbf24;
+  border: 1px solid #f59e0b66;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1.4;
+  letter-spacing: 0.02em;
+  z-index: 5;
+  cursor: help;
+}
+.tile-card.decode-suspect { border-color: #f59e0b55; }
+.tile-card .meta .fmt-tag {
+  font-size: 10px;
+  font-family: var(--tk-font-mono, ui-monospace, monospace);
+  color: #7a8290;
+  background: #11161e;
+  border: 1px solid #2a313a;
+  border-radius: 3px;
+  padding: 0 4px;
+}
+.tile-card.decode-suspect .meta .fmt-tag { color: #fbbf24; border-color: #f59e0b55; }
 .tile-card .pic .busy-overlay {
   position: absolute;
   inset: 0;
@@ -2433,16 +2791,27 @@ section#workArea > .vp-tabs {
   border-color: #00ffff;
   box-shadow: 0 0 6px rgba(0, 255, 255, 0.25);
 }
+/* 2026-06-19 anti-slop: the 1-7 here are keyboard shortcuts, not counts.
+   They used to look identical to the gray "Models 1879" count pills in
+   the tree. Restyle as a faint monospace kbd hint (boxed digit) so it
+   reads as "press this key", not "this many of something". */
 .vp-tab .vp-tab-num {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   margin-left: 6px;
-  padding: 0 5px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
   font-size: 9px;
+  font-family: var(--tk-font-mono, ui-monospace, monospace);
   border-radius: 3px;
-  background: #2a313a;
-  color: #7a8290;
+  border: 1px solid #2a313a;
+  background: transparent;
+  color: #6c7785;
+  opacity: 0.8;
 }
-.vp-tab.active .vp-tab-num { background: #00ffff22; color: #00ffff; }
+.vp-tab.active .vp-tab-num { border-color: #00ffff55; color: #00ffff; opacity: 1; }
 .vp-tab-empty { font-size: 11px; padding: 4px 4px; }
 
 /* Body: stage + inspector side-by-side */

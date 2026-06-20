@@ -114,7 +114,6 @@ import manifest as manifest_mod
 from formats.iff import parse_iff
 from formats.afs import parse_afs, write_afs
 from formats.bml import (
-    BmlEntry,
     BmlPackEntry,
     COMPRESSION_NONE as BML_COMPRESSION_NONE,
     COMPRESSION_PRS as BML_COMPRESSION_PRS,
@@ -165,9 +164,7 @@ from formats import sculpt as sculpt_mod
 # computes auto-skin weights / FABRIK IK on demand.
 from formats import rigging as rigging_mod
 from formats.njtl import (
-    NjtlEntry,
     find_and_parse_njtl,
-    parse_njtl_chunk,
 )
 # Cross-BML texture lookup. PSOBB.IO ships ~60 NJTL refs whose name
 # resolves only in a SIBLING BML's inline XVM (e.g. ts008_siro is
@@ -178,8 +175,6 @@ from formats.njtl import (
 from formats import texture_index as _texture_index
 from formats.xj import (
     parse_nj_file as _xj_parse_nj_file,
-    parse_skeleton as _xj_parse_skeleton,
-    parse_nj_skinned as _xj_parse_nj_skinned,
 )
 # Composite multi-inner BML placement table (2026-04-30). Curated
 # per-part TRS + parent linkage for multi-part bosses (De Rol Le,
@@ -223,7 +218,6 @@ from formats.njm import (
 from formats.motion_pairing import (
     resolve_motions_for_model as _resolve_motion_pairing,
     extract_action_hint as _motion_action_hint,
-    ACTION_PRIORITY as _MOTION_ACTION_PRIORITY,
 )
 # Variant detector — finds color/state sibling BMLs and intra-BML NJTL
 # slot groups so the frontend can offer a "variant picker" (Mericarol →
@@ -2419,6 +2413,37 @@ _LIVE_RELOAD_HUB = _LiveReloadHub()
 
 
 # ---------------------------------------------------------------------------- app
+def _startup_prewarm() -> None:
+    """Warm the manifest caches into memory (runs off the request path).
+
+    Loads the full manifest + lite projection + health summary so the
+    in-memory slots (_PARSED_MANIFEST_CACHE, _PARSED_LITE_CACHE,
+    _MANIFEST_SUMMARY_CACHE) are populated before the first user request.
+    Best-effort: any failure is logged and swallowed — a cold first
+    request still works, just without the prewarm head start.
+    """
+    try:
+        t0 = time.perf_counter()
+        manifest_mod.cache_manifest(DATA_DIR, cache_dir=CACHE_DIR)
+        manifest_mod.cache_manifest_lite(DATA_DIR, cache_dir=CACHE_DIR)
+        manifest_mod.manifest_summary(DATA_DIR, cache_dir=CACHE_DIR)
+        log.info(
+            "startup: manifest prewarm done in %.1fms",
+            (time.perf_counter() - t0) * 1000.0,
+        )
+    except Exception as e:  # pragma: no cover - best-effort warmer
+        log.warning("startup: manifest prewarm failed: %s", e)
+
+
+def _kick_startup_prewarm() -> None:
+    """Spawn the manifest prewarm on a daemon thread (non-blocking)."""
+    if os.environ.get("PSO_DISABLE_STARTUP_PREWARM", "0") in ("1", "true", "True"):
+        return
+    threading.Thread(
+        target=_startup_prewarm, name="pso-startup-prewarm", daemon=True,
+    ).start()
+
+
 @asynccontextmanager
 async def lifespan(app: "FastAPI"):
     """Startup: log banner, run cache cleanup, start cache watcher.
@@ -2456,6 +2481,11 @@ async def lifespan(app: "FastAPI"):
         "startup: live-reload watcher active (dirs=%s, poll=%.2fs)",
         list(LIVE_RELOAD_WATCH_DIRS), LIVE_RELOAD_POLL_SECONDS,
     )
+    # Background prewarm: load the manifest + lite + health-summary into
+    # memory so the first /api/manifest_lite, /api/manifest, and /api/health
+    # don't each pay a cold JSON parse on the user's first interaction.
+    # Runs in a daemon thread so it never delays first paint / readiness.
+    _kick_startup_prewarm()
     yield
     _LIVE_RELOAD_HUB.stop()
     log.info("shutdown: clean exit")
@@ -2466,33 +2496,35 @@ app = FastAPI(title="PSOBB Texture Editor", version=VERSION, lifespan=lifespan)
 # Compress JSON-heavy endpoints. The minimum_size guard skips tiny payloads
 # (no point gzipping a 200-byte health response) but kicks in well below the
 # typical model_bundle / manifest_lite payload sizes.
-app.add_middleware(GZipMiddleware, minimum_size=1024)
+#
+# compresslevel=1 (perf 2026-06-19): Starlette defaults to level 9, the
+# SLOWEST setting. For our payloads the marginal size win from 1->9 is
+# negligible (manifest_lite 1.65 MB: lvl1 -> 90 KB / lvl9 -> 73 KB, both
+# ~95% off) but the CPU cost ~5×es (5.4 ms vs 25.6 ms). For the base64
+# tile payloads (poorly-compressible PNG entropy) level 9 is pure waste
+# (~30 ms for a 23% reduction). Since the dominant consumer is the
+# local editor over loopback, the smaller-but-cheaper level-1 frame is a
+# strict win on time-to-byte; remote clients still get ~95% reduction.
+app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=1)
 
 
 # ---------------------------------------------------------------------------- API
 def _manifest_health_summary() -> dict:
     """Summarize the cached manifest for /api/health.
 
-    Reports entry count + last_built epoch by reading the cache file's
-    mtime + decoding only the entries length. Never raises — a missing
-    or unreadable cache just reports zeroes so the rest of /api/health
-    stays green.
+    Reports entry count + last_built epoch. Delegates to the cheap,
+    stat-memoized ``manifest.manifest_summary`` so a warm /api/health
+    poll never re-json.load()s the 3.8 MB manifest.json (it only parses
+    once per manifest revision, then serves from an in-memory slot).
+    Never raises — a missing / unreadable cache reports zeroes so the
+    rest of /api/health stays green.
     """
-    cf = manifest_mod.cache_path_for(DATA_DIR, cache_dir=CACHE_DIR)
-    out = {"entries": 0, "last_built": 0, "path": str(cf)}
-    if not cf.exists():
-        return out
     try:
-        out["last_built"] = int(cf.stat().st_mtime)
-        with open(cf, "r", encoding="utf-8") as f:
-            payload = json.load(f)
-        if isinstance(payload, dict):
-            entries = payload.get("entries")
-            if isinstance(entries, list):
-                out["entries"] = len(entries)
-    except (OSError, json.JSONDecodeError) as e:
+        return manifest_mod.manifest_summary(DATA_DIR, cache_dir=CACHE_DIR)
+    except Exception as e:  # pragma: no cover - defensive net
         log.debug("manifest health summary failed: %s", e)
-    return out
+        cf = manifest_mod.cache_path_for(DATA_DIR, cache_dir=CACHE_DIR)
+        return {"entries": 0, "last_built": 0, "path": str(cf)}
 
 
 @app.get("/api/health")
@@ -2574,6 +2606,13 @@ def api_manifest(request: Request, force: int = 0):
     return JSONResponse(content=m, headers={"ETag": etag})
 
 
+# Serialized-JSON-bytes memo for /api/manifest_lite, keyed on the lite
+# cache file's (mtime_ns, size). Skips the ~20 ms json.dumps of the
+# 1.65 MB lite dict on every warm call.
+_LITE_SER_CACHE: dict = {}
+_LITE_SER_CACHE_LOCK = threading.Lock()
+
+
 @app.get("/api/manifest_lite")
 def api_manifest_lite(request: Request, force: int = 0):
     """Return a SLIM projection of the asset manifest (Phase 0.5 perf).
@@ -2590,6 +2629,12 @@ def api_manifest_lite(request: Request, force: int = 0):
 
     ETag: derived from the lite cache file's mtime + entry count.
     """
+    # Conditional-GET short-circuit FIRST, off a cheap stat (no dict load
+    # needed when the ETag matches). We can build the ETag from the lite
+    # file stat alone because cache_manifest_lite's freshness contract
+    # guarantees a stale file is rewritten (new mtime) before serving.
+    cf = manifest_mod.lite_cache_path_for(DATA_DIR, cache_dir=CACHE_DIR)
+
     try:
         m = manifest_mod.cache_manifest_lite(
             DATA_DIR, cache_dir=CACHE_DIR, force=bool(force),
@@ -2598,7 +2643,6 @@ def api_manifest_lite(request: Request, force: int = 0):
         log.exception("manifest_lite build failed")
         raise HTTPException(500, f"manifest_lite build failed: {e}")
 
-    cf = manifest_mod.lite_cache_path_for(DATA_DIR, cache_dir=CACHE_DIR)
     etag_src = (
         f'{int(cf.stat().st_mtime)}-{len(m.get("entries", []))}'
         if cf.exists() else "0-0"
@@ -2609,6 +2653,36 @@ def api_manifest_lite(request: Request, force: int = 0):
     if inm and inm == etag:
         return JSONResponse(status_code=304, content=None, headers={"ETag": etag})
 
+    # Serialized-bytes memo: json.dumps of the 1.65 MB lite dict costs
+    # ~20 ms PER CALL even when the dict itself is cached. Cache the
+    # encoded JSON bytes keyed on the lite file's stat so warm calls skip
+    # the re-serialize entirely; the GZip middleware still compresses the
+    # wire body. Keyed on (mtime_ns, size) like the other lite caches, so
+    # an atomic rewrite invalidates it. Bypassed on ?force=1.
+    body = None
+    if not force:
+        try:
+            st = cf.stat()
+            ser_key = (int(st.st_mtime_ns), int(st.st_size))
+        except OSError:
+            ser_key = None
+        if ser_key is not None:
+            with _LITE_SER_CACHE_LOCK:
+                slot = _LITE_SER_CACHE.get("slot")
+                if slot is not None and slot[0] == ser_key:
+                    body = slot[1]
+            if body is None:
+                body = json.dumps(
+                    m, ensure_ascii=False, separators=(",", ":"),
+                ).encode("utf-8")
+                with _LITE_SER_CACHE_LOCK:
+                    _LITE_SER_CACHE["slot"] = (ser_key, body)
+    if body is not None:
+        return Response(
+            content=body,
+            media_type="application/json",
+            headers={"ETag": etag},
+        )
     return JSONResponse(content=m, headers={"ETag": etag})
 
 
@@ -2957,13 +3031,49 @@ def api_files():
     return {"files": items, "data_dir": str(DATA_DIR)}
 
 
+# --------------------------------------------------------------------------
+# /api/tiles response cache (Phase perf 2026-06-19)
+#
+# The Tile-grid batch endpoint re-read EVERY tile PNG off disk and
+# base64-encoded it (png_to_b64) on EVERY warm call — the per-tile
+# _TILE_PNG_CACHE LRU was wired only into the single-tile /api/tile_png
+# route, never into /api/tiles. We memo the fully-assembled response dict
+# keyed on the source file's stat so warm calls skip the per-tile disk
+# read + base64 loop entirely (~30 ms -> sub-ms server-side). An ETag
+# (md5 of the source file stat) lets the browser revalidate with a cheap
+# 304 once the frontend stops cache-busting the request.
+_TILES_RESP_CACHE_MAX_ENTRIES = int(
+    os.environ.get("PSO_TILES_RESP_CACHE_ENTRIES", "64"),
+)
+_TILES_RESP_CACHE: "OrderedDict[tuple, bytes]" = OrderedDict()
+_TILES_RESP_CACHE_LOCK = threading.Lock()
+
+
+def _tiles_resp_cache_key(work_path: Path, filename: str):
+    """LRU key for one /api/tiles response, on the source file's stat."""
+    try:
+        st = work_path.stat()
+    except OSError:
+        return None
+    return (str(work_path), int(st.st_mtime_ns), int(st.st_size), filename)
+
+
+def _tiles_resp_etag(key: tuple) -> str:
+    """Strong ETag derived from the cache key (mtime_ns|size|path|name)."""
+    return '"' + hashlib.md5(repr(key).encode("utf-8")).hexdigest()[:16] + '"'
+
+
 @app.get("/api/tiles/{filename}")
-def api_tiles(filename: str):
+def api_tiles(filename: str, request: Request):
     """Extract & return tile metadata + base64 PNGs for one PRS/XVM file.
 
     Accepts both regular filenames (resolved under DATA_DIR / LIVE_DATA_DIR)
     and the BML-inner ``<base>#<inner>`` form (extracts the inner XVM /
     NJ-texture blob first, then runs the same xvr_codec extract pipeline).
+
+    Warm calls serve the assembled base64 payload from an in-memory LRU
+    keyed on the source file's stat, skipping the per-tile disk read +
+    base64 loop. Carries an ETag so the browser can revalidate via 304.
     """
     try:
         prs = _materialize_inner_for_extract(filename)
@@ -2971,6 +3081,42 @@ def api_tiles(filename: str):
         raise
     if not prs.exists():
         raise HTTPException(404, f"no such file: {filename}")
+
+    cache_key_t = _tiles_resp_cache_key(prs, filename)
+    etag = _tiles_resp_etag(cache_key_t) if cache_key_t is not None else None
+
+    # Conditional GET short-circuit — only valid when the live file stat
+    # still matches the requested ETag (so a re-deploy auto-invalidates).
+    if etag is not None:
+        inm = request.headers.get("if-none-match")
+        if inm and inm == etag:
+            return Response(status_code=304, headers={"ETag": etag})
+
+    # Helper: serve a pre-serialized body. The base64-PNG payload is
+    # near-incompressible (gzip of it costs ~34 ms for a 23% reduction —
+    # a net loss on loopback), so we tag it `Content-Encoding: identity`
+    # which makes Starlette's GZipMiddleware skip compression for this
+    # response. The bytes are cached so warm calls also skip json.dumps.
+    def _serve_tiles_body(body: bytes):
+        return Response(
+            content=body,
+            media_type="application/json",
+            headers={
+                "ETag": etag or "",
+                "Cache-Control": "private, max-age=300",
+                "Content-Encoding": "identity",
+            },
+        )
+
+    # In-memory response memo (serialized bytes).
+    if cache_key_t is not None:
+        with _TILES_RESP_CACHE_LOCK:
+            cached = _TILES_RESP_CACHE.get(cache_key_t)
+            if cached is not None:
+                _TILES_RESP_CACHE.move_to_end(cache_key_t)
+        if cached is not None:
+            return _serve_tiles_body(cached)
+
     try:
         manifest = extract_tiles(prs)
     except HTTPException:
@@ -2983,12 +3129,26 @@ def api_tiles(filename: str):
     for t in manifest["tiles"]:
         png = tiles_dir / t["filename"]
         out.append({**t, "src_png_b64": png_to_b64(png)})
-    return {
+    payload = {
         "filename": filename,
         "tile_count": manifest["tile_count"],
         "is_prs": manifest.get("is_prs", False),
         "tiles": out,
     }
+    body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+
+    if cache_key_t is not None:
+        with _TILES_RESP_CACHE_LOCK:
+            _TILES_RESP_CACHE[cache_key_t] = body
+            _TILES_RESP_CACHE.move_to_end(cache_key_t)
+            while len(_TILES_RESP_CACHE) > _TILES_RESP_CACHE_MAX_ENTRIES:
+                _TILES_RESP_CACHE.popitem(last=False)
+        return _serve_tiles_body(body)
+    return Response(
+        content=body,
+        media_type="application/json",
+        headers={"Content-Encoding": "identity"},
+    )
 
 
 @app.get("/api/tile_png/{filename}/{idx}")
@@ -8369,8 +8529,36 @@ def _cached_model_parse(
     return meshes
 
 
+# --------------------------------------------------------------------------
+# /api/model_mesh conditional-GET (Phase perf 2026-06-19)
+#
+# The parse (_cached_model_parse) and binding (_build_model_texture_binding_
+# cached) are each LRU-cached, so the route's heavy work is already cheap on
+# a warm call. The remaining warm cost is the network round-trip + JSON
+# (re)serialization of the payload. We attach an ETag keyed on the resolved
+# source file's stat so the BROWSER can revalidate with a cheap 304 and
+# avoid re-downloading + re-decoding a byte-identical payload.
+#
+# Deliberately NOT a server-side response-dict memo: a higher in-process
+# cache tier here would bypass the binding/parse caches' own hit accounting
+# (and the model_skinned / model_bundle routes share those tiers). The 304
+# path delivers the warm win to the frontend without disturbing that.
+def _model_mesh_resp_key(src: Path, path: str, inner):
+    """ETag key for one model_mesh response, on the resolved file stat."""
+    try:
+        st = src.stat()
+    except OSError:
+        return None
+    return (str(src), int(st.st_mtime_ns), int(st.st_size), path, inner or "")
+
+
+def _model_mesh_resp_etag(key: tuple) -> str:
+    """Strong ETag derived from the model_mesh cache key."""
+    return '"' + hashlib.md5(repr(key).encode("utf-8")).hexdigest()[:16] + '"'
+
+
 @app.get("/api/model_mesh/{path:path}")
-def api_model_mesh(path: str, inner: Optional[str] = None):
+def api_model_mesh(path: str, request: Request, inner: Optional[str] = None):
     """Parse and return triangulated mesh data for a model file.
 
     Path forms:
@@ -8399,6 +8587,17 @@ def api_model_mesh(path: str, inner: Optional[str] = None):
     p = _resolve_model_mesh_path(base)
     ext = p.suffix.lower()
     inner_ext = ""
+
+    # Conditional-GET short-circuit. The ETag is keyed on the resolved
+    # source file's stat so a re-deploy auto-invalidates. A matching
+    # If-None-Match means the browser already holds the identical payload
+    # — return a bodyless 304 and skip the parse + assembly entirely.
+    _mm_key = _model_mesh_resp_key(p, path, effective_inner)
+    _mm_etag = _model_mesh_resp_etag(_mm_key) if _mm_key is not None else None
+    if _mm_etag is not None:
+        _mm_inm = request.headers.get("if-none-match")
+        if _mm_inm and _mm_inm == _mm_etag:
+            return Response(status_code=304, headers={"ETag": _mm_etag})
 
     if ext == ".bml":
         if not effective_inner:
@@ -8492,6 +8691,14 @@ def api_model_mesh(path: str, inner: Optional[str] = None):
     # NJTL/XVMH name lists for diagnostic display.
     bd = payload.get("binding_data") or {}
     payload["binding"] = bd.get("binding") or []
+
+    # Attach the ETag (+ short max-age) so the browser can revalidate the
+    # next open with a cheap 304 instead of re-downloading the payload.
+    if _mm_etag is not None:
+        return JSONResponse(
+            content=payload,
+            headers={"ETag": _mm_etag, "Cache-Control": "private, max-age=300"},
+        )
     return payload
 
 

@@ -29,7 +29,7 @@ import os
 import threading
 import time
 from pathlib import Path
-from typing import Iterable, Iterator, Optional
+from typing import Iterator, Optional
 
 log = logging.getLogger("psobb_editor.manifest")
 
@@ -913,6 +913,78 @@ def _atomic_write_json(path: Path, payload: dict) -> None:
 _PARSED_MANIFEST_CACHE: dict = {}
 _PARSED_MANIFEST_LOCK = threading.Lock()
 
+# In-memory single-slot cache for the parsed manifest-LITE dict, keyed on
+# the on-disk lite cache file's stat (mtime_ns, size, install_root).
+# Mirrors _PARSED_MANIFEST_CACHE so the dominant /api/manifest_lite warm
+# path skips the ~12 ms JSON parse of the 1.65 MB lite file. Invalidated
+# implicitly when an atomic-rename rewrite changes the file's stat.
+_PARSED_LITE_CACHE: dict = {}
+_PARSED_LITE_LOCK = threading.Lock()
+
+# Cheap (entry-count, last_built) summary for /api/health, keyed on the
+# full manifest cache file's stat. Avoids json.load-ing 3.8 MB on every
+# health poll just to report len(entries) + mtime. Re-reads only when the
+# cache file's (mtime_ns, size) changes.
+_MANIFEST_SUMMARY_CACHE: dict = {}
+_MANIFEST_SUMMARY_LOCK = threading.Lock()
+
+
+def manifest_summary(install_root: Path, cache_dir: Optional[Path] = None) -> dict:
+    """Return ``{"entries": int, "last_built": int, "path": str}`` cheaply.
+
+    Powers /api/health. Reports the entry count + last-built epoch of the
+    on-disk full manifest WITHOUT json.load-ing the 3.8 MB file on every
+    call: the result is memoized on the cache file's (mtime_ns, size) and
+    the full parse only happens when the file actually changes (a manifest
+    rebuild). ``last_built`` always reflects the live mtime (a cheap stat).
+
+    Never raises — a missing / unreadable cache reports zeroes so the rest
+    of /api/health stays green.
+
+    Fast-path ordering avoids a redundant parse: if cache_manifest already
+    holds the parsed dict in its in-memory slot for the SAME stat, we read
+    len(entries) from there instead of re-opening the file.
+    """
+    cf = cache_path_for(install_root, cache_dir=cache_dir)
+    out = {"entries": 0, "last_built": 0, "path": str(cf)}
+    try:
+        st = cf.stat()
+    except OSError:
+        return out
+    out["last_built"] = int(st.st_mtime)
+    key = (int(st.st_mtime_ns), int(st.st_size))
+
+    with _MANIFEST_SUMMARY_LOCK:
+        slot = _MANIFEST_SUMMARY_CACHE.get("slot")
+        if slot is not None and slot[0] == key:
+            out["entries"] = slot[1]
+            return out
+
+    # Miss: derive the entry count once for this revision. Prefer the
+    # already-parsed manifest slot (no I/O); fall back to a targeted JSON
+    # parse only when the parsed dict isn't resident for this stat.
+    entries = None
+    with _PARSED_MANIFEST_LOCK:
+        pslot = _PARSED_MANIFEST_CACHE.get("slot")
+        if pslot is not None and pslot[0][0] == key[0] and pslot[0][1] == key[1]:
+            ents = pslot[1].get("entries") if isinstance(pslot[1], dict) else None
+            if isinstance(ents, list):
+                entries = len(ents)
+    if entries is None:
+        try:
+            with open(cf, "r", encoding="utf-8") as f:
+                payload = json.load(f)
+            if isinstance(payload, dict) and isinstance(payload.get("entries"), list):
+                entries = len(payload["entries"])
+        except (OSError, json.JSONDecodeError) as e:
+            log.debug("manifest_summary parse failed: %s", e)
+            entries = 0
+
+    with _MANIFEST_SUMMARY_LOCK:
+        _MANIFEST_SUMMARY_CACHE["slot"] = (key, int(entries))
+    out["entries"] = int(entries)
+    return out
+
 
 def cache_manifest(install_root: Path, cache_dir: Optional[Path] = None,
                    *, force: bool = False) -> dict:
@@ -1121,12 +1193,25 @@ def cache_manifest_lite(install_root: Path, cache_dir: Optional[Path] = None,
     # the second cache_manifest staleness check entirely.
     if not force and lite_path.exists():
         try:
-            lite_mtime = int(lite_path.stat().st_mtime)
+            lite_st = lite_path.stat()
+            lite_mtime = int(lite_st.st_mtime)
+            lite_slot_key = (int(lite_st.st_mtime_ns), int(lite_st.st_size),
+                             install_root_str)
         except OSError:
             lite_mtime = 0
+            lite_slot_key = None
         if lite_mtime > 0:
             newest = _newest_mtime_cached(install_root, force=False)
             if lite_mtime >= newest:
+                # In-memory memo hit: return the parsed dict without a
+                # json.load of the 1.65 MB lite file. Keyed on the same
+                # (mtime_ns, size, install_root) tuple cache_manifest uses,
+                # so an atomic-rename rewrite invalidates it automatically.
+                if lite_slot_key is not None:
+                    with _PARSED_LITE_LOCK:
+                        slot = _PARSED_LITE_CACHE.get("slot")
+                        if slot is not None and slot[0] == lite_slot_key:
+                            return slot[1]  # type: ignore[return-value]
                 try:
                     with open(lite_path, "r", encoding="utf-8") as f:
                         cached_lite = json.load(f)
@@ -1136,6 +1221,12 @@ def cache_manifest_lite(install_root: Path, cache_dir: Optional[Path] = None,
                         and cached_lite.get("install_root") == install_root_str
                         and isinstance(cached_lite.get("entries"), list)
                     ):
+                        # Populate the in-memory slot for the next call.
+                        if lite_slot_key is not None:
+                            with _PARSED_LITE_LOCK:
+                                _PARSED_LITE_CACHE["slot"] = (
+                                    lite_slot_key, cached_lite,
+                                )
                         return cached_lite  # type: ignore[return-value]
                 except (OSError, json.JSONDecodeError):
                     pass  # fall through to slow path
@@ -1165,6 +1256,10 @@ def cache_manifest_lite(install_root: Path, cache_dir: Optional[Path] = None,
             _atomic_write_json(lite_path, lite)
         except OSError as e:
             log.warning("could not write manifest_lite cache: %s", e)
+        # Drop the in-memory slot so the next call repopulates against the
+        # just-written file's fresh stat (the rename changed mtime+size).
+        with _PARSED_LITE_LOCK:
+            _PARSED_LITE_CACHE.pop("slot", None)
         return lite
     # Unreachable; guarded above.
     return build_manifest_lite_from(full)

@@ -7,6 +7,7 @@ Coverage:
   - njmotion_to_raw conversion path.
 """
 from __future__ import annotations
+import os
 
 import math
 import struct

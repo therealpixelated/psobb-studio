@@ -475,17 +475,18 @@ async function loadTexture() {
     // for free; 4 was leaving quality on the table. Stays under the
     // typical 16x ceiling on contemporary cards.
     tex.anisotropy = 8;
-    // Wrap mode 2026-04-30 review: switched from MirroredRepeatWrapping
-    // to RepeatWrapping for the model-render path. PSOBB's D3D9 engine
-    // default is ``D3DTADDRESS_WRAP`` (= REPEAT, not MIRROR — see
-    // memory note ``psobb_full_entity_map.md``). Phantasmal World's
-    // XvrTextureConversion.kt uses MIRROR but that was their best
-    // guess; REPEAT is the verified engine convention. Sphere preview
-    // continues to use ClampToEdge to avoid the seam at the back of
-    // the sphere where UVs wrap.
+    // Wrap mode (2026-06-20, decompile-checked): Psobb.exe selects the D3D
+    // sampler address mode PER TEXTURE — the Ghidra decompile shows
+    // D3DTADDRESS_WRAP, _MIRROR and _CLAMP all in use at different stages,
+    // so the prior "REPEAT is the only verified mode" note was overstated.
+    // Until per-texture wrap flags are parsed from the NJ/XVR material
+    // (backlog: per-texture-wrap-flags), default the real-mesh + per-binding
+    // paths to MIRROR to match the Sega Ninja convention (psov2 / Phantasmal).
+    // Sphere preview keeps ClampToEdge (avoids the back-seam); the primitive
+    // fallback keeps plain Repeat.
     if (state.realMesh) {
-      tex.wrapS = THREE.RepeatWrapping;
-      tex.wrapT = THREE.RepeatWrapping;
+      tex.wrapS = THREE.MirroredRepeatWrapping;
+      tex.wrapT = THREE.MirroredRepeatWrapping;
     } else if (state.shape === "sphere") {
       tex.wrapS = THREE.ClampToEdgeWrapping;
       tex.wrapT = THREE.ClampToEdgeWrapping;
@@ -921,16 +922,11 @@ function loadTileTexture(archivePath, tileIdx) {
         // Phantasmal-diff fix 1 (2026-04-25): leave colorSpace at its
         // linear default (no double-gamma).
         //
-        // Wrap mode (2026-04-30 review): switched from
-        // MirroredRepeatWrapping to RepeatWrapping. PSOBB ships D3D9
-        // texture stages with the engine default
-        // ``D3DTADDRESS_WRAP`` (= REPEAT, not MIRRORED) — per memory
-        // note ``psobb_full_entity_map.md``. Phantasmal World's
-        // ``XvrTextureConversion.kt`` uses MIRRORED, but that is a
-        // best-effort guess in their codebase too — they never
-        // verified against the engine. REPEAT is the engine default
-        // and the only mode that's guaranteed to render PSOBB's
-        // tile-uv conventions correctly.
+        // Wrap mode (2026-06-20, decompile-checked): the engine selects the
+        // sampler address mode per texture (WRAP/MIRROR/CLAMP all present in
+        // the Ghidra decompile). Defaulting the per-binding texture path to
+        // MIRROR to match the Sega Ninja convention (psov2 / Phantasmal)
+        // until per-texture wrap flags are parsed (backlog: per-texture-wrap-flags).
         //
         // Anisotropy: bumped from 4 → 8 (2026-04-30). Modern GPUs
         // (anything since GeForce 5xx / Radeon HD 5xxx) handle 8x
@@ -940,8 +936,8 @@ function loadTileTexture(archivePath, tileIdx) {
         // varies by GPU but is typically 16 on contemporary
         // hardware; 8 stays under that ceiling on all known cards.
         tex.anisotropy = 8;
-        tex.wrapS = THREE.RepeatWrapping;
-        tex.wrapT = THREE.RepeatWrapping;
+        tex.wrapS = THREE.MirroredRepeatWrapping;
+        tex.wrapT = THREE.MirroredRepeatWrapping;
         resolve(tex);
       },
       undefined,

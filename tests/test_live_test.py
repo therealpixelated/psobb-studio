@@ -18,6 +18,7 @@ Server.py is imported once; test fixtures monkeypatch the resolver for
 ``newserv install`` so we never touch the user's real install.
 """
 from __future__ import annotations
+import os
 
 import base64
 import io

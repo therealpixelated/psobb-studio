@@ -2,25 +2,43 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>PSOBB Texture Editor</title>
+<title>PSOBB Studio</title>
 <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body class="unified-viewport-mode">
   <header>
-    <h1>PSOBB Texture Editor</h1>
-    <span id="dataDir" class="dim" title="data directory"></span>
+    <h1>PSOBB Studio</h1>
+    <span id="dataDir" class="dim" title="data directory — assets are read from here (set by PSO_DATA_DIR)"></span>
     <span class="grow"></span>
     <span id="selectionCount" class="pill pill-sel" hidden></span>
     <span id="editsCount" class="pill" hidden></span>
-    <button id="btnSessionExport" class="ghost" title="save current edits + settings to a JSON file">export session</button>
-    <button id="btnDeployToGame" class="ghost" title="copy changed files from dev mirror -> live PSOBB.IO game install">deploy to game</button>
-    <button id="btnSessionImport" class="ghost" title="restore edits from a session JSON file">import session</button>
-    <input type="file" id="sessionImportInput" accept="application/json,.json" hidden />
-    <button id="btnClearEdits" class="ghost" hidden title="clear all in-memory edits (does not touch disk)">clear edits</button>
-    <button id="btnEditMode" type="button" class="ghost" title="toggle Blender-style edit-mode on the 3D viewport (Tab) — vertex selection + transform gizmo" aria-pressed="false">Edit Mode</button>
-    <button id="btnToggleFiles" type="button" title="show legacy 'editable PRS/XVM' pane (rarely needed — most workflows now flow through the asset tree)" aria-pressed="false">Editables</button>
+
+    <!-- Primary view toggles stay in the bar (high-frequency). -->
+    <button id="btnToggleFiles" type="button" title="show legacy 'editable PRS/XVM' pane (rarely needed — most workflows now flow through the asset tree)" aria-pressed="false">Editable PRS/XVM</button>
     <button id="btnToggleTree" type="button" class="active" title="toggle the full PSOBB.IO asset tree (primary navigation)" aria-pressed="true">All assets</button>
-    <button id="btnClassicUiToggle" type="button" class="ghost" title="switch back to the legacy modal-stack UI" aria-pressed="true">classic UI</button>
+    <button id="btnDeployToGame" class="ghost" title="copy changed files from dev mirror -> live PSOBB.IO game install">deploy to game</button>
+
+    <!-- 2026-06-19 anti-slop: the lower-frequency perspective/session
+         buttons moved into this "Tools ▾" overflow menu so the header
+         is one tidy row instead of an 18-button wall that crushed its
+         own labels. The button IDs are unchanged — panels bind by ID,
+         the DOM nodes just live here now. -->
+    <div class="hdr-tools">
+      <button id="btnToolsMenu" type="button" class="ghost" title="more tools" aria-haspopup="true" aria-expanded="false">Tools &#x25BE;</button>
+      <div class="hdr-tools-menu" id="hdrToolsMenu" hidden role="menu" aria-label="more tools">
+        <div class="hdr-tools-label">Session</div>
+        <button id="btnSessionExport" class="ghost" title="save current edits + settings to a JSON file">export session</button>
+        <button id="btnSessionImport" class="ghost" title="restore edits from a session JSON file">import session</button>
+        <button id="btnClearEdits" class="ghost" hidden title="clear all in-memory edits (does not touch disk)">clear edits</button>
+        <div class="hdr-tools-sep"></div>
+        <div class="hdr-tools-label">Modes</div>
+        <button id="btnEditMode" type="button" class="ghost" title="toggle Blender-style edit-mode on the 3D viewport (Tab) — vertex selection + transform gizmo" aria-pressed="false">Edit Mode</button>
+        <button id="btnClassicUiToggle" type="button" class="ghost" title="switch back to the legacy modal-stack UI" aria-pressed="true">classic UI</button>
+      </div>
+    </div>
+    <input type="file" id="sessionImportInput" accept="application/json,.json" hidden />
+
+    <button id="btnHelp" type="button" class="ghost" title="how to use Studio — open the walkthrough (?)" aria-label="help">?</button>
     <span id="status" class="status">ready</span>
   </header>
 
@@ -64,8 +82,29 @@
         <main class="vp-stage" id="vpStage" aria-label="active perspective content">
           <div class="vp-stage-empty" id="vpStageEmpty">
             <div class="walkthrough">
-              <div class="wt-title">PSOBB Texture Editor</div>
-              <div class="wt-sub">Pick an asset on the left to begin. The tab strip above swaps between perspectives (tile grid, 3D view, viewport paint, etc.) without modal popups.</div>
+              <div class="wt-title">PSOBB Studio &mdash; Asset Workshop</div>
+              <div class="wt-blurb">
+                Decode, preview, edit, upscale and re-deploy the textures and 3D
+                models inside your <strong>Phantasy Star Online: Blue Burst</strong>
+                install &mdash; without unpacking anything by hand.
+              </div>
+              <div class="ob-datadir" id="obDataDirCard">
+                <div class="ob-datadir-row">
+                  <span class="ob-dd-label">Reading assets from</span>
+                  <code id="obDataDir">&hellip;</code>
+                  <span class="ob-chip warn" id="obDataDirChip">checking&hellip;</span>
+                </div>
+                <div class="ob-datadir-hint">
+                  Set by the <code>PSO_DATA_DIR</code> environment variable. To point
+                  Studio at a different install, stop the server and relaunch with
+                  <code>PSO_DATA_DIR="D:/Games/PSOBB/data"</code> or
+                  <code>psobb-studio --data-dir D:/Games/PSOBB/data</code>, then refresh.
+                </div>
+              </div>
+              <div class="wt-actions">
+                <button id="btnEmptyWalkthrough" type="button" title="open the 5-step guided walkthrough">Start the walkthrough</button>
+                <button id="btnEmptyBrowse" class="ghost" type="button" title="dismiss and browse the asset tree on the left">Browse assets</button>
+              </div>
             </div>
           </div>
         </main>
@@ -717,6 +756,14 @@
   <script src="/static/manifest.js"></script>
   <script src="/static/tree.js"></script>
   <script src="/static/app.js"></script>
+  <!-- First-run onboarding + re-openable walkthrough (2026-06-19).
+       Self-contained: exposes window.psoOnboarding.{open,close,
+       maybeAutoShow}. Lives at top level (overlay is appended to
+       <body>, NOT inside #vpStage) so perspectives.js stage.innerHTML=''
+       can't wipe it on first asset-open. Loads after app.js so
+       window.psoEditor / window.bus exist; app.js init() calls
+       maybeAutoShow() once #dataDir/health are known. -->
+  <script src="/static/onboarding.js"></script>
   <!-- Editor v4: per-map engine fog/light table (auto-generated from
        <install>/data/fogentry.dat + lightentry.bin via
        formats/psobb_engine_tables.py). Loaded before model_viewer.js

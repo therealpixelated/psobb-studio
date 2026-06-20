@@ -9,6 +9,7 @@ Coverage:
     and asserting structural equivalence.
 """
 from __future__ import annotations
+import os
 
 import math
 import struct

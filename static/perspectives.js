@@ -412,34 +412,23 @@
       // Inspector: show inline help; the actual upscale settings live in
       // the toolbar inside #fileWorkspace (it's already verbose). Keeping
       // the inspector slim for tile-grid avoids duplicating UI.
+      // 2026-06-19 anti-slop: the inspector used to repeat the
+      // "view 3D / viewport / AI generate" perspective switches that the
+      // tab strip above already provides — two parallel ways to do the
+      // same thing. Dropped them; the inspector now carries only the
+      // tile-specific help + the deploy-diff action (which is NOT a tab).
       insp.innerHTML =
         '<div class="vp-insp-title">Tile grid</div>' +
         '<div class="vp-insp-help dim">' +
         'Click a tile to enter A/B view. Press <kbd>U</kbd> to upscale all, ' +
         '<kbd>R</kbd> to repack and deploy. Drop a PNG onto a card to import ' +
-        'an external upscaled version.' +
-        '</div>' +
-        '<div class="vp-insp-section">' +
-        '<button id="vpiOpen3DPersp" class="ghost" type="button" title="switch to 3D View">view 3D</button> ' +
-        '<button id="vpiOpenViewportPersp" class="ghost" type="button" title="switch to Viewport (16:9)">viewport (16:9)</button> ' +
-        '<button id="vpiOpenAigenPersp" class="ghost" type="button" title="switch to AI generate">AI generate</button>' +
+        'an external upscaled version. Use the tabs above to switch to ' +
+        '3D view, viewport paint or AI generate.' +
         '</div>' +
         '<div class="vp-insp-section">' +
         '<button id="vpiOpenDeployPersp" class="ghost" type="button" title="show deploy diff">deploy diff</button>' +
         '</div>';
 
-      const o3d = insp.querySelector("#vpiOpen3DPersp");
-      if (o3d) o3d.addEventListener("click", function () {
-        switchTo("3d-view", activeCtx);
-      });
-      const ovp = insp.querySelector("#vpiOpenViewportPersp");
-      if (ovp) ovp.addEventListener("click", function () {
-        switchTo("viewport-paint", activeCtx);
-      });
-      const oag = insp.querySelector("#vpiOpenAigenPersp");
-      if (oag) oag.addEventListener("click", function () {
-        switchTo("aigen", activeCtx);
-      });
       const odep = insp.querySelector("#vpiOpenDeployPersp");
       if (odep) odep.addEventListener("click", function () {
         // Reuse existing deploy modal show — but render as a slide-in

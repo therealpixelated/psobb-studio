@@ -22,10 +22,10 @@ XvrTexture.cs GetFormat()). Indices 11-14 are aliases of 1-4:
     4, 14  D3DFMT_A4R4G4B4   16bpp
     5      D3DFMT_P8         8bpp palettized   (needs palette; unsupported)
     6      D3DFMT_DXT1       BC1
-    7      D3DFMT_DXT2       BC2 (DXT3 block layout, premultiplied alpha)
-    8      D3DFMT_DXT3       BC2
-    9      D3DFMT_DXT4       BC3 (DXT5 block layout, premultiplied alpha)
-    10     D3DFMT_DXT5       BC3
+    7      D3DFMT_DXT2       BC2 (DXT3 block layout, premultiplied alpha -> unpremul on decode)
+    8      D3DFMT_DXT3       BC2 (straight alpha)
+    9      D3DFMT_DXT4       BC3 (DXT5 block layout, premultiplied alpha -> unpremul on decode)
+    10     D3DFMT_DXT5       BC3 (straight alpha)
     15     D3DFMT_YUY2       (unsupported)
     16     D3DFMT_V8U8       (unsupported)
     17     D3DFMT_A8         8bpp alpha
@@ -59,7 +59,7 @@ import re
 import struct
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Optional
+from typing import Optional
 
 from PIL import Image
 
@@ -103,6 +103,18 @@ _BLOCK = {
     FMT_DXT4: (b"DXT5", 16),   # BC3
     FMT_DXT5: (b"DXT5", 16),   # BC3
 }
+
+# Premultiplied-alpha pixelFormats. D3DFMT_DXT2 (7) and D3DFMT_DXT4 (9) carry
+# the SAME BC2 / BC3 block layout as DXT3 (8) / DXT5 (10), but their RGB is
+# stored already multiplied by alpha (per the Direct3D 9 D3DFMT spec, and
+# confirmed against the live PSOBB texture registry, which reports format 7 as
+# "DXT2"). Pillow (and the VrSharp/Pfim reference) decode the BC2/BC3 blocks
+# byte-faithfully but as STRAIGHT alpha — so for any texel with partial alpha
+# the recovered RGB stays scaled-down (dark), which a straight-alpha renderer
+# then shows over-darkened / washed-out (e.g. enemy/character skins). Undo the
+# premultiply on decode so the editor previews/upscales straight-alpha RGB.
+# DXT3 (8) / DXT5 (10) are genuinely straight alpha and are NOT in this set.
+_PREMULT = frozenset((FMT_DXT2, FMT_DXT4))
 # Uncompressed formats -> bytes per pixel (for base-mip slicing).
 _BPP = {
     FMT_A8R8G8B8: 4, FMT_A8R8G8B8_ALT: 4, FMT_X8R8G8B8: 4,
@@ -124,6 +136,32 @@ def _build_dds(width: int, height: int, data: bytes, fourcc: bytes, bpb: int) ->
     if len(hdr) != 128:
         raise ValueError(f"bad DDS header length {len(hdr)}")
     return hdr + data
+
+
+def _unpremultiply_rgba(rgba: bytes) -> bytes:
+    """Convert premultiplied-alpha RGBA8 bytes to straight (un-premultiplied)
+    alpha. RGB' = round(min(255, RGB * 255 / A)) where A>0; texels with A==0 or
+    A==255 are left byte-for-byte unchanged (so fully opaque / fully
+    transparent texels — and therefore opaque textures like the fire — are not
+    touched). Length-preserving; operates in float to avoid integer-rounding
+    drift, then clamps to 0..255.
+
+    This mirrors the inverse of the premultiply the encoder/engine applied; it
+    is gated by the caller strictly to FMT_DXT2 (7) / FMT_DXT4 (9)."""
+    import numpy as np
+
+    a = np.frombuffer(rgba, dtype=np.uint8).reshape(-1, 4)
+    alpha = a[:, 3].astype(np.uint16)
+    # Only rescale partial-alpha texels; leave A==0 and A==255 verbatim.
+    mask = (alpha > 0) & (alpha < 255)
+    if not mask.any():
+        return rgba
+    out = a.copy()
+    sel = out[mask].astype(np.float32)
+    af = sel[:, 3:4]  # (n,1), all > 0 by mask
+    rgb = np.minimum(255.0, np.round(sel[:, :3] * (255.0 / af)))
+    out[mask, :3] = rgb.astype(np.uint8)
+    return out.tobytes()
 
 
 # --- 5/6/4-bit channel expansion (bit-replication; lossless via >>) --------
@@ -331,7 +369,11 @@ def decode_xvr(record: dict) -> tuple[int, int, bytes]:
         dds = _build_dds(w, h, data, fourcc, bpb)
         img = Image.open(io.BytesIO(dds))
         img.load()
-        return w, h, img.convert("RGBA").tobytes()
+        rgba = img.convert("RGBA").tobytes()
+        if fmt in _PREMULT:
+            # DXT2/DXT4 store premultiplied-alpha RGB; recover straight alpha.
+            rgba = _unpremultiply_rgba(rgba)
+        return w, h, rgba
     if fmt in (FMT_A8R8G8B8, FMT_A8R8G8B8_ALT):
         return w, h, decode_a8r8g8b8(data, w, h).tobytes()
     if fmt == FMT_X8R8G8B8:
@@ -447,15 +489,35 @@ def encode_a8(img: Image.Image) -> bytes:
     return bytes(px[i * 4 + 3] for i in range(len(px) // 4))
 
 
+def _premultiply_img(img: Image.Image) -> Image.Image:
+    """Inverse of _unpremultiply_rgba: scale RGB by alpha so the encoded BC2/BC3
+    block stores premultiplied-alpha pixels (for FMT_DXT2 / FMT_DXT4). Keeps the
+    decode<->encode round-trip symmetric so editing a premultiplied tile does not
+    silently brighten it. A==255 texels are unchanged (RGB*1)."""
+    import numpy as np
+
+    if img.mode != "RGBA":
+        img = img.convert("RGBA")
+    a = np.frombuffer(img.tobytes(), dtype=np.uint8).reshape(-1, 4).astype(np.float32)
+    af = a[:, 3:4] / 255.0
+    a[:, :3] = np.minimum(255.0, np.round(a[:, :3] * af))
+    out = a.astype(np.uint8).tobytes()
+    return Image.frombytes("RGBA", img.size, out)
+
+
 def encode_xvr_data(img: Image.Image, fmt: int) -> bytes:
     """Encode an RGBA image to raw XVR pixel data for a specific pixelFormat."""
     if img.mode != "RGBA":
         img = img.convert("RGBA")
     if fmt == FMT_DXT1:
         return _encode_bc1(img)
-    if fmt in (FMT_DXT2, FMT_DXT3):
+    if fmt == FMT_DXT2:               # premultiplied-alpha BC2
+        return _encode_bc2(_premultiply_img(img))
+    if fmt == FMT_DXT3:               # straight-alpha BC2
         return _encode_bc2(img)
-    if fmt in (FMT_DXT4, FMT_DXT5):
+    if fmt == FMT_DXT4:               # premultiplied-alpha BC3
+        return _encode_bc3(_premultiply_img(img))
+    if fmt == FMT_DXT5:               # straight-alpha BC3
         return _encode_bc3(img)
     if fmt in (FMT_A8R8G8B8, FMT_A8R8G8B8_ALT):
         return encode_a8r8g8b8(img)
@@ -679,4 +741,5 @@ __all__ = [
     "encode_xvr_data", "encode_xvr_record",
     "build_xvr_record", "build_xvm", "rebuild_xvm",
     "extract_to_dir", "_build_dds",
+    "_unpremultiply_rgba", "_premultiply_img", "_PREMULT",
 ]

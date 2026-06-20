@@ -158,6 +158,12 @@ def page(browser):
         # size which is what diff comparison expects.
         device_scale_factor=1.0,
     )
+    # Pre-dismiss the first-run onboarding walkthrough: its modal overlay
+    # (#obOverlay) intercepts pointer events, so panel clicks would time out.
+    # Runs before any page script, so onboarding.js sees the flag and stays closed.
+    ctx.add_init_script(
+        "try { localStorage.setItem('pso.onboarding.seen.v1', '1'); } catch (e) {}"
+    )
     pg = ctx.new_page()
     yield pg
     ctx.close()

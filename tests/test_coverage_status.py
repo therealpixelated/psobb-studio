@@ -13,6 +13,7 @@ These tests cover all three branches without depending on a real audit
 having been run — they patch the lookup paths at test time.
 """
 from __future__ import annotations
+import os
 
 import csv
 from pathlib import Path

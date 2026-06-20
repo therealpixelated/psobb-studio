@@ -238,6 +238,56 @@ async function api(path, opts) {
 }
 
 // =====================================================================
+// In-memory asset cache (2026-06-19, perf).
+// Re-opening an asset (its decoded tiles) is instant (<1ms) instead of
+// re-hitting /api/tiles + re-decoding XVR server-side. The cache is a
+// small LRU keyed by the tiles endpoint path; entries are invalidated
+// when the live-reload bus reports that file changed on disk, or when a
+// repack/deploy rewrites it (state mutates the source).
+// =====================================================================
+const TILE_CACHE_MAX = 24;
+const _tileCache = new Map(); // path -> parsed /api/tiles response
+
+function _tileCacheGet(path) {
+  if (!_tileCache.has(path)) return null;
+  // Touch for LRU ordering (delete + re-set moves to the end).
+  const v = _tileCache.get(path);
+  _tileCache.delete(path);
+  _tileCache.set(path, v);
+  return v;
+}
+function _tileCacheSet(path, value) {
+  if (_tileCache.has(path)) _tileCache.delete(path);
+  _tileCache.set(path, value);
+  while (_tileCache.size > TILE_CACHE_MAX) {
+    // Evict the oldest (first inserted) entry.
+    const oldest = _tileCache.keys().next().value;
+    _tileCache.delete(oldest);
+  }
+}
+// Invalidate by filename substring (a repack of "foo.xvm" must drop its
+// cached tiles so the next open re-fetches the rewritten file). Called
+// with no arg to clear everything.
+function invalidateTileCache(nameFragment) {
+  if (!nameFragment) { _tileCache.clear(); return; }
+  for (const k of Array.from(_tileCache.keys())) {
+    if (k.includes(encodeURIComponent(nameFragment)) || k.includes(nameFragment)) {
+      _tileCache.delete(k);
+    }
+  }
+}
+
+// Cached GET for endpoints whose response is stable until the underlying
+// file changes (currently /api/tiles). Falls through to api() on a miss.
+async function apiCached(path) {
+  const hit = _tileCacheGet(path);
+  if (hit) return hit;
+  const data = await api(path);
+  _tileCacheSet(path, data);
+  return data;
+}
+
+// =====================================================================
 // File list pane
 // =====================================================================
 async function loadFiles() {
@@ -249,6 +299,15 @@ async function loadFiles() {
     $("#dataDir").title = data.data_dir || "";
     filterFiles();
     setStatus(`${state.files.length} file(s) in data/`, "ok");
+    // Feed the onboarding empty-state callout + header data-dir pill.
+    // The onboarding module gates the "assets found" chip on the
+    // authoritative /api/health data_dir.exists (not health.ok).
+    if (window.psoOnboarding && window.psoOnboarding.refreshDataDir) {
+      window.psoOnboarding.refreshDataDir({
+        data_dir: data.data_dir || "",
+        count: state.files.length,
+      });
+    }
   } catch (e) {
     setStatus(`failed to load files: ${e.message}`, "err", { sticky: true });
   }
@@ -332,7 +391,7 @@ async function openFile(name) {
   grid.innerHTML = `<div class="grid-msg">extracting tiles from ${escapeHtml(name)}...</div>`;
   setStatus(`opening ${name}...`, "busy", { sticky: true });
   try {
-    const data = await api(`/api/tiles/${encodeURIComponent(name)}`);
+    const data = await apiCached(`/api/tiles/${encodeURIComponent(name)}`);
     if (!state.currentFile || state.currentFile.name !== name) return;
     state.currentFile.tiles = data.tiles || [];
     const first = state.currentFile.tiles[0];
@@ -366,6 +425,76 @@ function renderTileGrid() {
   }
   applyTileFilter();
   refreshSelectionUI();
+}
+
+// PSOBB XVR pixel-format id -> short human label (mirrors
+// formats/xvr_decode.py FMT_* enum). Unknown ids fall back to "fmtN".
+const FMT_LABELS = {
+  1: "BGRA", 2: "565", 3: "1555", 4: "4444", 5: "P8",
+  6: "DXT1", 7: "DXT2", 8: "DXT3", 9: "DXT4", 10: "DXT5",
+  11: "BGRA", 12: "565", 13: "1555", 14: "4444",
+  17: "A8", 18: "X1555", 19: "BGRX",
+};
+function fmtLabel(fmt) {
+  return FMT_LABELS[fmt] || `fmt${fmt}`;
+}
+
+// Decode-suspect detector (2026-06-19). Draws the decoded source PNG to
+// a tiny offscreen canvas and measures per-channel variance + the count
+// of distinct quantized colours. A real texture has spread; a bad decode
+// (the known fmt6/DXT1 banding/noise) collapses to a near-flat band or a
+// handful of values. Memoized per data-URL so re-renders are cheap.
+const _decodeSuspectCache = new Map(); // src_b64 -> Promise<bool>
+function checkDecodeSuspect(t) {
+  const src = t && t.src_png_b64;
+  if (!src) return Promise.resolve(false);
+  // Only the block-compressed formats exhibit the known decode bug; skip
+  // the cheap-to-decode uncompressed formats to avoid false positives on
+  // legitimately flat UI sprites.
+  const blockFmts = new Set([6, 7, 8, 9, 10]);
+  if (!blockFmts.has(t.fmt)) return Promise.resolve(false);
+  if (_decodeSuspectCache.has(src)) return _decodeSuspectCache.get(src);
+
+  const p = new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const S = 16; // downsample to 16x16 — enough signal, ~cheap
+        const cv = document.createElement("canvas");
+        cv.width = S; cv.height = S;
+        const ctx = cv.getContext("2d", { willReadFrequently: true });
+        if (!ctx) { resolve(false); return; }
+        ctx.drawImage(img, 0, 0, S, S);
+        const data = ctx.getImageData(0, 0, S, S).data;
+        let n = 0, sr = 0, sg = 0, sb = 0, sr2 = 0, sg2 = 0, sb2 = 0;
+        const seen = new Set();
+        for (let i = 0; i < data.length; i += 4) {
+          const r = data[i], g = data[i + 1], b = data[i + 2];
+          sr += r; sg += g; sb += b;
+          sr2 += r * r; sg2 += g * g; sb2 += b * b;
+          // Quantize to 5 bits/channel for the distinct-colour count.
+          seen.add(((r >> 3) << 10) | ((g >> 3) << 5) | (b >> 3));
+          n++;
+        }
+        if (!n) { resolve(false); return; }
+        const varR = sr2 / n - (sr / n) ** 2;
+        const varG = sg2 / n - (sg / n) ** 2;
+        const varB = sb2 / n - (sb / n) ** 2;
+        const maxVar = Math.max(varR, varG, varB);
+        // Suspect when there's almost no per-channel spread AND very few
+        // distinct colours (a flat band / 2-tone block). Thresholds are
+        // deliberately conservative to avoid flagging real flat sprites.
+        const suspect = maxVar < 12 && seen.size <= 3;
+        resolve(suspect);
+      } catch (_e) {
+        resolve(false);
+      }
+    };
+    img.onerror = () => resolve(false);
+    img.src = src;
+  });
+  _decodeSuspectCache.set(src, p);
+  return p;
 }
 
 // =====================================================================
@@ -487,10 +616,34 @@ function buildTileCard(t) {
   const left = document.createElement("strong");
   left.textContent = `tile ${String(t.index).padStart(2, "0")}`;
   const right = document.createElement("span");
-  right.textContent = `${t.width}x${t.height} fmt${t.fmt}`;
+  right.textContent = `${t.width}x${t.height} `;
+  const fmtTag = document.createElement("span");
+  fmtTag.className = "fmt-tag";
+  fmtTag.textContent = fmtLabel(t.fmt);
+  fmtTag.title = `pixel format ${t.fmt}`;
+  right.appendChild(fmtTag);
   meta.appendChild(left);
   meta.appendChild(right);
   card.appendChild(meta);
+
+  // Decode-suspect check (2026-06-19). The fmt6/DXT1 banding bug is
+  // server-side; here we just flag a tile whose decoded source looks
+  // like a flat band / low-entropy block so the user can tell a bad
+  // decode from intended art. Async + best-effort; never blocks render.
+  checkDecodeSuspect(t).then((suspect) => {
+    if (!suspect) return;
+    // Card may have been re-rendered; resolve by data attrs.
+    if (card.dataset.idx !== String(t.index) || card.dataset.fname !== fname) return;
+    if (card.querySelector(".decode-badge")) return;
+    card.classList.add("decode-suspect");
+    const db = document.createElement("div");
+    db.className = "decode-badge";
+    db.textContent = "decode?";
+    db.title =
+      `This ${fmtLabel(t.fmt)} tile decoded to a near-flat / low-detail image — ` +
+      `it may be a bad server-side decode (known fmt6/DXT1 issue), not the real art.`;
+    pic.appendChild(db);
+  }).catch(() => {});
 
   if (edit) {
     const tag = document.createElement("div");
@@ -1174,6 +1327,9 @@ async function doRepackDeploy() {
         delete state.cardSliderPcts[k];
       }
     }
+    // The source file was just rewritten on disk; drop its cached tiles
+    // so the re-open below re-fetches the repacked bytes.
+    invalidateTileCache(fname);
     await loadFiles();
     if (state.currentFile && state.currentFile.name === fname) {
       await openFile(fname);
@@ -3692,6 +3848,17 @@ function setupAigenPanel() {
 }
 
 async function init() {
+  // Drop cached tiles for any file the live-reload watcher reports
+  // changed on disk, so the in-memory cache never serves stale bytes.
+  if (window.bus && typeof window.bus.on === "function") {
+    window.bus.on("cache.changed", (ev) => {
+      try {
+        const p = ev && ev.path ? String(ev.path) : "";
+        const base = p.split(/[\\/]/).pop();
+        if (base) invalidateTileCache(base);
+      } catch (_e) {}
+    });
+  }
   setupAnimObserver();
   setupCardDragListeners();
   setupDragDrop();
@@ -3699,6 +3866,32 @@ async function init() {
   setupAtlasMode();
   await loadModels();
   await loadFiles();
+
+  // Header "Tools ▾" overflow menu (2026-06-19 anti-slop). Click to
+  // open/close; clicking outside or hitting Esc closes it; selecting an
+  // item inside also closes it.
+  const toolsBtn = $("#btnToolsMenu");
+  const toolsMenu = $("#hdrToolsMenu");
+  if (toolsBtn && toolsMenu) {
+    const setToolsOpen = (open) => {
+      toolsMenu.hidden = !open;
+      toolsBtn.setAttribute("aria-expanded", open ? "true" : "false");
+    };
+    toolsBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      setToolsOpen(toolsMenu.hidden);
+    });
+    toolsMenu.addEventListener("click", (e) => {
+      // Close after any real button activation inside the menu.
+      if (e.target.closest("button")) setToolsOpen(false);
+    });
+    document.addEventListener("click", (e) => {
+      if (!toolsMenu.hidden && !e.target.closest(".hdr-tools")) setToolsOpen(false);
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && !toolsMenu.hidden) setToolsOpen(false);
+    });
+  }
 
   $("#filterBox").addEventListener("input", filterFiles);
   $("#btnUpscaleAll").addEventListener("click", upscaleAll);
@@ -3814,6 +4007,14 @@ async function init() {
   setupAigenPanel();
   // Initial provider probe in the background so the AI tab opens fast.
   aigenRefreshProviders({ silent: true }).catch(() => {});
+
+  // First-run onboarding (2026-06-19). Auto-shows the guided walkthrough
+  // once per browser (localStorage-gated); no-ops if already seen or if
+  // an asset is already open. Re-openable any time via the header "?"
+  // button or the empty-state "Start the walkthrough" button.
+  if (window.psoOnboarding && window.psoOnboarding.maybeAutoShow) {
+    try { window.psoOnboarding.maybeAutoShow(); } catch (_e) {}
+  }
 }
 
 window.addEventListener("DOMContentLoaded", () => {
