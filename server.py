@@ -89,6 +89,7 @@ import subprocess
 import sys
 import threading
 import time
+import uuid
 from collections import OrderedDict
 from contextlib import asynccontextmanager
 from io import BytesIO
@@ -236,6 +237,13 @@ from formats.variant_detector import (
 # pick a map + floor and load every renderable NJ/XJ in parallel. See
 # formats/scene_loader.py for the wire shape + spawn/waypoint validators.
 from formats import scene_loader as _scene_loader
+
+# Floor copy/create editor (2026-06-20). rel_writer carries the size
+# budgets + the RelWriteError raised on overflow; the floor endpoints map
+# that to HTTP 422. Imported here so the budget constants are available at
+# module scope. NOTE: the floor module deliberately does NOT import
+# safe_live_path / reference LIVE_DATA_DIR for any write.
+from formats import rel_writer as _rw
 
 # AI generation provider plugins (additive; never imported at request-time
 # critical paths, so an ImportError here only kills /api/aigen/* — the
@@ -17028,6 +17036,731 @@ def _load_nrel_texture_names(rel_path: Optional[str]) -> Optional[list]:
         log.exception("n.rel name read failed for %s", rel_path)
         return None
     return names if names else None
+
+
+# ===========================================================================
+# Floor copy/create editor (2026-06-20)
+# ===========================================================================
+#   GET  /api/floors                      floor browser payload
+#   POST /api/floors/copy                 duplicate a floor into a DEV slot
+#   POST /api/floors/create               author a floor from a GLB / asset
+#   GET  /api/floors/{floor_id}           per-floor bundle (shape == /api/map)
+#   DELETE /api/floors/{floor_id}         delete a DEV slot (copies/glb only)
+#
+# SAFETY INVARIANT (the whole reason this block exists):
+#   This editor has NO live-write verb. EVERY copy/create output resolves
+#   to DEV_DATA_DIR and is HARD-ASSERTED to be neither LIVE_DATA_DIR nor a
+#   child of it BEFORE any bytes hit disk -> else RuntimeError. Writes are
+#   atomic (.tmp -> fsync -> os.replace, unique .tmp per writer). A verify
+#   failure (re-parse + simulate_rel_relocation + budget) aborts BEFORE any
+#   write. This module deliberately does NOT import / reference
+#   safe_live_path or LIVE_DATA_DIR for any write path.
+#
+# The LITERAL routes (/api/floors, /api/floors/copy, /api/floors/create) are
+# registered BEFORE the parameterized /api/floors/{floor_id} so FastAPI's
+# in-order path matcher does not swallow "copy"/"create" as a floor_id.
+# ===========================================================================
+
+# Reserved stem prefix so DEV floor slots are visually distinct and the
+# slot enumerator can find them. A slot named "myfloor" lands on disk as
+# ``map_devmyfloor_00{n,c}.rel`` + ``map_devmyfloor_00s.xvm``.
+FLOOR_SLOT_PREFIX = "map_dev"
+# Stock floor ids are prefixed so the {floor_id} resolver can tell a
+# read-only catalogue floor apart from an editable dev slot without
+# guessing. Format: ``stk__<map_id>__<floor>`` (e.g. stk__aancient01__0).
+_FLOOR_STOCK_PREFIX = "stk__"
+_FLOOR_STOCK_ID_RE = re.compile(r"^stk__([a-z]+\d+)__(\d+)$")
+# A dev-slot floor_id IS the bare stem (post _safe_archive_name).
+_FLOOR_SLOT_STEM_RE = re.compile(r"^map_dev[A-Za-z0-9_\-]+_\d{2}$")
+# Single global lock around floor copy/create — one slot-write in flight at
+# a time. Non-blocking acquire -> HTTP 409 on contention (mirrors the
+# _PROMOTE_LOCK pattern). Keeps the concurrency model dead simple.
+_FLOOR_BUILD_LOCK = threading.Lock()
+
+
+def _floor_resolve_out_dir() -> Path:
+    """Return the DEV dir all floor writes are confined to, hard-asserting
+    it is NOT the live install (nor a child of it).
+
+    This is THE write boundary. It resolves to server.py's module-level
+    DEV_DATA_DIR (NOT a fresh env read) so the slot list, the writer, and
+    safe_data_path all agree on one directory. If that ever resolved
+    inside LIVE_DATA_DIR, we raise BEFORE any caller can write a byte.
+    """
+    out = DEV_DATA_DIR.resolve()
+    live = LIVE_DATA_DIR.resolve()
+    if out == live:
+        raise RuntimeError("floor editor must never write LIVE_DATA_DIR")
+    try:
+        out.relative_to(live)
+    except ValueError:
+        pass  # good — out is NOT inside live
+    else:
+        raise RuntimeError("floor editor must never write under LIVE_DATA_DIR")
+    out.mkdir(parents=True, exist_ok=True)
+    return out
+
+
+def _floor_assert_not_live(target: Path) -> Path:
+    """Assert ``target`` resolves inside DEV and never inside LIVE.
+
+    Called at the write boundary for every individual output file. Raises
+    RuntimeError (NOT HTTPException) so a programming error that points a
+    write at the live install fails loud and uncaught rather than being
+    silently turned into a client error.
+    """
+    t = Path(target).resolve()
+    live = LIVE_DATA_DIR.resolve()
+    if t == live:
+        raise RuntimeError("floor editor must never write LIVE_DATA_DIR")
+    try:
+        t.relative_to(live)
+    except ValueError:
+        pass
+    else:
+        raise RuntimeError(f"floor editor refusing to write under LIVE_DATA_DIR: {t}")
+    # And it MUST be inside the resolved DEV dir.
+    out = DEV_DATA_DIR.resolve()
+    try:
+        t.relative_to(out)
+    except ValueError:
+        raise RuntimeError(f"floor write target escapes DEV dir: {t}")
+    return t
+
+
+def _floor_atomic_write(target: Path, data: bytes) -> None:
+    """Atomic write confined to DEV: unique .tmp -> fsync -> os.replace.
+
+    A unique .tmp per writer avoids the Windows os.replace PermissionError
+    when two writers share a .tmp name. The .tmp is unlinked in a finally
+    block if the replace never happens (torn-write cleanup).
+    """
+    target = _floor_assert_not_live(target)
+    tmp = target.with_name(f"{target.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
+    try:
+        with open(tmp, "wb") as f:
+            f.write(data)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, target)
+    finally:
+        try:
+            if tmp.exists():
+                tmp.unlink()
+        except OSError:
+            pass
+
+
+def _floor_slot_stem(name: str) -> str:
+    """Derive a DEV slot stem from a user name. Guards traversal + charset.
+
+    ``name`` -> _safe_archive_name (bare basename, 1..255) -> MODEL_NAME_RE
+    (^[A-Za-z0-9_-]+$) so the derived ``<stem>n.rel`` can't inject a suffix
+    or extension. Returns ``map_dev<name>_00`` (the stock-shaped stem).
+    """
+    bare = _safe_archive_name(name)
+    if not MODEL_NAME_RE.match(bare):
+        raise HTTPException(400, "name: only letters, digits, '_' and '-' allowed")
+    return f"{FLOOR_SLOT_PREFIX}{bare}_00"
+
+
+def _floor_slot_files(out_dir: Path, stem: str) -> dict:
+    """The three on-disk paths for a dev slot stem (n.rel, c.rel, xvm)."""
+    return {
+        "nrel": out_dir / f"{stem}n.rel",
+        "crel": out_dir / f"{stem}c.rel",
+        "xvm":  out_dir / f"{stem}s.xvm",
+    }
+
+
+def _floor_scan_slots(out_dir: Path) -> list:
+    """Enumerate DEV floor slots: every ``<stem>n.rel`` under the dev dir.
+
+    Skips dotfiles, backups (_is_backup_name), and *.tmp scratch. Returns
+    a list of {stem, nrel_path, has_crel, has_xvm, source}.
+    """
+    out: list = []
+    if not out_dir.exists():
+        return out
+    for p in sorted(out_dir.iterdir()):
+        if not p.is_file():
+            continue
+        nm = p.name
+        if nm.startswith(".") or nm.endswith(".tmp") or _is_backup_name(nm):
+            continue
+        if not nm.endswith("n.rel"):
+            continue
+        stem = nm[:-len("n.rel")]
+        if not _FLOOR_SLOT_STEM_RE.match(stem):
+            continue
+        files = _floor_slot_files(out_dir, stem)
+        out.append({
+            "stem": stem,
+            "nrel_path": files["nrel"],
+            "has_crel": files["crel"].exists(),
+            "has_xvm": files["xvm"].exists(),
+        })
+    return out
+
+
+def _floor_slot_label(stem: str) -> str:
+    """Human label for a dev slot stem: strip the prefix + trailing _NN."""
+    core = stem
+    if core.startswith(FLOOR_SLOT_PREFIX):
+        core = core[len(FLOOR_SLOT_PREFIX):]
+    core = re.sub(r"_\d{2}$", "", core)
+    return core or stem
+
+
+def _floor_part_count(nrel_path: Path) -> int:
+    """Best-effort root-node count for a slot's n.rel (0 on any failure)."""
+    try:
+        from formats import rel as _rel  # lazy
+        buf = nrel_path.read_bytes()
+        if len(buf) > ASSET_PARSE_MAX_BYTES:
+            return 0
+        rel = _rel.parse_rel(buf)
+        if not _rel.is_n_rel(rel):
+            return 0
+        return sum(1 for _ in _rel.iter_nrel_mesh_root_offsets(rel))
+    except Exception:  # pragma: no cover — defensive
+        return 0
+
+
+def _floor_dev_record(out_dir: Path, slot: dict) -> dict:
+    """Build a GET /api/floors record for one dev slot."""
+    stem = slot["stem"]
+    label = _floor_slot_label(stem)
+    files = []
+    for kind, key in (("n.rel", "nrel_path"),):
+        files.append(slot[key].name)
+    if slot["has_crel"]:
+        files.append(_floor_slot_files(out_dir, stem)["crel"].name)
+    if slot["has_xvm"]:
+        files.append(_floor_slot_files(out_dir, stem)["xvm"].name)
+    return {
+        "floor_id": stem,
+        "label": label,
+        "area": "dev",
+        "area_num": 0,
+        "source": "copy",   # editable dev slot (copy or glb)
+        "base_map_id": None,
+        "floor_index": 0,
+        "part_count": _floor_part_count(slot["nrel_path"]),
+        "renderable_files": files,
+        "thumb_url": None,
+    }
+
+
+def _floor_stock_records() -> list:
+    """Enumerate read-only stock floors from the map catalogue.
+
+    One record per (map_id, floor) tuple. These are Copy SOURCES only —
+    never an overwrite/Create target.
+    """
+    out: list = []
+    try:
+        maps = _build_map_catalogue()
+    except Exception:  # pragma: no cover — manifest may be absent in CI
+        return out
+    for mi in maps:
+        for floor in sorted(mi.floors.keys()):
+            out.append({
+                "floor_id": f"{_FLOOR_STOCK_PREFIX}{mi.map_id}__{floor}",
+                "label": f"{mi.label} — floor {floor}",
+                "area": mi.area,
+                "area_num": mi.area_num,
+                "source": "stock",
+                "base_map_id": mi.map_id,
+                "floor_index": floor,
+                "part_count": mi.renderable_files,
+                "renderable_files": [a.path for a in mi.floors.get(floor, [])],
+                "thumb_url": None,
+            })
+    return out
+
+
+@app.get("/api/floors")
+def api_floors_list():
+    """Floor-browser payload: editable DEV slots + read-only stock floors.
+
+    Mirrors the /api/map/list category list so the frontend can reuse
+    map_panel's optgroup-by-category grouping. Degrades to an empty list
+    (never 500) when neither the dev dir nor the manifest is present.
+    """
+    out_dir = _floor_resolve_out_dir()
+    dev = [_floor_dev_record(out_dir, s) for s in _floor_scan_slots(out_dir)]
+    stock = _floor_stock_records()
+    return {
+        "ok": True,
+        "categories": [
+            {"id": "dev",        "label": "Dev slots (editable)"},
+            {"id": "city",       "label": "City / Pioneer 2"},
+            {"id": "forest",     "label": "Forest"},
+            {"id": "cave",       "label": "Cave"},
+            {"id": "mine",       "label": "Mine"},
+            {"id": "ruins",      "label": "Ruins"},
+            {"id": "battle",     "label": "Battle (Versus)"},
+            {"id": "corruption", "label": "Corruption / EP IV"},
+            {"id": "boss",       "label": "Boss arena"},
+            {"id": "other",      "label": "Other"},
+        ],
+        "floors": dev + stock,
+    }
+
+
+def _floor_dev_bundle(out_dir: Path, stem: str) -> dict:
+    """Build a per-floor bundle for a DEV slot, shape-identical to
+    /api/map/{id}?floor=N (formats.scene_loader.floor_bundle) so Preview
+    can reuse psoSceneLoadMapWithEnvironment unchanged.
+
+    Carries the fidelity-warning flags root_only_preview (R7) +
+    single_texture_slot (R8) so the UI can banner them.
+    """
+    files = _floor_slot_files(out_dir, stem)
+    nrel_path = files["nrel"]
+    if not nrel_path.exists():
+        raise HTTPException(404, f"floor slot not found: {stem}")
+    nrel_rel = f"scene/{nrel_path.name}"  # synthetic manifest-relative path
+    renderable = [{
+        "path": nrel_rel,
+        "kind": "rel_terrain",
+        "ext": "rel",
+        "suffix": "n",
+        "size": nrel_path.stat().st_size,
+    }]
+    textures = []
+    if files["xvm"].exists():
+        textures.append({"path": f"scene/{files['xvm'].name}",
+                         "size": files["xvm"].stat().st_size})
+    scripts = []
+    if files["crel"].exists():
+        scripts.append({"path": f"scene/{files['crel'].name}", "kind": "collision",
+                        "ext": "rel", "suffix": "c", "size": files["crel"].stat().st_size})
+    # Best-effort: tell the user when the slot's n.rel has child sub-trees
+    # the preview can't render (root-only read).
+    root_only = False
+    try:
+        from formats import rel as _rel  # lazy
+        rel = _rel.parse_rel(nrel_path.read_bytes())
+        if _rel.is_n_rel(rel):
+            roots = list(_rel.iter_nrel_mesh_root_offsets(rel))
+            root_only = len(roots) > 0
+    except Exception:  # pragma: no cover — defensive
+        root_only = False
+    return {
+        "map_id": stem,
+        "area": "dev",
+        "area_num": 0,
+        "floor": 0,
+        "category": "other",
+        "label": _floor_slot_label(stem),
+        "rrel_path": None,
+        "nrel_path": nrel_rel,
+        "renderable": renderable,
+        "textures": textures,
+        "scripts": scripts,
+        "animations": [],
+        "other": [],
+        "rrel_render_hints": None,
+        "nrel_texture_names": _load_nrel_texture_names(nrel_rel),
+        # Fidelity banners.
+        "root_only_preview": root_only,
+        "single_texture_slot": True,
+    }
+
+
+def _floor_resolve_dev_slot_for_read(out_dir: Path, stem: str) -> str:
+    """Validate a dev-slot floor_id stem for a READ path (no traversal)."""
+    bare = _validate_bare_filename(stem, label="floor_id")
+    if not _FLOOR_SLOT_STEM_RE.match(bare):
+        raise HTTPException(400, f"invalid floor_id {stem!r}")
+    return bare
+
+
+class FloorCopyReq(BaseModel):
+    floor_id: Optional[str] = None      # source: stock id or dev stem
+    src_name: Optional[str] = None      # alt source: DATA_DIR-relative file
+    dest_name: Optional[str] = None     # new slot name (else derived)
+    overwrite: bool = False
+    mode: str = "passthrough"
+
+
+@app.post("/api/floors/copy")
+def api_floors_copy(req: FloorCopyReq):
+    """Duplicate a floor into an editable DEV slot.
+
+    Default mode 'passthrough' BYTE-COPIES the source n.rel/c.rel/.xvm so
+    multi-node mesh trees are preserved on disk (avoids the R7 root-only
+    loss). Atomic per file; .pre_edit_<TS> backup on overwrite; 409 on a
+    no-overwrite clobber or a concurrent-build race. Writes confined to
+    DEV, asserted not LIVE.
+    """
+    if not _FLOOR_BUILD_LOCK.acquire(blocking=False):
+        raise HTTPException(409, "another floor build is in progress; retry shortly")
+    try:
+        out_dir = _floor_resolve_out_dir()
+        dest_stem = _floor_slot_stem(req.dest_name or req.floor_id or "")
+        mode = (req.mode or "passthrough").lower()
+        if mode not in ("passthrough", "reauthor"):
+            raise HTTPException(400, "mode must be 'passthrough' or 'reauthor'")
+
+        # Resolve the SOURCE triple (n.rel + optional c.rel/.xvm bytes).
+        src_nrel, src_crel, src_xvm = _floor_copy_source_bytes(out_dir, req)
+
+        dest = _floor_slot_files(out_dir, dest_stem)
+        # Overwrite guard + backup.
+        _floor_overwrite_guard(dest, req.overwrite)
+
+        written = []
+        # n.rel (required).
+        if mode == "reauthor":
+            nrel_bytes = _floor_reauthor_nrel(src_nrel)
+        else:
+            nrel_bytes = src_nrel
+        _floor_atomic_write(dest["nrel"], nrel_bytes)
+        written.append({"name": dest["nrel"].name, "size": len(nrel_bytes)})
+        # c.rel + xvm passthrough (only meaningful in passthrough mode; a
+        # re-author would need geometry we don't reconstruct here).
+        if src_crel is not None:
+            _floor_atomic_write(dest["crel"], src_crel)
+            written.append({"name": dest["crel"].name, "size": len(src_crel)})
+        if src_xvm is not None:
+            _floor_atomic_write(dest["xvm"], src_xvm)
+            written.append({"name": dest["xvm"].name, "size": len(src_xvm)})
+
+        # Count dropped child nodes for the banner (passthrough preserves
+        # them on disk; reauthor flattens to root-only).
+        preview_root_only = True
+        return {
+            "ok": True,
+            "new_floor_id": dest_stem,
+            "label": _floor_slot_label(dest_stem),
+            "mode": mode,
+            "preview_root_only": preview_root_only,
+            "files": written,
+        }
+    finally:
+        _FLOOR_BUILD_LOCK.release()
+
+
+def _floor_copy_source_bytes(out_dir: Path, req: "FloorCopyReq"):
+    """Resolve the source floor's (n.rel, c.rel?, xvm?) bytes for a copy.
+
+    The source is either a stock floor (floor_id 'stk__<map>__<n>', read
+    via _resolve_scene_asset_path over the catalogue) or a dev slot
+    (floor_id == a slot stem), or an explicit DATA_DIR-relative src_name
+    (via safe_data_path). The n.rel MUST exist and parse as n.rel.
+    """
+    from formats import rel as _rel  # lazy
+
+    nrel_bytes = crel_bytes = xvm_bytes = None
+    fid = req.floor_id or ""
+
+    if req.src_name:
+        # Explicit DATA_DIR-relative source filename.
+        p = safe_data_path(req.src_name)
+        if not p.exists():
+            raise HTTPException(404, f"source not found: {req.src_name}")
+        nrel_bytes = p.read_bytes()
+    elif fid.startswith(_FLOOR_STOCK_PREFIX):
+        m = _FLOOR_STOCK_ID_RE.match(fid)
+        if not m:
+            raise HTTPException(400, f"invalid stock floor_id {fid!r}")
+        map_id, floor = m.group(1), int(m.group(2))
+        bundle = _floor_stock_bundle(map_id, floor)
+        nrel_path = bundle.get("nrel_path")
+        if not nrel_path:
+            raise HTTPException(400, "source floor has no n.rel to copy")
+        nrel_bytes = _resolve_scene_asset_path(nrel_path).read_bytes()
+        # Best-effort siblings.
+        crel_bytes = _floor_sibling_bytes(nrel_path, "c.rel")
+        xvm_bytes = _floor_sibling_bytes_xvm(nrel_path)
+    else:
+        # Dev slot stem.
+        stem = _floor_resolve_dev_slot_for_read(out_dir, fid)
+        files = _floor_slot_files(out_dir, stem)
+        if not files["nrel"].exists():
+            raise HTTPException(404, f"floor slot not found: {stem}")
+        nrel_bytes = files["nrel"].read_bytes()
+        if files["crel"].exists():
+            crel_bytes = files["crel"].read_bytes()
+        if files["xvm"].exists():
+            xvm_bytes = files["xvm"].read_bytes()
+
+    # Validate the n.rel parses (don't copy garbage).
+    try:
+        rf = _rel.parse_rel(nrel_bytes)
+        if not _rel.is_n_rel(rf):
+            raise HTTPException(400, "source is not a valid n.rel")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(400, f"source n.rel failed to parse: {e}")
+    return nrel_bytes, crel_bytes, xvm_bytes
+
+
+def _floor_stock_bundle(map_id: str, floor: int) -> dict:
+    """Return the scene_loader floor_bundle for a stock (map, floor)."""
+    map_id = _safe_map_id(map_id)
+    maps = _build_map_catalogue()
+    info = next((m for m in maps if m.map_id == map_id), None)
+    if info is None:
+        raise HTTPException(404, f"unknown map_id {map_id!r}")
+    if floor not in info.floors:
+        raise HTTPException(404, f"map {map_id!r} has no floor {floor}")
+    return _scene_loader.floor_bundle(info, floor)
+
+
+def _floor_sibling_bytes(nrel_scene_path: str, suffix_ext: str):
+    """Best-effort read of a sibling rel (e.g. swap n.rel -> c.rel)."""
+    try:
+        if not nrel_scene_path.endswith("n.rel"):
+            return None
+        sib = nrel_scene_path[:-len("n.rel")] + suffix_ext
+        return _resolve_scene_asset_path(sib).read_bytes()
+    except Exception:
+        return None
+
+
+def _floor_sibling_bytes_xvm(nrel_scene_path: str):
+    """Best-effort read of the sibling .xvm for an n.rel scene path."""
+    try:
+        if not nrel_scene_path.endswith("n.rel"):
+            return None
+        base = nrel_scene_path[:-len("n.rel")]
+        for cand in (base + "s.xvm", base + ".xvm"):
+            try:
+                return _resolve_scene_asset_path(cand).read_bytes()
+            except Exception:
+                continue
+        return None
+    except Exception:
+        return None
+
+
+def _floor_reauthor_nrel(src_nrel: bytes) -> bytes:
+    """Re-author an n.rel from its ROOT-node meshes (R7: root-only).
+
+    Used by copy mode='reauthor'. Loses child sub-trees by design — the
+    default 'passthrough' mode avoids this. Runs the same verify gate.
+    """
+    from formats import rel as _rel  # lazy
+    from formats import lobby_pipeline as _lp
+
+    rf = _rel.parse_rel(src_nrel)
+    meshes = _rel.extract_nrel_meshes(rf)
+    names = _rel.read_texture_names(rf) or ["lobby"]
+    out = _rw.build_nrel_from_meshes(
+        _rw.nrel_nodes_from_meshes(meshes), names[:1] or ["lobby"],
+        enforce_budget=True,
+    )
+    ok, msg = _lp.verify_nrel(out)
+    if not ok:
+        raise HTTPException(422, f"re-authored n.rel failed verification: {msg}")
+    return out
+
+
+def _floor_overwrite_guard(dest_files: dict, overwrite: bool) -> None:
+    """Refuse to clobber an existing slot unless overwrite=True.
+
+    On overwrite=True, keep a .pre_edit_<TS> backup of each existing dest
+    file (so a prior dev build isn't lost). 409 on a no-overwrite clobber.
+    """
+    existing = [p for p in dest_files.values() if p.exists()]
+    if existing and not overwrite:
+        names = ", ".join(p.name for p in existing)
+        raise HTTPException(409, f"slot exists ({names}); pass overwrite=true")
+    if existing and overwrite:
+        ts = time.strftime("%Y%m%d_%H%M%S")
+        for p in existing:
+            backup = p.with_name(f"{p.name}.pre_edit_{ts}")
+            try:
+                _floor_assert_not_live(backup)
+                backup.write_bytes(p.read_bytes())
+            except OSError:
+                pass  # best-effort backup; the write still proceeds
+
+
+@app.post("/api/floors/create")
+async def api_floors_create(
+    request: Request,
+    file: Optional[UploadFile] = File(default=None),
+    source_path: Optional[str] = Form(default=None),
+    name: str = Form(...),
+    area_template: str = Form(default="other"),
+    tex: Optional[str] = Form(default=None),
+    overwrite: bool = Form(default=False),
+):
+    """Author a floor from a GLB upload OR an imported-asset reference.
+
+    GLB is magic-sniffed (b"glTF" + version 2 + length-field == len) BEFORE
+    parse; body size capped at MAX_IMPORT_PARSE_BODY (64MB) up front. The
+    build runs off the event loop. Over-budget n.rel/c.rel RAISE -> HTTP
+    422 carrying the byte-count + budget string. simulate_rel_relocation
+    failure -> 422. Atomic write confined to DEV (asserted not LIVE);
+    .pre_edit_<TS> backup on overwrite. Returns a verify report.
+    """
+    _enforce_body_size(request, MAX_IMPORT_PARSE_BODY)
+
+    # Resolve GLB bytes from EITHER an upload or a manifest asset ref.
+    glb_bytes: bytes
+    if file is not None and file.filename:
+        glb_bytes = await file.read()
+    elif source_path:
+        glb_bytes = await asyncio.to_thread(_floor_read_source_asset, source_path)
+    else:
+        raise HTTPException(400, "provide either an uploaded file or source_path")
+
+    if len(glb_bytes) == 0:
+        raise HTTPException(400, "uploaded GLB is empty")
+    if len(glb_bytes) > MAX_IMPORT_PARSE_BODY:
+        raise HTTPException(413, f"GLB too large ({len(glb_bytes)} > {MAX_IMPORT_PARSE_BODY})")
+    _floor_sniff_glb(glb_bytes)
+
+    texname = _safe_archive_name(tex) if tex else "lobby"
+
+    if not _FLOOR_BUILD_LOCK.acquire(blocking=False):
+        raise HTTPException(409, "another floor build is in progress; retry shortly")
+    try:
+        out_dir = _floor_resolve_out_dir()
+        dest_stem = _floor_slot_stem(name)
+        dest = _floor_slot_files(out_dir, dest_stem)
+        _floor_overwrite_guard(dest, overwrite)
+
+        # Author off the event loop. Maps RelWriteError -> 422, SystemExit
+        # (decimate exhaustion) -> 422, ValueError (no geometry) -> 400.
+        result = await asyncio.to_thread(_floor_build_sync, glb_bytes, texname)
+
+        # Atomic writes (confined to DEV, asserted not LIVE).
+        written = []
+        _floor_atomic_write(dest["nrel"], result.nrel)
+        written.append({"name": dest["nrel"].name, "size": len(result.nrel),
+                        "budget_ok": len(result.nrel) <= _rw.NREL_SIZE_BUDGET})
+        if result.crel is not None:
+            _floor_atomic_write(dest["crel"], result.crel)
+            written.append({"name": dest["crel"].name, "size": len(result.crel),
+                            "budget_ok": len(result.crel) <= _rw.CREL_SIZE_BUDGET})
+        if result.xvm is not None:
+            _floor_atomic_write(dest["xvm"], result.xvm)
+            written.append({"name": dest["xvm"].name, "size": len(result.xvm),
+                            "budget_ok": True})
+
+        rep = result.report
+        return {
+            "ok": True,
+            "floor_id": dest_stem,
+            "label": _floor_slot_label(dest_stem),
+            "area_template": area_template,
+            "report": {
+                "part_count": rep.get("submesh_count", 0),
+                "vertex_count": rep.get("tri_out", 0) * 3,
+                "texture_count": rep.get("texture_count", 0),
+                "bbox": [],
+                "tri_in": rep.get("tri_in", 0),
+                "tri_out": rep.get("tri_out", 0),
+                "warnings": rep.get("warnings", []),
+                "errors": rep.get("errors", []),
+                "scale_applied": 1.0,
+                "axis_flip": False,
+                "dropped_child_nodes": rep.get("dropped_child_nodes", 0),
+                "single_texture_slot": rep.get("single_texture_slot", True),
+                "files": written,
+            },
+        }
+    finally:
+        _FLOOR_BUILD_LOCK.release()
+
+
+def _floor_build_sync(glb_bytes: bytes, texname: str):
+    """Worker-thread tail of create: run build_floor, map errors to HTTP."""
+    from formats import lobby_pipeline as _lp
+    try:
+        return _lp.build_floor(glb_bytes, texname=texname)
+    except _rw.RelWriteError as e:
+        raise HTTPException(422, str(e))
+    except SystemExit as e:
+        raise HTTPException(422, f"could not fit floor under budget: {e}")
+    except ValueError as e:
+        raise HTTPException(400, f"GLB has no usable geometry: {e}")
+    except RuntimeError as e:
+        raise HTTPException(422, f"authored floor failed verification: {e}")
+
+
+def _floor_sniff_glb(data: bytes) -> None:
+    """Validate the binary-GLB magic + header. 400 on any mismatch.
+
+    A binary glTF starts with a 12-byte header: magic 'glTF' (0x46546C67
+    LE), uint32 version (==2), uint32 total length (== len(data)). We do
+    NOT trust the client Content-Type or filename extension.
+    """
+    if len(data) < 12 or data[:4] != b"glTF":
+        raise HTTPException(400, "not a binary GLB (missing 'glTF' magic)")
+    version, total_len = struct.unpack_from("<II", data, 4)
+    if version != 2:
+        raise HTTPException(400, f"unsupported GLB version {version} (need 2)")
+    if total_len != len(data):
+        raise HTTPException(400, f"GLB length field {total_len} != actual {len(data)}")
+
+
+def _floor_read_source_asset(source_path: str) -> bytes:
+    """Read a manifest model-asset by its DATA_DIR-relative path (no traversal)."""
+    # Accept either a flat filename (safe_data_path) or a scene/ path.
+    try:
+        if source_path.startswith("scene/"):
+            return _resolve_scene_asset_path(source_path).read_bytes()
+        return safe_data_path(source_path).read_bytes()
+    except HTTPException:
+        raise
+    except OSError as e:
+        raise HTTPException(404, f"source asset not found: {e}")
+
+
+@app.get("/api/floors/{floor_id}")
+def api_floors_get(floor_id: str):
+    """Per-floor asset bundle, shape-identical to /api/map/{id}?floor=N.
+
+    For a stock floor_id ('stk__<map>__<n>') this delegates to the map
+    bundle path; for a dev slot stem it builds a synthetic bundle over the
+    slot files in DEV_DATA_DIR. Both carry the root_only_preview /
+    single_texture_slot fidelity flags. Resolved via guards that reject
+    traversal.
+    """
+    if floor_id.startswith(_FLOOR_STOCK_PREFIX):
+        m = _FLOOR_STOCK_ID_RE.match(floor_id)
+        if not m:
+            raise HTTPException(400, f"invalid stock floor_id {floor_id!r}")
+        bundle = _floor_stock_bundle(m.group(1), int(m.group(2)))
+        bundle["rrel_render_hints"] = _load_rrel_hints(bundle.get("rrel_path"))
+        bundle["nrel_texture_names"] = _load_nrel_texture_names(bundle.get("nrel_path"))
+        bundle.setdefault("root_only_preview", False)
+        bundle.setdefault("single_texture_slot", False)
+        return bundle
+    out_dir = _floor_resolve_out_dir()
+    stem = _floor_resolve_dev_slot_for_read(out_dir, floor_id)
+    return _floor_dev_bundle(out_dir, stem)
+
+
+@app.delete("/api/floors/{floor_id}")
+def api_floors_delete(floor_id: str):
+    """Delete a DEV slot (copies/glb only). Stock floors are not deletable."""
+    if floor_id.startswith(_FLOOR_STOCK_PREFIX):
+        raise HTTPException(400, "stock floors cannot be deleted")
+    out_dir = _floor_resolve_out_dir()
+    stem = _floor_resolve_dev_slot_for_read(out_dir, floor_id)
+    files = _floor_slot_files(out_dir, stem)
+    removed = []
+    for p in files.values():
+        q = _floor_assert_not_live(p)
+        if q.exists():
+            try:
+                q.unlink()
+                removed.append(q.name)
+            except OSError as e:
+                raise HTTPException(500, f"could not delete {q.name}: {e}")
+    if not removed:
+        raise HTTPException(404, f"floor slot not found: {stem}")
+    return {"ok": True, "deleted": removed}
 
 
 # ===========================================================================

@@ -914,6 +914,14 @@
        cache/map_edits/; future quest-script editor reads the same. -->
   <script src="/static/map_panel.js"></script>
 
+  <!-- Floor copy/create editor (2026-06-20).
+       Adds a "Floor Editor" header button + a perspective (cloned from
+       map_panel.js) to browse floors, Preview one in the shared 3D canvas,
+       Copy a floor into an editable dev slot, or Create a floor from a GLB
+       via the build_lobby pipeline (/api/floors/*). Dev-only: the live game
+       install is never written. -->
+  <script src="/static/floor_panel.js"></script>
+
   <!-- External 3D-model import (2026-04-25).
        Adds a top-level drop-zone overlay + "Import 3D" header button
        that accepts .obj / .gltf / .glb files from Blender / Maya /

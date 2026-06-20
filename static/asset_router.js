@@ -718,6 +718,18 @@
         openHexOrText(evt.path, entry, "hex");
         return;
       case "map":
+        // Floor editor routing (2026-06-20): a clicked map/floor leaf can
+        // open the Floor editor perspective (browse/copy/create floors).
+        // The map editor stays the DEFAULT owner of map-category leaves in
+        // unified mode (its match score 90 > floor-editor's 80); this
+        // classic-mode branch offers the floor perspective when one exists.
+        if (window.PSOPerspectives && typeof window.PSOPerspectives.switchTo === "function") {
+          window.PSOPerspectives.switchTo("floor-editor", {
+            path: evt.path, entry: entry,
+            fileName: (evt.path.split("/").pop() || evt.path),
+          });
+          return;
+        }
         // .rel files are area-script blobs; hex-dump for now.
         openHexOrText(evt.path, entry, "hex");
         return;

@@ -48,6 +48,12 @@
     { key: "ui",      label: "UI",      match: ["ui"] },
     { key: "audio",   label: "Audio",   match: ["audio"] },
     { key: "quest",   label: "Quests",  match: ["quest"] },
+    // Floors live under the manifest 'map' category, so match:["map"]
+    // reuses the existing canonical category (no manifest/enum change).
+    // Caveat: until a dedicated 'floor' category exists, this pill aliases
+    // the map category (count == maps count). Clicking a floor/map leaf
+    // routes to the floor perspective via asset_router.js.
+    { key: "floor",   label: "Floors",  match: ["map"] },
   ];
 
   // Human-readable labels for the manifest category enum.
