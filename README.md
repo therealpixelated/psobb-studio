@@ -8,6 +8,10 @@
 
 A web-based asset studio for **Phantasy Star Online: Blue Burst**. psobb-studio reads the asset files from a local PSOBB install, decodes the game's proprietary model, texture, and archive formats, and lets you view, edit, upscale, and re-pack them from the browser — then stage the rebuilt files back for testing. It pairs a FastAPI backend (`server.py` plus a `formats/` package of binary readers/writers) with a vanilla-JavaScript, Three.js frontend in `static/`. It is a hobbyist modding tool: you supply your own game files, and no game assets are bundled or distributed with it.
 
+![psobb-studio demo](docs/demo.gif)
+
+*Browsing a Booma enemy `.bml`, decoding its NJ mesh + XVR textures in the 3D viewport (with wireframe), then editing the mob's real `BattleParamEntry` stats and a `ItemPMT` weapon entry — all against live server data.*
+
 ---
 
 ## Features
