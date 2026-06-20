@@ -216,14 +216,22 @@ def _fetch_manifest(url: str) -> list[dict]:
         return []
 
 
-def _pick(entries: list[dict], category: str, prefer: list[str]) -> str | None:
+def _pick(entries: list[dict], category: str, prefer: list[str],
+          avoid: tuple[str, ...] = ()) -> str | None:
     """Pick a stable asset path of ``category``: a preferred name if present,
-    else the first manifest entry of that category."""
+    else the first manifest entry of that category whose filename contains
+    none of ``avoid`` (used to skip dark/transparent textures that render as
+    empty-looking tiles), else the first of any."""
     by_cat = [e for e in entries if e.get("category") == category]
     paths = [e.get("path", "") for e in by_cat]
     for want in prefer:
         for p in paths:
             if p.split("/")[-1].lower() == want.lower():
+                return p
+    if avoid:
+        for p in paths:
+            name = p.split("/")[-1].lower()
+            if not any(a in name for a in avoid):
                 return p
     return paths[0] if paths else None
 
@@ -446,7 +454,12 @@ def run(data_dir: Path) -> int:
             "model": _pick(entries, "model",
                            ["bm_boss1_dragon.bml", "bm_boss5_gryphon.bml",
                             "bm_boss7_crawfish.bml"]),
-            "texture": _pick(entries, "texture", ["effect_nt.xvm", "ccconsole_j.xvm"]),
+            # Prefer a clearly-visible texture for the demo: dark/transparent
+            # ones (boss "core", effects) render as empty-looking tiles.
+            "texture": _pick(entries, "texture",
+                             ["f512_hunters.xvm", "ccconsole_j.xvm"],
+                             avoid=("effect", "_nt", "core_tex", "fog",
+                                    "shadow", "smoke", "indtex", "indirect")),
             "audio": _audio_bare_root(entries, ["opening_j.sfd"]),
         }
         print(f"  chosen assets: "
