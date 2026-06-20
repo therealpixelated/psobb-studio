@@ -88,32 +88,33 @@ The editor reads from a dev data dir (shadowing the live install) and writes onl
 - A PSOBB install whose `data/` directory you point the editor at
 - *(optional)* `realesrgan-ncnn-vulkan`, the `xvr_codec`/`puyo` tools, and AI providers if you want upscaling / AI generation — `GET /api/health` reports which external tools resolved
 
-**Install Python dependencies**
+**Install**
+
+The project is a standard PEP 621 package (`pyproject.toml`). In a fresh virtualenv:
 
 ```bash
-python -m venv .venv
-# Windows (Git Bash):
-source .venv/Scripts/activate
-pip install -r requirements.txt
+python -m venv .venv && source .venv/Scripts/activate   # Windows Git Bash
+pip install -e .            # runtime deps + the `psobb-studio` command
+# or: pip install -e ".[dev]"   (adds pytest + ruff)
+# or, with make:  make install
+# or, with poetry:  poetry install
 ```
 
-`requirements.txt` pins the required web/codec stack (FastAPI, uvicorn, pydantic, python-multipart, Pillow, numpy) and optional codecs/importers (quicktex, pygltflib, trimesh). Heavy AI-generation deps (torch/diffusers/transformers) are commented out and only needed for the local Diffusers provider.
+Dependencies are declared and pinned in `pyproject.toml` (`requirements.txt` is the matching lock used by CI). The heavy AI-generation stack (`torch`/`diffusers`/`transformers`) is the optional `[ai]` extra — only needed for the local Diffusers provider.
 
-**Point the editor at your game data**
+**Run**
 
-Set `PSO_DATA_DIR` to a PSOBB `data/` directory before launching:
+Point it at a PSOBB `data/` directory and launch — via the console entry, `make`, or raw uvicorn:
 
 ```bash
-export PSO_DATA_DIR="$HOME/PSOBB.IO/data"
+psobb-studio --port 8765 --data-dir "$HOME/PSOBB.IO/data"
+# or:  make run PORT=8765 DATA="$HOME/PSOBB.IO/data"
+# or:  PSO_DATA_DIR="$HOME/PSOBB.IO/data" uvicorn server:app --port 8765
 ```
 
-**Run the server**
+Then open <http://127.0.0.1:8765>. All routes are localhost-only by design — the server is an unauthenticated sidecar, so do not expose it to a network.
 
-```bash
-uvicorn server:app --port 8000
-```
-
-Then open the served URL, e.g. <http://127.0.0.1:8000>. (The bundled `run.bat` launches on port 8765; pass `--port` to choose your own.) All routes are localhost-only by design — the server is an unauthenticated sidecar, so do not expose it to a network.
+Before pushing, run the smoke check (the same one CI runs): `make smoke` (or `python scripts/smoke_test.py`).
 
 ---
 

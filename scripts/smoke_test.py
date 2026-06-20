@@ -50,7 +50,7 @@ OPTIONAL_DEPS = {
     "cv2", "scipy", "trimesh", "pygltflib",
 }
 
-TOP_LEVEL = ["server", "manifest", "atlas_layouts"]
+TOP_LEVEL = ["server", "manifest", "atlas_layouts", "psobb_studio_cli"]
 FIRST_PARTY_PACKAGES = ["formats", "aigen"]
 
 

@@ -1,0 +1,59 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "psobb-studio"
+version = "1.2.1"
+description = "Web-based asset studio for Phantasy Star Online: Blue Burst (model/texture/archive viewing, editing, upscaling, re-packing)."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "See LICENSE / README Legal section" }
+authors = [{ name = "therealpixelated" }]
+keywords = ["psobb", "phantasy-star-online", "modding", "ninja", "nj", "xj", "texture", "fastapi"]
+
+# Pinned to match the CI environment (.github/workflows/smoke.yml).
+dependencies = [
+    "fastapi==0.136.1",
+    "uvicorn==0.44.0",
+    "pydantic==2.13.0",
+    "starlette==1.0.0",
+    "anyio==4.13.0",
+    "python-multipart==0.0.26",
+    "pillow==12.2.0",
+    "numpy==2.4.4",
+    "quicktex==0.3.1",
+    "pygltflib==1.16.5",
+    "trimesh==4.12.1",
+]
+
+[project.optional-dependencies]
+# Developer tooling.
+dev = ["pytest>=8", "ruff>=0.5"]
+# Heavy, optional — only needed for the local Diffusers AI-generation provider.
+ai = ["torch", "diffusers", "transformers", "accelerate", "safetensors"]
+
+[project.urls]
+Repository = "https://github.com/therealpixelated/psobb-studio"
+
+[project.scripts]
+psobb-studio = "psobb_studio_cli:main"
+
+# Flat layout: top-level modules + the two first-party packages.
+[tool.setuptools]
+py-modules = ["server", "manifest", "atlas_layouts", "psobb_studio_cli"]
+
+[tool.setuptools.packages.find]
+include = ["formats*", "aigen*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+# Pragmatic for a large existing codebase: errors + undefined-name + unused.
+select = ["E9", "F63", "F7", "F82", "F401", "F811"]
