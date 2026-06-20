@@ -60,16 +60,19 @@ MODEL_COVERAGE.csv
 TEXTURE_COVERAGE.csv
 
 # ---------------------------------------------------------------------------
-# Scratch / investigation / benchmark files (leading underscore convention)
+# Scratch / investigation / benchmark files (leading underscore convention).
+# ANCHORED to the repo root (leading /) so they only match top-level scratch
+# files — NOT legitimate underscore-prefixed source in packages (e.g.
+# formats/__init__.py, aigen/_imageutil.py, formats/_psobb_engine_tables_extra.py).
 # ---------------------------------------------------------------------------
-_*.py
-_*.json
-_*.bin
-_investigate.py
-_testjob.py
-_bench_*.py
-# Scratch working directories (leading-underscore convention)
-_*/
+/_*.py
+/_*.json
+/_*.bin
+/_investigate.py
+/_testjob.py
+/_bench_*.py
+# Scratch working directories (root-level, leading-underscore convention)
+/_*/
 
 # ---------------------------------------------------------------------------
 # Python caches / virtualenvs
