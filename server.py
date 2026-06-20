@@ -242,6 +242,15 @@ from formats import scene_loader as _scene_loader
 # rest of the editor keeps working).
 import aigen as aigen_mod
 
+# AI-gen MVP provider abstraction + budget guard (P5). Separate from the
+# legacy aigen v1 WebUI providers above: this layer adds a cost model and a
+# spend guard so a fresh, key-less install can run the free local-upscale
+# path but is BLOCKED from any paid provider until a budget is configured.
+from aigen.budget import BudgetExceeded as AigenBudgetExceeded
+from aigen.budget import BudgetGuard as AigenBudgetGuard
+from aigen.providers import ImageRequest as AigenImageRequest
+from aigen.providers import default_registry as _aigen_default_registry
+
 VERSION = "1.2.1-cleanup"
 
 ROOT = Path(__file__).parent.resolve()
@@ -14067,10 +14076,19 @@ def api_aigen_providers():
     underlying WebUIs.
     """
     try:
-        return {"providers": aigen_mod.list_providers_status()}
+        legacy = aigen_mod.list_providers_status()
     except Exception as e:  # noqa: BLE001 — defensive; never let the UI go dark
         log.exception("aigen providers probe failed")
         raise HTTPException(500, f"providers probe failed: {e}")
+    # Also surface the MVP provider abstraction (local upscale + budget-gated
+    # paid providers) with its cost model, plus the current budget state.
+    try:
+        mvp = _aigen_registry().describe_all()
+        budget = _aigen_budget().snapshot()
+    except Exception:  # noqa: BLE001 — never let the MVP layer take the UI dark
+        log.exception("aigen MVP providers probe failed")
+        mvp, budget = [], None
+    return {"providers": legacy, "mvp_providers": mvp, "budget": budget}
 
 
 @app.get("/api/aigen/models/{provider}")
@@ -14223,6 +14241,140 @@ def api_aigen_generate(req: AigenRequest, request: Request):
         "mode": result.mode,
         "info": result.info,
     }
+
+
+# ============================================================================
+# AI-gen MVP — provider abstraction + budget-guarded upscale (P5)
+# ----------------------------------------------------------------------------
+# A clean Provider/cost-model layer on top of the legacy aigen v1 WebUI
+# providers above. The local-upscale provider needs NO keys and runs out of
+# the box; paid providers (e.g. Stability) are gated behind the BudgetGuard
+# which defaults to a ZERO budget — so a fresh install can never spend.
+# ============================================================================
+
+# Process-lifetime singletons. The registry is stateless (probes env each
+# call); the budget guard holds session spend + a daily ledger on disk.
+_AIGEN_REGISTRY: "Optional[object]" = None
+_AIGEN_BUDGET: "Optional[object]" = None
+_AIGEN_MVP_LOCK = threading.Lock()
+
+
+def _aigen_registry():
+    """Lazily build the MVP provider registry (idempotent, thread-safe)."""
+    global _AIGEN_REGISTRY
+    if _AIGEN_REGISTRY is None:
+        with _AIGEN_MVP_LOCK:
+            if _AIGEN_REGISTRY is None:
+                _AIGEN_REGISTRY = _aigen_default_registry()
+    return _AIGEN_REGISTRY
+
+
+def _aigen_budget():
+    """Lazily build the budget guard (reads AIGEN_*_BUDGET_USD env at first use)."""
+    global _AIGEN_BUDGET
+    if _AIGEN_BUDGET is None:
+        with _AIGEN_MVP_LOCK:
+            if _AIGEN_BUDGET is None:
+                _AIGEN_BUDGET = AigenBudgetGuard()
+    return _AIGEN_BUDGET
+
+
+@app.post("/api/aigen/upscale")
+async def api_aigen_mvp_upscale(
+    request: Request,
+    file: Optional[UploadFile] = File(default=None),
+    provider: str = Form(default="local_upscale"),
+    scale: int = Form(default=2),
+    filename: Optional[str] = Form(default=None),
+    tile_index: Optional[int] = Form(default=None),
+):
+    """Budget-guarded upscale via the MVP provider layer.
+
+    Accepts EITHER a multipart ``file`` (an image) OR an asset reference
+    (``filename`` + ``tile_index``) resolved from the extracted-tile cache.
+    Returns the upscaled image as a ``image/png`` response.
+
+    Budget: the provider's ``estimate_cost_usd`` is checked against the
+    BudgetGuard BEFORE any work. A request whose provider cost > 0 under a
+    zero budget returns HTTP 402 (clear message), never silently spending.
+    The default ``local_upscale`` provider has cost 0 and always works.
+    """
+    _enforce_body_size(request, MAX_AIGEN_BODY)
+
+    reg = _aigen_registry()
+    p = reg.get(provider)
+    if p is None:
+        raise HTTPException(400, f"unknown provider {provider!r}")
+    if not p.available():
+        raise HTTPException(
+            503, f"provider {provider!r} is not available (missing key/URL/host)"
+        )
+
+    # Resolve source PNG bytes from the upload or the asset reference.
+    src_png: Optional[bytes] = None
+    if file is not None:
+        src_png = await file.read()
+        if not src_png:
+            raise HTTPException(400, "uploaded file is empty")
+    elif filename is not None and tile_index is not None:
+        if tile_index < 0 or tile_index > MAX_TILE_INDEX:
+            raise HTTPException(400, "tile_index out of range")
+        prs = safe_data_path(filename)
+        if not prs.exists():
+            raise HTTPException(404, f"no such file: {filename}")
+        manifest = extract_tiles(prs)
+        tile = next((t for t in manifest["tiles"] if t["index"] == tile_index), None)
+        if not tile:
+            raise HTTPException(404, "no such tile")
+        tpath = Path(manifest["tiles_dir"]) / tile["filename"]
+        if not tpath.exists():
+            raise HTTPException(500, "tile png missing on disk")
+        src_png = tpath.read_bytes()
+    else:
+        raise HTTPException(400, "provide a multipart 'file' or filename+tile_index")
+
+    req = AigenImageRequest(image_png=src_png, scale=int(scale))
+
+    # Budget pre-flight: estimate cost, then check. cost>0 under budget 0
+    # raises BudgetExceeded -> 402. cost==0 (local) always passes.
+    try:
+        cost = float(p.estimate_cost_usd(req))
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(500, f"cost estimation failed: {e}")
+    try:
+        _aigen_budget().check(cost)
+    except AigenBudgetExceeded as e:
+        # 402 Payment Required is the precise semantic: the request would
+        # cost money the operator hasn't budgeted for.
+        raise HTTPException(
+            402,
+            f"{e} (provider={provider}, cost=${cost:.4f}, "
+            f"{e.scope} remaining=${e.remaining:.4f})",
+        )
+
+    # Run the upscale.
+    try:
+        result = p.upscale(req)
+    except (ValueError, RuntimeError, OSError) as e:
+        raise HTTPException(502, f"upscale failed: {e}")
+    except NotImplementedError as e:
+        raise HTTPException(501, str(e))
+
+    # Record actual spend only after success (no-op for cost==0).
+    if cost > 0:
+        _aigen_budget().record(cost)
+
+    return Response(
+        content=result.image_png,
+        media_type="image/png",
+        headers={
+            "X-Aigen-Provider": result.provider,
+            "X-Aigen-Cost-Usd": f"{result.cost_usd:.4f}",
+            "X-Aigen-Out-Width": str(result.width),
+            "X-Aigen-Out-Height": str(result.height),
+            "X-Aigen-Model": result.model,
+        },
+    )
 
 
 # ---------------------------------------------------------------------------- battle params
