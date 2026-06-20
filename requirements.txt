@@ -24,6 +24,12 @@ quicktex==0.3.1           # formats/xvr_decode.py — S3TC (BC1/BC3) re-encode
 pygltflib==1.16.5         # glTF/GLB import (formats/import_external.py)
 trimesh==4.12.1           # mesh subdivide path in server.py (lazy import)
 
+# --- Mesh decimation QEM backend (optional; formats/decimate.py) ---
+# trimesh 4.x dispatches simplify_quadric_decimation() to fast-simplification.
+# When absent, formats/decimate.py falls back to a hand-rolled NumPy QEM
+# (slower) — so this is optional, but recommended for the fast C++ path.
+fast-simplification==0.1.13  # QEM backend for /api/decimate (trimesh delegate)
+
 # --- Optional AI-generation providers (heavy; lazy-imported, NOT required to run) ---
 # Uncomment only if using /api/aigen/* with the local diffusers provider:
 # torch

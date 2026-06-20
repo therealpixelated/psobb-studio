@@ -9271,6 +9271,255 @@ def api_model_subdivide(req: SubdivideReq, request: Request):
     return result
 
 
+# ---------------------------------------------------------------------------- decimate
+#
+# `/api/decimate` runs a real Quadric-Error-Metric (QEM) decimator on a
+# model's geometry and returns a wire payload in the SAME shape as
+# `/api/model_mesh` — the frontend's `psoApplyMeshPayload` swaps the
+# rendered geometry to the decimated result without a re-fetch. This is
+# the inverse of `/api/model/subdivide`.
+#
+# The heavy lifting lives in `formats/decimate.py` (decimate_mesh): QEM via
+# trimesh's fast-simplification backend, with a hand-rolled NumPy QEM
+# fallback when that backend is unavailable. Each XjMesh is decimated
+# independently so material_id boundaries (per-submesh texture binding)
+# survive. Per-vertex normals are recomputed smooth from the decimated
+# faces; UVs are re-sampled by nearest original vertex (a LOD
+# approximation — see formats/decimate.py module docstring).
+#
+# The endpoint accepts either `target_ratio` (fraction of tris to KEEP) or
+# `target_tris` (absolute count). When both are given, target_tris wins.
+# ----------------------------------------------------------------------------
+
+MIN_DECIMATE_TRIS = 4
+
+
+class DecimateReq(BaseModel):
+    path: str = Field(..., description="model path or <bml>#<inner>")
+    target_ratio: Optional[float] = Field(
+        None, gt=0.0, le=1.0,
+        description="fraction of triangles to KEEP, (0, 1]; 0.5 ~ halve")
+    target_tris: Optional[int] = Field(
+        None, ge=MIN_DECIMATE_TRIS,
+        description="absolute target triangle count (wins over target_ratio)")
+    preserve_border: bool = Field(
+        True, description="pin boundary edges so open meshes don't shrink at seams")
+
+
+def _decimate_mesh_payload(meshes: list, *, target_ratio, target_tris,
+                           preserve_border: bool) -> dict:
+    """Decimate each XjMesh in `meshes` and emit a model_mesh-shaped payload.
+
+    Uses formats.decimate.decimate_mesh (QEM). Every submesh is processed
+    independently so material_id boundaries are preserved. The per-submesh
+    target is the SAME ratio across submeshes (so a ratio of 0.5 halves the
+    whole model proportionally); when an absolute target_tris is given it is
+    distributed across submeshes in proportion to each submesh's tri share.
+    """
+    import array
+    import numpy as np
+    from formats.decimate import decimate_mesh
+
+    pre_total_t = sum(len(m.indices) // 3 for m in meshes if m.indices)
+    # Resolve the global ratio once so we can apply it per-submesh.
+    if target_tris is not None and pre_total_t > 0:
+        global_ratio = max(0.0, min(1.0, float(target_tris) / float(pre_total_t)))
+    else:
+        global_ratio = None
+
+    backends: set[str] = set()
+    payload_meshes: list[dict] = []
+    total_v = 0
+    total_t = 0
+    pre_v = 0
+    pre_t = 0
+    for m in meshes:
+        if not m.vertices or not m.indices:
+            payload_meshes.append(_one_mesh_to_payload_dict(
+                m.vertices, m.indices, m, normals_out=None,
+            ))
+            continue
+        verts = np.array([v.pos for v in m.vertices], dtype=np.float64)
+        uvs = np.array([v.uv for v in m.vertices], dtype=np.float64)
+        faces = np.array(m.indices, dtype=np.int64).reshape(-1, 3)
+        pre_v += len(verts)
+        pre_t += len(faces)
+
+        # Per-submesh target: distribute the absolute target by tri-share, or
+        # apply the global ratio directly.
+        if global_ratio is not None:
+            sub_target = max(MIN_DECIMATE_TRIS, int(round(len(faces) * global_ratio)))
+            sub_ratio = None
+        else:
+            sub_target = None
+            sub_ratio = target_ratio
+
+        out_v, out_f, out_uv, meta = decimate_mesh(
+            verts, faces,
+            target_ratio=sub_ratio, target_tris=sub_target,
+            preserve_border=preserve_border, uvs=uvs, return_meta=True,
+        )
+        backends.add(meta["backend"])
+
+        # Recompute smooth normals from the decimated faces.
+        if len(out_f) > 0:
+            import trimesh
+            tm = trimesh.Trimesh(vertices=out_v, faces=out_f, process=False)
+            out_n = np.asarray(tm.vertex_normals, dtype=np.float64)
+        else:
+            out_n = np.zeros((len(out_v), 3), dtype=np.float64)
+        if out_uv is None:
+            out_uv = np.zeros((len(out_v), 2), dtype=np.float64)
+
+        flat_idx = out_f.reshape(-1).astype(np.int64).tolist()
+        floats = array.array("f")
+        minx = miny = minz = float("inf")
+        maxx = maxy = maxz = float("-inf")
+        for i in range(len(out_v)):
+            px, py, pz = float(out_v[i, 0]), float(out_v[i, 1]), float(out_v[i, 2])
+            nx, ny, nz = float(out_n[i, 0]), float(out_n[i, 1]), float(out_n[i, 2])
+            uu = float(out_uv[i, 0]) if i < len(out_uv) else 0.0
+            vv = float(out_uv[i, 1]) if i < len(out_uv) else 0.0
+            floats.extend((px, py, pz, nx, ny, nz, uu, vv))
+            if px < minx: minx = px
+            if py < miny: miny = py
+            if pz < minz: minz = pz
+            if px > maxx: maxx = px
+            if py > maxy: maxy = py
+            if pz > maxz: maxz = pz
+        if sys.byteorder != "little":
+            floats.byteswap()
+        verts_bytes = floats.tobytes()
+        idx_arr = array.array("I", flat_idx)
+        if sys.byteorder != "little":
+            idx_arr.byteswap()
+        idx_bytes = idx_arr.tobytes()
+
+        if len(out_v) == 0:
+            aabb = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+        else:
+            aabb = [minx, miny, minz, maxx, maxy, maxz]
+
+        vc = int(len(out_v))
+        tc = int(len(out_f))
+        total_v += vc
+        total_t += tc
+        payload_meshes.append({
+            "vertices_b64": base64.b64encode(verts_bytes).decode("ascii"),
+            "indices_b64": base64.b64encode(idx_bytes).decode("ascii"),
+            "vertex_count": vc,
+            "triangle_count": tc,
+            "material_id": m.material_id,
+            "bounding_sphere": list(m.bounding_sphere),
+            "aabb": aabb,
+            "world_position": list(m.world_position),
+            "world_rotation_euler": list(m.world_rotation_euler),
+            "world_scale": list(m.world_scale),
+            "world_matrix": list(m.world_matrix),
+        })
+
+    return {
+        "mesh_count": len(payload_meshes),
+        "meshes": payload_meshes,
+        "totals": {"vertices": total_v, "triangles": total_t},
+        "vertices_pre_transformed": True,
+        "vert_total": total_v,
+        "tri_total": total_t,
+        "before": {"vertices": pre_v, "triangles": pre_t},
+        "after": {"vertices": total_v, "triangles": total_t},
+        "backend": "+".join(sorted(backends)) if backends else "noop",
+    }
+
+
+@app.post("/api/decimate")
+def api_decimate(req: DecimateReq, request: Request):
+    """Run QEM decimation on a model and return a model_mesh-shape payload.
+
+    Body schema:
+        {
+          "path": "<bml>#<inner>.nj" | "<file>.nj" | ...,
+          "target_ratio": 0.5,        # fraction of tris to KEEP (mutually
+          "target_tris": 2000,        #   exclusive-ish; target_tris wins)
+          "preserve_border": true     # default true
+        }
+
+    Response (same outer shape as /api/model/subdivide):
+        {
+          "mesh_payload": { ...same shape as /api/model_mesh... },
+          "totals":  {"vertices": .., "triangles": ..},
+          "before":  {"vertices": <pre>,  "triangles": <pre>},
+          "after":   {"vertices": <post>, "triangles": <post>},
+          "backend": "trimesh_fast_simplification" | "numpy_qem_fallback" | ...
+        }
+
+    Errors:
+      400 - bad path / unsupported extension / parse failure / no triangles
+      404 - model not found
+      422 - neither target_ratio nor target_tris supplied
+    """
+    _enforce_body_size(request, MAX_REPACK_DIFF_BODY)
+    if req.target_ratio is None and req.target_tris is None:
+        raise HTTPException(422, "must supply target_ratio or target_tris")
+
+    path = req.path
+    blob, logical = resolve_asset_bytes(path)
+    ext = Path(logical).suffix.lower()
+    if ext not in IFF_EXTENSIONS:
+        raise HTTPException(400, f"unsupported model extension {ext!r} (expected {IFF_EXTENSIONS})")
+    parser = _pick_model_mesh_parser(ext, ext)
+    try:
+        meshes = parser(blob)
+    except ValueError as e:
+        raise HTTPException(400, f"model parse failed: {e}")
+
+    pre_total_t = sum(len(m.indices) // 3 for m in meshes)
+    if pre_total_t == 0:
+        raise HTTPException(400, "model has no triangles to decimate")
+
+    try:
+        payload = _decimate_mesh_payload(
+            meshes,
+            target_ratio=req.target_ratio,
+            target_tris=req.target_tris,
+            preserve_border=bool(req.preserve_border),
+        )
+    except Exception as e:
+        log.exception("decimate failed")
+        raise HTTPException(500, f"decimate failed: {e}")
+
+    payload["filename"] = path
+    payload["target_ratio"] = req.target_ratio
+    payload["target_tris"] = req.target_tris
+    # Reuse the source model's texture binding (material_id values survive).
+    base, hash_inner = _split_inner_path(path)
+    base_path = _resolve_base_path(base)
+    outer_ext = base_path.suffix.lower()
+    try:
+        bd = _build_model_texture_binding_cached(
+            base_path, outer_ext, hash_inner, blob, meshes,
+        )
+        payload["binding_data"] = bd
+        payload["binding"] = (bd or {}).get("binding") or []
+    except HTTPException as e:
+        payload["binding"] = []
+        payload["binding_data"] = {"njtl": [], "xvmh": [], "binding": [],
+                                   "error": e.detail if hasattr(e, "detail") else str(e)}
+    except Exception as e:  # pragma: no cover
+        payload["binding"] = []
+        payload["binding_data"] = {"njtl": [], "xvmh": [], "binding": [],
+                                   "error": f"binding failed: {e}"}
+
+    return {
+        "mesh_payload": payload,
+        "totals": payload.get("totals"),
+        "before": payload.get("before"),
+        "after": payload.get("after"),
+        "backend": payload.get("backend"),
+        "target_ratio": req.target_ratio,
+        "target_tris": req.target_tris,
+    }
+
+
 # ---------------------------------------------------------------------------- sculpt
 #
 # Geometry sculpting persistence (2026-04-25). The frontend's Sculpt tab

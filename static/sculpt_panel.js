@@ -356,6 +356,12 @@
     stroke: null,          // { centresVisited: Vector3[], submeshIdx, ... }
     // Cached subdivide-level so we know what we're sculpting on top of
     subdivideLevel: 0,
+    // Decimate (LOD) control — real QEM reduction via POST /api/decimate.
+    decimateMode: "ratio",   // "ratio" | "tris"
+    decimateRatio: 0.5,      // fraction of tris to KEEP, (0, 1]
+    decimateTris: 2000,      // absolute target triangle count
+    decimatePreserveBorder: true,
+    decimateBusy: false,
   };
 
   // Backward-compat alias for any code that still reads `state.mirrorX`
@@ -1282,6 +1288,34 @@
           Real-time normals (slow on high-poly)
         </label>
         <div class="pso-sculpt-stats" data-region="stats"></div>
+        <div class="pso-sculpt-decimate" data-region="decimate">
+          <div style="margin:6px 0 3px;color:#99a4b3">Decimate (LOD) — real QEM triangle reduction:</div>
+          <label title="Choose target by fraction-to-keep or absolute triangle count">
+            Target:
+            <select data-knob="decimateMode">
+              <option value="ratio" ${state.decimateMode === "ratio" ? "selected" : ""}>ratio (keep %)</option>
+              <option value="tris" ${state.decimateMode === "tris" ? "selected" : ""}>triangles</option>
+            </select>
+          </label>
+          <label data-region="deciRatioRow" style="${state.decimateMode === "ratio" ? "" : "display:none"}">
+            Keep:
+            <input type="range" min="0.02" max="1.0" step="0.01" value="${state.decimateRatio}" data-knob="decimateRatio">
+            <span class="num" data-readout="decimateRatio">${(state.decimateRatio * 100).toFixed(0)}%</span>
+          </label>
+          <label data-region="deciTrisRow" style="${state.decimateMode === "tris" ? "" : "display:none"}">
+            Target tris:
+            <input type="number" min="4" step="1" value="${state.decimateTris}" data-knob="decimateTris" style="width:90px">
+          </label>
+          <label title="Pin boundary edges so open meshes don't shrink at their seams">
+            <input type="checkbox" data-knob="decimatePreserveBorder" ${state.decimatePreserveBorder ? "checked" : ""}>
+            preserve border
+          </label>
+          <div class="pso-sculpt-actions">
+            <button class="primary" data-act="decimate" ${state.decimateBusy ? "disabled" : ""}>
+              ${state.decimateBusy ? "decimating…" : "Decimate mesh"}
+            </button>
+          </div>
+        </div>
         <div class="pso-sculpt-actions">
           <button data-act="undo">Undo (Ctrl+Z)</button>
           <button data-act="redo">Redo (Ctrl+Y)</button>
@@ -1324,7 +1358,7 @@
       smooth: "Laplacian — blend each vertex toward its 1-ring centroid",
       pinch: "Move verts toward brush centre",
       flatten: "Project verts onto brush region's average plane",
-      decimate_region: "Quadric-edge-collapse on the brushed face set (v1: stub)",
+      decimate_region: "Whole-mesh QEM decimation — use the Decimate (LOD) panel",
       smudge: "Drag verts along the cursor — Blender's grab+brush",
       twist: "Rotate verts around the brush axis (drag = rotation angle)",
       layer: "Add a layer of geometry along per-vertex normals (compounds)",
@@ -1339,7 +1373,7 @@
     if (brush) {
       state.brush = brush;
       if (brush === "decimate_region") {
-        _setStatus("running", "decimate is a v1 stub — no-op for now");
+        _setStatus("idle", "use the Decimate (LOD) panel below to reduce triangles");
       } else {
         _setStatus("idle", `brush: ${brush}`);
       }
@@ -1423,11 +1457,70 @@
       })();
       return;
     }
+    if (act === "decimate") {
+      runDecimate();
+      return;
+    }
     if (act === "reset") {
       resetAll();
       _setStatus("done", "reverted to original");
       return;
     }
+  }
+
+  // -------------------------------------------------------------------
+  // Decimate (LOD) — POST /api/decimate, then swap the live geometry to
+  // the QEM-reduced result via psoApplyMeshPayload (same bridge the
+  // subdivide panel uses). Real triangle reduction, no stub.
+  // -------------------------------------------------------------------
+  async function runDecimate() {
+    const meta = (typeof window.psoGetSculptMeshGroup === "function")
+      ? window.psoGetSculptMeshGroup() : null;
+    const modelPath = meta && meta.modelPath;
+    if (!modelPath) {
+      _setStatus("err", "no model loaded");
+      return;
+    }
+    const body = { path: modelPath, preserve_border: !!state.decimatePreserveBorder };
+    if (state.decimateMode === "tris") {
+      body.target_tris = Math.max(4, state.decimateTris | 0);
+    } else {
+      body.target_ratio = Math.max(0.02, Math.min(1.0, state.decimateRatio));
+    }
+    state.decimateBusy = true;
+    _setStatus("running", "decimating (QEM)…");
+    if (bodyEl) renderSculptBlock(bodyEl);
+    let res;
+    try {
+      const r = await fetch("/api/decimate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!r.ok) {
+        let detail = `HTTP ${r.status}`;
+        try { detail = (await r.json()).detail || detail; } catch {}
+        throw new Error(detail);
+      }
+      res = await r.json();
+    } catch (e) {
+      state.decimateBusy = false;
+      if (bodyEl) renderSculptBlock(bodyEl);
+      _setStatus("err", `decimate failed: ${e.message || e}`);
+      return;
+    }
+    // Swap the rendered geometry to the decimated result.
+    if (typeof window.psoApplyMeshPayload === "function" && res.mesh_payload) {
+      try { window.psoApplyMeshPayload(res.mesh_payload, { label: "decimate" }); }
+      catch (e) { console.warn("apply payload threw", e); }
+    }
+    state.decimateBusy = false;
+    if (bodyEl) renderSculptBlock(bodyEl);
+    const before = res.before || {};
+    const after = res.after || {};
+    _setStatus("done",
+      `decimated · ${before.triangles || 0} → ${after.triangles || 0} tris ` +
+      `(${res.backend || "?"})`);
   }
 
   function onKnobChange(ev) {
@@ -1465,6 +1558,21 @@
       if (ro) ro.textContent = state.twistRate.toFixed(1);
     } else if (knob === "realTimeNormals") {
       state.realTimeNormals = !!t.checked;
+    } else if (knob === "decimateMode") {
+      state.decimateMode = t.value === "tris" ? "tris" : "ratio";
+      // Toggle which target-row is visible.
+      const rr = bodyEl.querySelector('[data-region="deciRatioRow"]');
+      const tr = bodyEl.querySelector('[data-region="deciTrisRow"]');
+      if (rr) rr.style.display = state.decimateMode === "ratio" ? "" : "none";
+      if (tr) tr.style.display = state.decimateMode === "tris" ? "" : "none";
+    } else if (knob === "decimateRatio") {
+      state.decimateRatio = Math.max(0.02, Math.min(1.0, parseFloat(t.value) || 0.5));
+      const ro = bodyEl.querySelector('[data-readout="decimateRatio"]');
+      if (ro) ro.textContent = `${(state.decimateRatio * 100).toFixed(0)}%`;
+    } else if (knob === "decimateTris") {
+      state.decimateTris = Math.max(4, parseInt(t.value, 10) || 4);
+    } else if (knob === "decimatePreserveBorder") {
+      state.decimatePreserveBorder = !!t.checked;
     }
   }
 
