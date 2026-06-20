@@ -1409,14 +1409,12 @@
 
     // Decide primary vs overflow. Primary = the fixed common set, PLUS the
     // currently-active tab (so the selection is always visible inline).
-    const primary = [];
+    // Show ALL editor tabs inline. The strip flex-wraps to a second row when
+    // there isn't enough width — fine, because Rigging / Skeleton / Material /
+    // UV / Paint are first-class tools and must be visible, not buried in a
+    // "more ▾" menu. (PRIMARY_TABS still drives the left-to-right ordering.)
+    const primary = buttons.slice();
     const overflow = [];
-    for (const b of buttons) {
-      const name = b.dataset.tab;
-      const isActive = name === activeTab || b.classList.contains("active");
-      if (PRIMARY_TABS.includes(name) || isActive) primary.push(b);
-      else overflow.push(b);
-    }
 
     // If nothing overflows, drop the overflow control entirely and put all
     // buttons back inline in a stable order.
