@@ -22,6 +22,13 @@
 
 import * as THREE from "https://unpkg.com/three@0.160.0/build/three.module.js";
 
+// psov2 faithful Ninja loader (the KNOWN-GOOD reference renderer). For
+// `.nj` / `.bml#inner.nj` models we route through this client-side parser
+// (raw inner NJ bytes from /api/raw_nj -> parseNinjaModel -> SkinnedMesh)
+// INSTEAD of the diverged server-side reconstruction. The old skinned /
+// world-baked paths remain as fallbacks for non-.nj assets and on error.
+import { parseNinjaModel } from "/static/psov2_ninja.js";
+
 const $ = (s) => document.querySelector(s);
 
 // Wave 7 (2026-04-26): asset-lifecycle-aware fetch.
@@ -2375,7 +2382,9 @@ async function loadInnerSelection(info) {
   setStatus(`loading ${path}...`);
   const isNj = sel.toLowerCase().endsWith(".nj");
   let realLoaded = false;
-  if (isNj) realLoaded = await tryLoadSkinnedMesh(path, null);
+  // psov2 faithful path first for .nj inners; legacy skinned as fallback.
+  if (isNj) realLoaded = await tryLoadPsov2NinjaModel(path, null);
+  if (isNj && !realLoaded) realLoaded = await tryLoadSkinnedMesh(path, null);
   if (!realLoaded) {
     realLoaded = await tryLoadRealMesh({ path });
     const animBar = $("#modelAnimBar");
@@ -3098,22 +3107,27 @@ async function openByPath(modelPath, _entry, matchedTextures) {
   let realLoaded = false;
   if (inputIsBml) {
     const info = await _discoverBmlInners(modelPath);
-    if (info && info.inners.length >= 2) {
-      state.bmlInnersInfo = info;
-      populateInnerPicker(info, null);
-      // Auto-pick: composite when 2+ primaries exist, else the single
-      // primary (or the first inner). The picker reflects this so the
-      // user can override.
+    if (info && info.inners.length >= 1) {
+      // The inner-picker only makes sense with 2+ inners.
+      if (info.inners.length >= 2) {
+        state.bmlInnersInfo = info;
+        populateInnerPicker(info, null);
+      }
+      // Auto-pick: composite ONLY for 2+ primaries (multi-part bosses).
+      // Otherwise resolve to a SINGLE inner `.nj` so it routes through the
+      // psov2 loader below (correct geometry) instead of the bare-`.bml`
+      // world-baked path (mangled). This fixes single-inner NPC bodies
+      // like momoka: previously inners.length===1 hit NEITHER branch, so
+      // resolvedMeshPath stayed the bare `.bml` (isNj false) and never
+      // reached psov2.
       if (info.primaries.length >= 2) {
         info.current = "__all__";
         composited = await tryLoadCompositeBmlMesh(info.base, info.primaries);
         realLoaded = composited;
-      } else if (info.primaries.length === 1) {
-        // Override resolvedMeshPath so the single-inner path below uses
-        // the actual primary instead of falling back to whatever
-        // matched_texture pointed at.
-        resolvedMeshPath = `${modelPath}#${info.primaries[0]}`;
-        info.current = info.primaries[0];
+      } else {
+        const pick = info.primaries[0] || info.inners[0].name;
+        resolvedMeshPath = `${modelPath}#${pick}`;
+        info.current = pick;
       }
     }
   } else {
@@ -3138,7 +3152,18 @@ async function openByPath(modelPath, _entry, matchedTextures) {
   // Skinned path requires `.nj` (chunk-Nj). The trailing `.nj` works
   // for both bare `foo.nj` and `bml#inner.nj` forms.
   const isNj = resolvedMeshPath.toLowerCase().endsWith(".nj");
+  // PRIMARY path for .nj: the faithful psov2 client-side loader. The
+  // owner gave psov2 as the KNOWN-GOOD reference; our server-side
+  // reconstruction diverged and renders mangled geometry, so .nj routes
+  // here first. The server-payload skinned/world-baked paths remain as
+  // fallbacks (on parse/fetch failure, or for .xj which psov2 doesn't
+  // handle).
   if (!composited && isNj) {
+    realLoaded = await tryLoadPsov2NinjaModel(resolvedMeshPath, null);
+  }
+  if (!composited && !realLoaded && isNj) {
+    // psov2 path failed — fall back to the legacy server-payload skinned
+    // pipeline (animation panel + bone re-bake).
     realLoaded = await tryLoadSkinnedMesh(resolvedMeshPath, null);
   }
   if (!composited && !realLoaded) {
@@ -4037,6 +4062,222 @@ function buildSkinnedMeshGroupFromPayload(payload, boundTextures) {
   return { group, skinSubmeshes, totalVerts, totalTris, aabbMin, aabbMax, debugMeshes };
 }
 
+// ---- psov2 faithful Ninja path (PRIMARY for .nj) -------------------
+//
+// Routes `.nj` / `.bml#inner.nj` models through the verbatim psov2
+// loader in static/psov2_ninja.js INSTEAD of the server-side
+// reconstruction. Flow (mirrors the psov2 reference):
+//   1. fetch raw inner NJ bytes from /api/raw_nj/<modelPath>
+//   2. parseNinjaModel(buf, {texList}) -> THREE.SkinnedMesh (real Bone
+//      tree, skinWeight/skinIndex, Skeleton, bind)
+//   3. bind OUR decoded tiles as the texList (chunk texId -> tile N)
+//
+// Returns true on success. On ANY failure returns false so openByPath
+// falls through to the legacy skinned / world-baked paths.
+
+/** Derive the inline-XVM texture archive path for an .nj model path. */
+function _psov2TextureArchive(modelPath) {
+  // `<bml>#<inner>.nj`  -> `<bml>#<inner>.nj.xvm` (inline XVM appendix).
+  // bare `<foo>.nj`     -> `<foo>.nj.xvm` sibling (tile_png 404s if none,
+  //                        handled gracefully — model still renders flat).
+  return `${modelPath}.xvm`;
+}
+
+/**
+ * Build the psov2 `texList` (Array<THREE.Texture> indexed by chunk
+ * texId) from OUR decoded tiles. We fetch exactly the tile indices the
+ * model's materials reference (psov2 binds per-material texId), so a
+ * model that uses tex 0..5 fetches tiles 0..5. Missing tiles resolve to
+ * undefined and getModel() leaves that material un-mapped (flat), never
+ * crashing. Returns { texList, fetched } where `fetched` are the live
+ * textures (for disposal bookkeeping).
+ */
+async function _psov2BuildTexList(archive, texIds) {
+  const texList = [];
+  const fetched = [];
+  // Dedupe the requested ids; fetch in parallel.
+  const ids = Array.from(new Set(texIds.filter((n) => Number.isInteger(n) && n >= 0)));
+  const results = await Promise.all(ids.map((id) => loadTileTexture(archive, id)));
+  ids.forEach((id, i) => {
+    const tex = results[i];
+    if (tex) {
+      // psov2's NinjaTexture stamped `.transparent` so getModel() could
+      // flip alphaTest. Our loadTileTexture already sets flipY=false +
+      // MirroredRepeatWrapping (matches the psov2 object-texture default);
+      // mark transparent so getModel()'s alphaTest branch can engage when
+      // the source PNG carries alpha.
+      if (tex.transparent === undefined) {
+        const img = tex.image;
+        // Heuristic: PNGs decoded by THREE keep their alpha channel; we
+        // can't cheaply scan pixels here, so default transparent=false and
+        // let the material's own blend flags (from the NJ chunk) drive it.
+        tex.transparent = false;
+      }
+      texList[id] = tex;
+      fetched.push(tex);
+    }
+  });
+  return { texList, fetched };
+}
+
+async function tryLoadPsov2NinjaModel(modelPath, hint) {
+  // Only `.nj` (bare or `<bml>#<inner>.nj`). The trailing `.nj` test
+  // covers both forms.
+  const isNj = modelPath.toLowerCase().endsWith(".nj");
+  if (!isNj) {
+    _setMeshFailure(`psov2 path requires .nj (got ${modelPath.split(".").pop()})`);
+    return false;
+  }
+
+  setStatus(`loading ninja model ${modelPath} (psov2)...`);
+
+  // Step 1: raw inner NJ bytes.
+  let buf;
+  try {
+    const r = await _lifecycleFetch(`/api/raw_nj/${encodeURIComponent(modelPath)}`);
+    if (!r.ok) {
+      let detail = `http ${r.status}`;
+      try { const eb = await r.json(); if (eb && eb.detail) detail = eb.detail; } catch {}
+      _setMeshFailure(`raw_nj: ${detail}`);
+      return false;
+    }
+    buf = await r.arrayBuffer();
+  } catch (e) {
+    if (_isAbortError(e)) return false;
+    _setMeshFailure(`raw_nj fetch error: ${e?.message || e}`);
+    return false;
+  }
+  if (!buf || buf.byteLength < 8) {
+    _setMeshFailure(`raw_nj ${modelPath}: empty/short buffer`);
+    return false;
+  }
+
+  // Step 2: first parse WITHOUT textures to discover which texIds the
+  // materials reference (so we fetch exactly those tiles). The parse is
+  // cheap relative to the round-trip; we then re-parse with the texList
+  // bound (parseNinjaModel is pure on the buffer, so a second pass over
+  // the same ArrayBuffer is safe — DataView reads don't mutate it).
+  let probeMesh;
+  try {
+    probeMesh = parseNinjaModel(buf, { name: modelPath, texList: [] });
+  } catch (e) {
+    _setMeshFailure(`psov2 parse error: ${e?.message || e}`);
+    return false;
+  }
+  const loader = probeMesh.userData.ninjaLoader;
+  if (!loader || !loader.bones.length) {
+    _setMeshFailure(`psov2 ${modelPath}: no bones parsed`);
+    return false;
+  }
+  const texIds = (loader.matList || []).map((mm) => mm.texId).filter((n) => n >= 0);
+
+  // Step 3: bind OUR tiles as the texList.
+  const archive = _psov2TextureArchive(modelPath);
+  let texList = [];
+  let fetchedTextures = [];
+  if (texIds.length > 0) {
+    try {
+      const built = await _psov2BuildTexList(archive, texIds);
+      texList = built.texList;
+      fetchedTextures = built.fetched;
+    } catch (e) {
+      console.warn(`model_viewer: psov2 texlist fetch failed for ${archive}:`, e);
+    }
+  }
+
+  // Re-parse with the real texList so getModel() wires mat.map. (We
+  // discard the probe mesh; it was geometry-identical but un-textured.)
+  let mesh;
+  try {
+    mesh = parseNinjaModel(buf, { name: modelPath, texList });
+  } catch (e) {
+    _setMeshFailure(`psov2 re-parse error: ${e?.message || e}`);
+    for (const t of fetchedTextures) { try { t.dispose(); } catch {} }
+    return false;
+  }
+
+  // Dispose the probe mesh's GPU geometry (it never hit the scene).
+  try { probeMesh.geometry.dispose(); } catch {}
+
+  // psov2 bakes the bind pose into vertex positions (vertex.applyMatrix4
+  // (bone.matrixWorld) in readVertexChunk), so the geometry is already in
+  // world space. Wrap in a Group and center + uniform-scale to fit the
+  // camera, mirroring the skinned/world-baked normalize so framing is
+  // consistent across paths.
+  const group = new THREE.Group();
+  group.add(mesh);
+
+  let aabb = new THREE.Box3();
+  const posAttr = mesh.geometry.getAttribute("position");
+  if (posAttr && posAttr.count > 0) {
+    mesh.geometry.computeBoundingBox();
+    aabb.copy(mesh.geometry.boundingBox);
+  }
+  if (!aabb.isEmpty()) {
+    const c = aabb.getCenter(new THREE.Vector3());
+    const sz = aabb.getSize(new THREE.Vector3());
+    const maxDim = Math.max(sz.x, sz.y, sz.z, 0.001);
+    const scale = 2.0 / maxDim;
+    group.scale.set(scale, scale, scale);
+    group.position.set(-c.x * scale, -c.y * scale, -c.z * scale);
+  }
+
+  // Commit to the scene.
+  ensureRenderer();
+  disposeMesh();
+  // Register textures in boundTextures so disposeMesh frees them on the
+  // next model swap (avoids one-GPU-texture-per-open leak).
+  const boundMap = new Map();
+  fetchedTextures.forEach((t, i) => boundMap.set(i, t));
+  state.boundTextures = boundMap;
+  state.boundTextureArchive = archive;
+  state.boundBinding = [];
+  state.mesh = group;
+  state.meshGroup = group;
+  state.realMesh = true;
+  state.realMeshArchive = modelPath;
+  state.scene.add(group);
+  state.debugMeshes = [];
+  state.debugActiveIdx = -1;
+  rebuildDebugSidebar();
+
+  // The psov2 loader produces a real Skeleton-bound SkinnedMesh whose
+  // geometry.animations hold any motions. We do NOT drive the harness'
+  // bone re-bake pipeline (that's the server-payload path); THREE's own
+  // SkinnedMesh + Skeleton auto-skins from skinIndex/skinWeight on the
+  // GPU. Static bind pose is the priority per spec.
+  state.anim.skinned = false;
+  state.anim.modelPath = modelPath;
+  state.anim.bones = [];
+  state.anim.skinSubmeshes = [];
+  state.anim.motions = [];
+  state.anim.currentMotion = null;
+  state.anim.currentData = null;
+
+  // Hide the (server-payload) animation bar; the psov2 path's animations,
+  // if any, ride mesh.geometry.animations and would need a THREE
+  // AnimationMixer to play (static bind pose is the shipped behaviour).
+  const animBar = $("#modelAnimBar");
+  if (animBar) animBar.hidden = true;
+
+  kick();
+
+  let triCount = 0;
+  if (mesh.geometry.index) {
+    triCount = mesh.geometry.index.count / 3;
+  } else if (posAttr) {
+    triCount = posAttr.count / 3;
+  }
+  setMeshStats(
+    `ninja (psov2): verts ${posAttr ? posAttr.count : 0}  tris ${triCount | 0}  ` +
+    `bones ${loader.bones.length}  mats ${loader.matList.length}  ` +
+    `tex ${fetchedTextures.length}/${texIds.length}`,
+  );
+  setStatus(`ninja model ${modelPath} loaded (psov2 path)`);
+  _setMeshFailure(null);
+  return true;
+}
+
 /**
  * Try the SKINNED model path, falling back to the regular path on
  * failure. Returns true on success.
@@ -4520,7 +4761,9 @@ window.psoOpenSkinnedModel = async (modelPath) => {
   $("#modelModal").hidden = false;
   $("#modelModalTitle").textContent = modelPath;
   setStatus(`loading skinned model ${modelPath}...`);
-  const ok = await tryLoadSkinnedMesh(modelPath, null);
+  // psov2 faithful path first; legacy server-payload skinned as fallback.
+  let ok = await tryLoadPsov2NinjaModel(modelPath, null);
+  if (!ok) ok = await tryLoadSkinnedMesh(modelPath, null);
   if (!ok) {
     setStatus(`skinned load failed: ${state.lastMeshFailure || "unknown"}`);
   }

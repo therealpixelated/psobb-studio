@@ -2946,6 +2946,65 @@ def api_raw(path: str, offset: int = 0, limit: int = 0):
     return Response(content=blob, media_type=media_type, headers=headers)
 
 
+@app.get("/api/raw_nj/{path:path}")
+def api_raw_nj(path: str):
+    """Serve the RAW decompressed inner ``.nj`` / ``.njm`` byte buffer.
+
+    Purpose-built for the client-side psov2 Ninja loader
+    (``static/psov2_ninja.js``): the frontend fetches these raw bytes and
+    parses the NJCM bone tree / chunks in the browser, exactly like the
+    psov2 reference does. We only do the container un-wrapping (BML/AFS
+    inner extraction + PRS decompress) on the server; NO geometry
+    reconstruction happens here.
+
+    Accepts:
+      * a plain top-level ``foo.nj`` filename, or
+      * a BML/AFS inner path ``bm_npc_momoka.bml#n_momoka_t_body.nj``
+        (``#`` separates the container from the inner entry).
+
+    Resolves under DATA_DIR first, then LIVE_DATA_DIR (read-only), via the
+    shared ``resolve_asset_bytes`` helper — so it inherits the same
+    path-traversal validation and PRS-decompress cache the tile pipeline
+    uses. The returned bytes are the inner ``.nj`` payload AFTER PRS
+    decompression (ready for ``parseNinjaModel``).
+
+    Returns
+    -------
+    200 - raw NJ/NJM bytes (``application/octet-stream``), strongly cached
+    400 - not a ``.nj``/``.njm`` target, malformed ``#``, or path traversal
+    404 - file or inner-entry missing
+    413 - file too large to parse in-memory
+    502 - PRS decompress subprocess failed
+    """
+    _, inner = _split_inner_path(path)
+    logical = inner if inner is not None else path
+    low = logical.lower()
+    if not (low.endswith(".nj") or low.endswith(".njm")):
+        raise HTTPException(
+            400,
+            f"/api/raw_nj only serves .nj/.njm targets, got {logical!r}",
+        )
+
+    blob, _ = resolve_asset_bytes(path)
+    if len(blob) > MAX_RAW_RESPONSE_BYTES:
+        raise HTTPException(
+            413,
+            f"NJ too large for raw endpoint: {len(blob)} > {MAX_RAW_RESPONSE_BYTES}",
+        )
+    # The inner bytes are content-derived from the (immutable) container;
+    # an external rebuild that lands a new BML invalidates via the
+    # decompress_prs_cached key (base size+mtime), so a long browser cache
+    # is safe within a session. Keep it conservative (1h) + revalidatable.
+    return Response(
+        content=blob,
+        media_type="application/octet-stream",
+        headers={
+            "X-Asset-Size": str(len(blob)),
+            "Cache-Control": "public, max-age=3600",
+        },
+    )
+
+
 @app.get("/api/model/{path:path}/skeleton")
 def api_model_skeleton(path: str, inner: Optional[str] = None):
     """Return the bone hierarchy for a `.nj` (or BML inner `.nj`).
