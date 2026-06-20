@@ -157,9 +157,17 @@
 
   // ---- detail pane (right) -------------------------------------------
   function renderDetail() {
+    // Help lives here (the separate inspector column is collapsed for this
+    // full-stage editor so the viewport gets the room).
+    const help =
+      '<div class="vp-insp-help dim" style="margin-top:14px;border-top:1px solid #2a313a;' +
+      'padding-top:10px;font-size:11px;line-height:1.5">Browse floors on the left. ' +
+      '<b>Preview</b> renders one in the viewport; <b>Copy</b> duplicates it into an ' +
+      'editable dev slot; <b>+ Create floor from model</b> authors a new floor from a GLB. ' +
+      'All edits land in the dev data dir — the live install is never touched.</div>';
     const f = selectedFloor();
     if (!f) {
-      return `<div class="dim" style="padding:10px">Select a floor on the left to preview, copy, or delete it.</div>`;
+      return `<div class="dim" style="padding:10px">Select a floor on the left to preview, copy, or delete it.</div>` + help;
     }
     const isCopy = (f.source === "copy" || f.source === "glb");
     let html = '<div class="map-spawn-title">' + escapeHtml(f.label || f.floor_id) + '</div>';
@@ -177,6 +185,7 @@
     }
     html += '</div>';
     html += `<div id="floorReport" class="dim" style="margin-top:8px;font-size:11px"></div>`;
+    html += help;
     return html;
   }
 
@@ -537,6 +546,16 @@
       // nextSibling/parentNode bookkeeping is what restores the canvas to
       // #modelModal on unmount; skip it and the 3D area orphans black).
       const restorers = [];
+      // Full-stage editor: the global asset tree (~320px) is redundant here —
+      // you navigate floors via the list on the left — and it crushes the 3D
+      // viewport into a sliver. Hide it while mounted; restore on unmount.
+      const _hadAssetTree = !document.body.classList.contains("hide-asset-tree");
+      const _hadInsp = !document.body.classList.contains("vp-inspector-collapsed");
+      document.body.classList.add("hide-asset-tree", "vp-inspector-collapsed");
+      restorers.push(function () {
+        if (_hadAssetTree) document.body.classList.remove("hide-asset-tree");
+        if (_hadInsp) document.body.classList.remove("vp-inspector-collapsed");
+      });
       const bar = document.querySelector("#modelModal .model-bar");
       const mstage = document.querySelector("#modelModal .model-stage");
       const homeBar = bar ? bar.parentNode : null;

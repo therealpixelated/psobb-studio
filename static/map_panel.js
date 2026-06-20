@@ -838,6 +838,13 @@
 
       // Pluck the model viewer's canvas + bar into the viewport host.
       const restorers = [];
+      // Full-stage editor: hide the global asset tree (~320px) — you navigate
+      // maps via the toolbar dropdown here — so the viewport isn't crushed.
+      const _hadAssetTree = !document.body.classList.contains("hide-asset-tree");
+      document.body.classList.add("hide-asset-tree");
+      restorers.push(function () {
+        if (_hadAssetTree) document.body.classList.remove("hide-asset-tree");
+      });
       const card = document.querySelector("#modelModal .model-modal-card");
       const bar = document.querySelector("#modelModal .model-bar");
       const mstage = document.querySelector("#modelModal .model-stage");
