@@ -1,0 +1,43 @@
+name: smoke
+
+# Fresh-checkout smoke test: proves the COMMITTED tree imports and the server
+# boots. This is the guard that catches "a source file got dropped from the
+# commit (e.g. by .gitignore) so a clean clone won't start" — exactly the class
+# of breakage that motivated it. Runs on Windows (the tool's target OS).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    name: import + boot (fresh checkout)
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout (clean tree — only what is committed)
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Smoke test (import all first-party modules + boot /api/health)
+        run: python scripts/smoke_test.py

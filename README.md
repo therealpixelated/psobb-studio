@@ -1,5 +1,11 @@
 # psobb-studio
 
+[![smoke](https://github.com/therealpixelated/psobb-studio/actions/workflows/smoke.yml/badge.svg)](https://github.com/therealpixelated/psobb-studio/actions/workflows/smoke.yml)
+[![python](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/downloads/)
+[![platform](https://img.shields.io/badge/platform-windows-lightgrey.svg)](#setup--run)
+
+> The **smoke** badge above is green only when the latest commit imports cleanly and the server boots on a fresh checkout. If it's red, `main` is broken — see [Continuous integration](#continuous-integration--smoke-test).
+
 A web-based asset studio for **Phantasy Star Online: Blue Burst**. psobb-studio reads the asset files from a local PSOBB install, decodes the game's proprietary model, texture, and archive formats, and lets you view, edit, upscale, and re-pack them from the browser — then stage the rebuilt files back for testing. It pairs a FastAPI backend (`server.py` plus a `formats/` package of binary readers/writers) with a vanilla-JavaScript, Three.js frontend in `static/`. It is a hobbyist modding tool: you supply your own game files, and no game assets are bundled or distributed with it.
 
 ---
@@ -108,6 +114,25 @@ uvicorn server:app --port 8000
 ```
 
 Then open the served URL, e.g. <http://127.0.0.1:8000>. (The bundled `run.bat` launches on port 8765; pass `--port` to choose your own.) All routes are localhost-only by design — the server is an unauthenticated sidecar, so do not expose it to a network.
+
+---
+
+## Continuous integration & smoke test
+
+Every push and pull request runs a **fresh-checkout smoke test** ([`.github/workflows/smoke.yml`](.github/workflows/smoke.yml) — the **smoke** badge at the top of this file). On a clean checkout of *exactly what is committed*, it:
+
+1. **imports every first-party module** (`server`, `manifest`, `atlas_layouts`, all of `formats/*` and `aigen/*`) — so a source file that is missing from the commit (e.g. swallowed by a `.gitignore` rule) fails CI instead of reaching `main`; and
+2. **boots the server** and requires `GET /api/health` to answer `200`, then shuts it down.
+
+Optional heavy dependencies (`torch`, `diffusers`, …) are tolerated when absent; only missing *first-party* source is a hard failure.
+
+Run the identical check locally before you push:
+
+```bash
+python scripts/smoke_test.py
+```
+
+A green **smoke** badge means the committed tree imports and the server starts. A red badge means a clean clone is broken — do not assume "works on my machine," since local files that are git-ignored still import locally but are absent from the commit.
 
 ---
 
