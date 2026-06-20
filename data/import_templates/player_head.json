@@ -1,0 +1,29 @@
+{
+  "name": "player_head",
+  "source": "plAhed00.nj",
+  "description": "PSOBB player head template \u2014 1-bone cosmetic head; pose around origin (head bone is in body skeleton)",
+  "bone_count": 1,
+  "bones": [
+    {
+      "name": "bone_0",
+      "parent_idx": -1,
+      "bind_pos": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "bind_rot_quat": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "bind_scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "eval_flags": 23
+    }
+  ]
+}

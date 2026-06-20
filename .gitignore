@@ -25,6 +25,9 @@
 # itself, so git can still descend into data/test_assets via the negation.
 data/*
 !data/test_assets/
+# Skeleton/rig template metadata (bone hierarchies only — no geometry/textures);
+# RE-derived, like categorization_db. Needed by the import-template tests.
+!data/import_templates/
 
 # Generated / extracted / packaged game-asset working dirs
 cache/
