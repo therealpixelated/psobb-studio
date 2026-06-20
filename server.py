@@ -3222,7 +3222,17 @@ def api_tile_png(filename: str, idx: int):
 
     # Cache lookup — returns either (bytes, None) on hit, or
     # (None, Path) on miss (the route serves the path via FileResponse).
-    bytes_hit, path_hit = _serve_tile_png_cached(prs, idx, filename, _do_extract)
+    try:
+        bytes_hit, path_hit = _serve_tile_png_cached(prs, idx, filename, _do_extract)
+    except HTTPException:
+        raise
+    except Exception as e:
+        # A bad/undecodable texture (e.g. a bare archive that isn't an XVM/XVR,
+        # or an XVM with an unreadable header) must NOT 500 — the viewer treats
+        # a clean 4xx as "render untextured" instead of surfacing a crash.
+        log.warning("tile_png decode failed for %s/%s: %s: %s",
+                    filename, idx, type(e).__name__, e)
+        raise HTTPException(415, f"tile not decodable: {type(e).__name__}") from None
     if bytes_hit is not None:
         # In-memory or disk cache hit. Return raw bytes — no extra
         # filesystem open(). Add a long-lived ETag based on the cache
