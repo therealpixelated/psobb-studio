@@ -18,9 +18,26 @@ from pathlib import Path
 
 
 def main(argv: list[str] | None = None) -> int:
+    # A bare optional "demo" first token runs the visual-demo capture instead
+    # of booting the server (keeps the common `psobb-studio ...` form for the
+    # server). `psobb-studio demo --data-dir ...` -> scripts/demo_capture.py.
+    raw = list(sys.argv[1:] if argv is None else argv)
+    if raw and raw[0] == "demo":
+        import importlib.util
+
+        repo_root = Path(__file__).resolve().parent
+        os.chdir(repo_root)
+        spec = importlib.util.spec_from_file_location(
+            "demo_capture", repo_root / "scripts" / "demo_capture.py"
+        )
+        demo_capture = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(demo_capture)
+        return demo_capture.main(raw[1:])
+
     parser = argparse.ArgumentParser(
         prog="psobb-studio",
-        description="Launch the psobb-studio asset server (localhost-only).",
+        description="Launch the psobb-studio asset server (localhost-only). "
+        "Use `psobb-studio demo` to capture the visual-demo GIF.",
     )
     parser.add_argument("--host", default="127.0.0.1", help="bind host (default 127.0.0.1)")
     parser.add_argument("--port", type=int, default=8765, help="bind port (default 8765)")

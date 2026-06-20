@@ -7,7 +7,7 @@ DATA  ?= $(HOME)/PSOBB.IO/data
 PY    ?= python
 
 .DEFAULT_GOAL := help
-.PHONY: help install dev run smoke test lint clean
+.PHONY: help install dev run smoke test lint clean demo
 
 help: ## list targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | \
@@ -24,6 +24,9 @@ run: ## launch the server (override PORT= / DATA=)
 
 smoke: ## fresh import + boot smoke test (the same check CI runs)
 	$(PY) scripts/smoke_test.py
+
+demo: ## capture docs/demo.gif by driving the live UI (needs Playwright + data)
+	PSO_DATA_DIR="$(DATA)" $(PY) scripts/demo_capture.py
 
 test: ## run the unit/integration test suite
 	$(PY) -m pytest

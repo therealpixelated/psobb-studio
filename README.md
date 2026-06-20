@@ -2,216 +2,181 @@
 
 [![smoke](https://github.com/therealpixelated/psobb-studio/actions/workflows/smoke.yml/badge.svg)](https://github.com/therealpixelated/psobb-studio/actions/workflows/smoke.yml)
 [![python](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/downloads/)
-[![platform](https://img.shields.io/badge/platform-windows-lightgrey.svg)](#setup--run)
+[![platform](https://img.shields.io/badge/platform-windows-lightgrey.svg)](#quickstart)
 
-> The **smoke** badge above is green only when the latest commit imports cleanly and the server boots on a fresh checkout. If it's red, `main` is broken — see [Continuous integration](#continuous-integration--smoke-test).
+**A browser-based asset studio for *Phantasy Star Online: Blue Burst*.** Browse and convert textures, import/export and decimate models, build and copy floors, and manage audio — all from a single web UI, against the real files in your own PSOBB install. A FastAPI backend decodes the game's proprietary formats and serves them to a Three.js frontend; nothing is unpacked by hand and the live install is never written until you say so.
 
-A web-based asset studio for **Phantasy Star Online: Blue Burst**. psobb-studio reads the asset files from a local PSOBB install, decodes the game's proprietary model, texture, and archive formats, and lets you view, edit, upscale, and re-pack them from the browser — then stage the rebuilt files back for testing. It pairs a FastAPI backend (`server.py` plus a `formats/` package of binary readers/writers) with a vanilla-JavaScript, Three.js frontend in `static/`. It is a hobbyist modding tool: you supply your own game files, and no game assets are bundled or distributed with it.
+![psobb-studio walkthrough](docs/demo.gif)
 
-![psobb-studio demo](docs/demo.gif)
-
-*Browsing a Booma enemy `.bml`, decoding its NJ mesh + XVR textures in the 3D viewport (with wireframe), then editing the mob's real `BattleParamEntry` stats and a `ItemPMT` weapon entry — all against live server data.*
+*Five beats from the studio: the classified asset browser, a decoded boss model in the 3D viewer, a texture's tiles, the Floor editor, and the audio suite (codec badge + waveform). The GIF is produced by [`scripts/demo_capture.py`](scripts/demo_capture.py) — see [Visual demo](#visual-demo).*
 
 ---
 
-## Features
+## What it is
 
-### Model viewing & export (NJ / NJM / XJ)
-- **3D viewer** for chunk-Ninja `.nj` and descriptor/chunk `.xj` models, including inners extracted from BML and AFS containers. Triangulated, world-baked meshes are served as base64 Float32/Uint32 buffers and rendered with a PSOBB-matched Lambert shader (`static/model_viewer.js`, ~187 KB Three.js).
-- **Skinned meshes & skeletons** — bone-local vertex payloads with bind-pose hierarchies for animation; per-bone keyframe motion from `.njm`.
-- **Round-trip-preserving export** — encode models back to `.nj` and motions to `.njm` via `formats/nj_writer.py` and `formats/njm_writer.py`, preserving narrow/wide-angle and IFF-chunk metadata so re-encoded files match byte-for-byte where possible.
-- **Composite bosses** — multi-part bosses (Dragon, De Rol Le, Vol Opt, Olga Flow) ship as one BML with several `.nj` inners; `/api/composite_bundle` assembles them with a hand-curated TRS placement table.
-- **External import** — bring in `.obj` / `.gltf` / `.glb` / `.fbx`, convert to deployable `.nj` with axis-flip and skeleton-template substitution, and splice into a target BML inner.
+psobb-studio reads the asset files from a local PSOBB install, decodes the game's model / texture / archive / audio formats, and lets you **view, edit, upscale, convert, and re-pack** them from the browser — then stage the rebuilt files into a dev mirror for testing. It pairs:
 
-### Texture decode & encode (XVR / PVR / XVM)
-- **XVR/PVR decoding** of XVM texture archives into PNG tiles, with NJTL slot tables resolving model material IDs to texture tiles (`formats/xvr_decode.py`, `formats/pvr_decode.py`, `formats/njtl.py`).
-- **Encode / re-pack** edited tiles back into XVM via the `xvr_codec` tool, including S3TC (BC1/BC3) re-encode through `quicktex`.
-- **Atlas & viewport modes** — assemble multi-tile files into a single composite for context-aware editing (letters that cross tile seams stay continuous), or preview a 16:9 widescreen transform.
+- a **FastAPI** backend (`server.py`, ~150 localhost-only routes) plus a `formats/` package of pure-Python binary readers/writers, with
+- a vanilla-JavaScript, **Three.js** frontend in `static/` (one module per panel).
 
-### Archives & compression (AFS / BML / PRS)
-- **AFS** Sega archive reader/writer with magic-sniffing classification of inner blobs (`formats/afs.py`, `formats/afs_reader.py`).
-- **BML** container parse/pack with an inner-PRS LRU cache; repack individual inner XVMs or NJs and atomic-deploy (`formats/bml.py`).
-- **PRS** LZ-style decompress/compress, including an `compress_optimal` path for tight rebuilds (`formats/prs.py`).
-- Sibling-archive resolution (BML ↔ AFS) and a cross-archive texture-name index.
+It is a hobbyist modding tool: **you supply your own game files**, and no game assets are bundled or distributed with it. Everything you edit lands in a dev directory that shadows the live install; the playable game is only touched when you explicitly promote a file.
 
-### Item & battle-parameter editors
-- **BattleParam** (`BattleParam_*.dat`) byte-exact JSON round-trip editor with a higher-level **mob AI DSL** authoring layer and shippable presets (`formats/battle_param.py`, `formats/mob_dsl.py`).
-- **ItemPMT** (BB-V4 and legacy) PRS-compressed item-parameter editor with round-trip metadata (`formats/itempmt.py`).
-- Both deploy into a newserv install behind a single in-flight deploy lock with timestamped backups.
+---
 
-### Editing panels
-- **Paint** — flat and v5 layered texture painting (layers, masks, blend modes, opacity), composited server-side and re-packed into the host archive.
-- **Sculpt** — sparse/dense vertex-displacement sculpting persisted as JSON sidecars and baked into an `.nj`.
-- **Edit (protools)** — explicit per-vertex transform edits with sparse displacement storage.
-- **Rig** — skeleton + per-vertex weights + IK targets, with distance-falloff and heat-diffusion auto-skin algorithms.
-- **Animation** — NJM keyframe editor (insert/delete/save with Bézier handles), N-source motion **blend**, and glTF/FBX **retarget** onto a target skeleton with optional FABRIK IK and left/right mirror.
-- **UV** — UV inspection alongside the mesh viewer.
-- **Map** — map catalogue browser, terrain `.nj`/`.xj`/`.rel` rendering, and spawn/waypoint placement editing.
-- **Material** — per-submesh material breakdown and edits (diffuse/alpha/blend/depth/two-sided) with a preset catalog.
+## Feature highlights
 
-### Upscaling pipeline
-- **Real-ESRGAN (ncnn-vulkan)** super-resolution of texture tiles. Pick a model and scale; oddball scales cascade through supported steps. `keep_native_dims` Lanczos-downsamples back to the original dimensions afterward — required so the game engine can still load the rebuilt PRS.
-- Upscale a **single tile**, the **full atlas composite** (full spatial context across tile seams), or **import** an externally upscaled PNG (e.g. an Upscayl run). Per-`(file,tile,model,scale,settings)` locks serialize duplicate requests.
-- A **batch** endpoint runs the upscale across every tile of many assets at once.
-- An optional **AI-generation** panel (`/api/aigen/*`) routes img2img / inpaint / text2img / ControlNet jobs to A1111, ComfyUI, or an in-process Diffusers provider.
+### Textures
+- **Decode** XVR / PVR tiles out of XVM texture archives and PRS-compressed UI atlases into editable PNGs (`formats/xvr_decode.py`, `formats/pvr_decode.py`, `formats/prs.py`).
+- **Encode** edited tiles back to PVR/XVR — the direct-colour formats round-trip byte-exact (see the [codec table](#codec-coverage) for exactly which formats, and what is deliberately *not* supported).
+- **Upscale** a single tile, a whole atlas composite (full spatial context across tile seams), or an externally-upscaled PNG you drop in. Backed by Real-ESRGAN (ncnn-vulkan) when the binary is present; `keep native dim` Lanczos-downsamples back so the rebuilt PRS still loads in the engine.
+
+### Models
+- **3D viewer** for chunk-Ninja `.nj` and descriptor-table `.xj` models, including inners pulled from BML and AFS containers, with skinned meshes, bone skeletons, NJM motion playback, and a PSOBB-matched Lambert shader.
+- **Import** external `.obj` / `.gltf` / `.glb` / `.fbx` (Blender / Maya / Unity), convert to a deployable `.nj`, and splice it into a target BML inner.
+- **Decimate** (quadric-error mesh reduction) and **strippify** (triangle-strip generation) to fit engine budgets.
+- **Author** models back out: NJ, XJ, and NJM all have byte-exact encoders (`nj_writer.py`, `xj_writer.py`, `njm_writer.py`) that round-trip the shipped game files.
+
+### Floors
+- A full **GLB → floor** pipeline: import a model, decimate + strippify it to fit, and author the `n.rel` (geometry), `c.rel` (collision), and `.xvm` (texture) files a floor needs — via `formats/lobby_pipeline.py` and `build_nrel_from_meshes` in `formats/rel_writer.py`.
+- **Copy / create editor** (`static/floor_panel.js`, `/api/floors/*`): browse the ~150 stock floors, preview one in the shared 3D canvas, **copy** a floor into an editable dev slot (verbatim passthrough or re-emit), or **create** a brand-new floor from a GLB/FBX.
+- **Size caps** are enforced so the engine can load the result: **n.rel ≤ 768 KB**, **c.rel ≤ 64 KB**. If geometry is over budget, the pipeline binary-searches a decimation target until it fits and reports what it dropped.
+- **Dev-only**: every floor write lands in the dev data dir; the live game install is never touched (asserted by `tests/test_floor_editor.py`).
+
+### Audio
+- **Browse / play / waveform / replace** for the audio the game ships: `.ogg` (Ogg Vorbis music/SFX), `.pac` (PCM SFX banks), and the one `.sfd` intro movie (ASF/WMV) — `static/audio_panel.js`, `/api/audio/*`.
+- A **codec badge** shows container + codec + ffmpeg availability; a **waveform** is computed server-side (min/max/RMS envelope) and painted on a canvas; `.pac` banks expose a per-record picker.
+- **Replace** (DEV-only) accepts a `.wav`/`.ogg` upload for `.pac` and `.ogg` targets; `.sfd` and `.adx` are read-only. ffmpeg is optional and gracefully degraded (a missing ffmpeg is reported, never a crash).
+
+### AI-assisted
+- **Local upscale** via Real-ESRGAN ncnn-vulkan (model + scale picker, batch endpoint across many assets).
+- **Provider plumbing** for img2img / inpaint / text2img / ControlNet through A1111, ComfyUI, or an in-process Diffusers backend (`aigen/`, `/api/aigen/*`). The heavy `torch`/`diffusers` stack is an optional extra; the panel only enables providers that actually resolve.
+
+### Server-side editors
+- **BattleParam** mob-stats editor with a higher-level mob-AI DSL, and an **ItemPMT** item-parameter editor — both round-trip newserv's data files and deploy behind a lock with timestamped backups.
+
+---
+
+## Visual demo
+
+The hero GIF above is generated, not hand-recorded. [`scripts/demo_capture.py`](scripts/demo_capture.py):
+
+1. boots `server:app` on a random localhost port (the same mechanism `tests/test_visual_smoke.py` uses),
+2. drives a headless Chromium browser through a scripted walkthrough (home → model → texture → floor → audio), screenshotting each beat,
+3. stitches the frames into a looping GIF with **Pillow** (no ffmpeg).
+
+```bash
+make demo                              # uses $PSO_DATA_DIR or ~/PSOBB.IO/data
+# or:
+python scripts/demo_capture.py --data-dir /path/to/PSOBB/data
+# or, via the console entry:
+psobb-studio demo
+```
+
+Outputs land in `docs/` (`docs/demo.gif` + `docs/shot_*.png`). It is CI-safe: if Playwright/Chromium isn't installed, or no game data is present, it prints a clear "skipping demo capture" and exits 0 — so it never breaks a bare checkout. It also scrubs the on-screen data-dir path before every screenshot, so a committed image never leaks a local path.
+
+---
+
+## Codec coverage
+
+What the `formats/` codecs actually do today. "Write" means encode/re-pack, not just "can stage a copy".
+
+| Format | Read | Write | Notes |
+|---|:---:|:---:|---|
+| **PVR / XVR** (texture) | ✅ | ⚠️ | Decodes 16-bit (`ARGB1555/RGB565/ARGB4444/RGB555`) and `ARGB8888`, twiddled and linear. Encodes those direct-colour formats byte-exact (twiddled via the decoder's own inverse permutation). **Not supported (raises, never wrong bytes):** VQ / SmallVQ, palettized 4/8-bit, YUV422/420, and mip-pyramid generation — see `formats/pvr_encode.py`. |
+| **PRS** (compression) | ✅ | ✅ | LZ-style decompress + compress, plus an optimal-parse path for tight rebuilds (`formats/prs.py`). |
+| **XVM** (texture archive) | ✅ | ✅ | Tile listing, per-tile decode to PNG, and re-pack of edited tiles. |
+| **NJ** (Ninja model) | ✅ | ✅ | Byte-exact round-trip for the shipped `.nj` files (`formats/nj_writer.py`). |
+| **XJ** (descriptor model) | ✅ | ✅ | Byte-exact round-trip; distinct 44-byte descriptor format (`formats/xj_writer.py`). |
+| **NJM** (Ninja motion) | ✅ | ✅ | Byte-exact round-trip for the shipped `.njm` motions (`formats/njm_writer.py`). |
+| **n.rel** (floor geometry) | ✅ | ✅ | Author from meshes; **768 KB** engine budget enforced (`build_nrel_from_meshes`). |
+| **c.rel** (floor collision) | ✅ | ✅ | Author collision hull; **64 KB** budget enforced. |
+| **r.rel** (floor anchors) | ✅ | — | Read for render hints only. |
+| **BML** (container) | ✅ | ✅ | Parse / pack with an inner-PRS cache; repack individual inner NJ/XVM and atomic-deploy. |
+| **AFS** (Sega archive) | ✅ | ✅ | Reader/writer with magic-sniffing classification of inner blobs. |
+| **.ogg** (Ogg Vorbis audio) | ✅ | ✅ | Browser-native playback + waveform; replace is a byte copy, or transcode via ffmpeg. |
+| **.pac** (PCM SFX bank) | ✅ | ✅ | Pure-Python parse/write; per-record picker, waveform, DEV-only replace. |
+| **.sfd** (ASF/WMV intro) | ✅* | — | Audio track decoded for waveform/playback via ffmpeg (\*ffmpeg-gated); read-only, never a replace target. |
+| **ADX** (audio) | — | — | Not supported — PSOBB ships no live `.adx`. |
+| **BattleParam / ItemPMT** | ✅ | ✅ | JSON round-trip editors with deploy-to-newserv. |
+
+---
+
+## Quickstart
+
+**Prerequisites**
+
+- Python 3.11
+- A PSOBB install whose `data/` directory you point the studio at
+- *(optional)* `realesrgan-ncnn-vulkan` and the `xvr_codec` tools for upscaling, `ffmpeg` for `.sfd`/transcode audio, and AI providers — `GET /api/health` reports which external tools resolved.
+
+**Install** (standard PEP 621 package — `pyproject.toml`):
+
+```bash
+python -m venv .venv && source .venv/Scripts/activate   # Windows Git Bash
+pip install -e .              # runtime deps + the `psobb-studio` command
+# or, with dev tooling:  pip install -e ".[dev]"   (pytest + ruff)
+# or, with make:         make install
+# or, with poetry:       poetry install
+```
+
+The heavy AI-generation stack (`torch`/`diffusers`/`transformers`) is the optional `[ai]` extra.
+
+**Run** — point it at a PSOBB `data/` directory:
+
+```bash
+make run DATA="$HOME/PSOBB/data"          # uvicorn --reload on :8765 (override PORT=)
+# or, the console entry:
+psobb-studio --port 8765 --data-dir "$HOME/PSOBB/data"
+# or, raw uvicorn:
+PSO_DATA_DIR="$HOME/PSOBB/data" uvicorn server:app --port 8765
+```
+
+Then open <http://127.0.0.1:8765>. All routes are localhost-only by design — the server is an unauthenticated sidecar, so do not expose it to a network. (`make help` lists every target.)
 
 ---
 
 ## Architecture
 
 ```
-~/Repositories/psobb-studio/
-├── server.py            # FastAPI app — the HTTP API (137 routes)
-├── manifest.py          # asset-tree walker + classifier (disk-cached)
-├── atlas_layouts.py     # ground-truth per-file tile layouts
-├── formats/             # binary readers/writers — one module per format
-├── static/              # vanilla-JS + Three.js frontend (~36 modules)
-├── aigen/               # optional AI image-gen providers (a1111, comfy, diffusers)
-├── data/                # bundled non-asset data (import templates, mob presets)
-├── tests/               # pytest unit + e2e + JSDOM frontend smoke
-├── cache/               # layered LRU + on-disk caches and staged export dirs
-├── requirements.txt     # Python runtime deps
-└── package.json         # Node dep (jsdom) for frontend tests
+server.py            # FastAPI app — the HTTP API (~150 localhost-only routes)
+manifest.py          # asset-tree walker + classifier (disk-cached, ~10 categories)
+atlas_layouts.py     # ground-truth per-file tile layouts
+formats/             # binary readers/writers — one module per format (the codecs)
+static/              # vanilla-JS + Three.js frontend (one module per panel)
+aigen/               # optional AI image-gen providers (a1111, comfy, diffusers)
+scripts/             # smoke test, demo capture, audits, build tooling
+tests/               # pytest unit + e2e + Playwright visual smoke
 ```
 
-**Backend (`formats/`).** Every PSOBB binary format has a dedicated module: `bml.py`, `afs.py`/`afs_reader.py`, `prs.py`, `nj_writer.py`/`njm.py`/`njm_writer.py`, `xj.py`/`xj_descriptor.py`, `njtl.py`/`xvr_decode.py`/`pvr_decode.py`, `rel.py`, `battle_param.py`/`itempmt.py`/`mob_dsl.py`, plus the editing layers `paint.py`, `sculpt.py`, `rigging.py`, `material.py`, `anim_retarget.py`/`anim_blend.py`, and import paths `import_external.py`/`fbx_reader.py`. New formats slot in by adding a module and wiring its read into the manifest classifier; writes hook the build/repack pipeline.
-
-**Frontend (`static/`).** A single-page app served at `/`, built from focused panel modules (`model_viewer.js`, `texture_panel.js`, `paint_panel.js`, `sculpt_panel.js`, `rig_panel.js`, `anim_editor_panel.js`, `map_panel.js`, `battle_param_panel.js`, `itempmt_panel.js`, `mob_dsl_panel.js`, `import_panel.js`, …). It talks to the backend purely over the HTTP API and renders models with Three.js. The index HTML is served with cache-busted `?v=<sha8>` static URLs so browsers reload only changed assets.
-
-**HTTP API.** ~137 localhost-only routes under `/api/*`, grouped by subsystem: manifest/asset listing, model rendering (`/api/model_mesh`, `/api/model_skinned`, `/api/model_bundle`, `/api/composite_bundle`), tiles & upscale (`/api/tiles`, `/api/upscale`, `/api/atlas_upscale`), repack/deploy (`/api/repack*`, `/api/deploy/*`, `/api/build_*`), the editor panels (`/api/paint/*`, `/api/sculpt/*`, `/api/rig/*`, `/api/protools/*`, `/api/anim_*`, `/api/map/*`, `/api/material/*`), the server-side editors (`/api/battle_param/*`, `/api/itempmt/*`, `/api/mob_dsl/*`), AI generation (`/api/aigen/*`), and live-test / cache / SSE debug routes. Path traversal is rejected at the resolver layer and POST bodies are size-capped. See **`API_REFERENCE.md`** for the per-route reference and **`ARCHITECTURE.md`** for the cache hierarchy, lock topology, and concurrency model.
-
-The editor reads from a dev data dir (shadowing the live install) and writes only there until you explicitly promote a rebuilt file into the playable install.
+- **Backend (`formats/`).** Every PSOBB binary format is a dedicated module. A new format slots in by adding a module and wiring its read into the manifest classifier; writes hook the build/repack pipeline. The format work is **validated against community reverse-engineering work** rather than guessed — decoders/encoders are ported or checked byte-for-byte against reference implementations (VrSharp/PuyoTools, SA3D.Modeling / X-Hax, phantasmal-world, pvr2image, libpsoarchive, newserv, Solybum PSO-Tools), and round-trip tests assert re-encoded files reproduce the originals where the format allows.
+- **Frontend (`static/`).** A single-page app served at `/`, built from focused panel modules that talk to the backend purely over the HTTP API and render with Three.js.
+- **Safety.** User paths resolve only through safe resolvers (path traversal is rejected), POST bodies are size-capped, and writes use an atomic temp-write + `os.replace` pattern. See the **Safety** note below.
 
 ---
 
-## Setup & run
-
-**Prerequisites**
-- Python 3.11
-- Node.js (only needed to run the JSDOM-based frontend tests)
-- A PSOBB install whose `data/` directory you point the editor at
-- *(optional)* `realesrgan-ncnn-vulkan`, the `xvr_codec`/`puyo` tools, and AI providers if you want upscaling / AI generation — `GET /api/health` reports which external tools resolved
-
-**Install**
-
-The project is a standard PEP 621 package (`pyproject.toml`). In a fresh virtualenv:
+## Testing
 
 ```bash
-python -m venv .venv && source .venv/Scripts/activate   # Windows Git Bash
-pip install -e .            # runtime deps + the `psobb-studio` command
-# or: pip install -e ".[dev]"   (adds pytest + ruff)
-# or, with make:  make install
-# or, with poetry:  poetry install
+# unit + integration suite
+pip install -e ".[dev]"
+python -m pytest
+
+# fresh-checkout import + boot smoke (the same check CI runs)
+python scripts/smoke_test.py        # or: make smoke
+
+# Playwright viewport smoke (gated behind the `visual` marker)
+python -m pytest -m visual tests/test_visual_smoke.py
 ```
 
-Dependencies are declared and pinned in `pyproject.toml` (`requirements.txt` is the matching lock used by CI). The heavy AI-generation stack (`torch`/`diffusers`/`transformers`) is the optional `[ai]` extra — only needed for the local Diffusers provider.
+The **smoke** badge at the top is green only when, on a clean checkout of *exactly what is committed*, every first-party module imports and the server boots and answers `GET /api/health` with `200`. A red badge means a clean clone is broken — local-only (git-ignored) files still import on your machine but are absent from the commit, so the smoke test catches that class of breakage before it reaches `main`.
 
-**Run**
-
-Point it at a PSOBB `data/` directory and launch — via the console entry, `make`, or raw uvicorn:
-
-```bash
-psobb-studio --port 8765 --data-dir "$HOME/PSOBB.IO/data"
-# or:  make run PORT=8765 DATA="$HOME/PSOBB.IO/data"
-# or:  PSO_DATA_DIR="$HOME/PSOBB.IO/data" uvicorn server:app --port 8765
-```
-
-Then open <http://127.0.0.1:8765>. All routes are localhost-only by design — the server is an unauthenticated sidecar, so do not expose it to a network.
-
-Before pushing, run the smoke check (the same one CI runs): `make smoke` (or `python scripts/smoke_test.py`).
+The `visual` harness (`tests/test_visual_smoke.py`) and `scripts/demo_capture.py` share the same boot-on-a-thread + headless-Chromium + onboarding-pre-dismiss machinery; both skip cleanly when Playwright/Chromium isn't available.
 
 ---
 
-## Continuous integration & smoke test
+## Safety
 
-Every push and pull request runs a **fresh-checkout smoke test** ([`.github/workflows/smoke.yml`](.github/workflows/smoke.yml) — the **smoke** badge at the top of this file). On a clean checkout of *exactly what is committed*, it:
-
-1. **imports every first-party module** (`server`, `manifest`, `atlas_layouts`, all of `formats/*` and `aigen/*`) — so a source file that is missing from the commit (e.g. swallowed by a `.gitignore` rule) fails CI instead of reaching `main`; and
-2. **boots the server** and requires `GET /api/health` to answer `200`, then shuts it down.
-
-Optional heavy dependencies (`torch`, `diffusers`, …) are tolerated when absent; only missing *first-party* source is a hard failure.
-
-Run the identical check locally before you push:
-
-```bash
-python scripts/smoke_test.py
-```
-
-A green **smoke** badge means the committed tree imports and the server starts. A red badge means a clean clone is broken — do not assume "works on my machine," since local files that are git-ignored still import locally but are absent from the commit.
-
----
-
-## Format correctness
-
-The binary codecs in `formats/` are validated and cross-checked against established, community reverse-engineering work rather than guessed. Decoders/encoders are ported or verified byte-for-byte against the reference implementations below, and round-trip tests assert that re-encoded files reproduce the originals where the format allows. Credit and thanks to:
-
-- **VrSharp / PuyoTools** — Nick Woronekin — PVR/GVR/SVR (and the broader Puyo Tools archive/texture suite). <https://github.com/nickworonekin/puyotools>
-- **SA3D.Modeling & X-Hax** — Ninja (NJ/NJM/XJ) model & motion structures. <https://github.com/X-Hax/SA3D.Modeling> / <https://github.com/X-Hax>
-- **phantasmal-world** — PSOBB asset/format research, including multi-inner texture-id offsets. <https://github.com/DaanVandenBosch/phantasmal-world>
-- **pvr2image** — PVR texture decode reference. <https://github.com/yevgeniy-logachev/pvr2image>
-- **libpsoarchive** — PSO archive (AFS/PRS) handling. <https://github.com/Sylverant/libpsoarchive>
-- **DashGL (ikaruga / psov2)** — PSO Ninja model rendering references. <https://gitlab.com/dashgl/ikaruga> / <https://gitlab.com/dashgl/psov2>
-- **Solybum PSO-Tools** — PRS and multi-game Sega tooling. <https://github.com/Solybum/PSO-Tools>
-- **njaPatcher / nja-gen** — Ninja motion/animation tooling references.
-
----
-
-## References & credits
-
-Broader tooling, servers, and documentation that informed this project:
-
-**Models (NJ/NJM/XJ/GJ)**
-- Aqua Toolset / PSO2-Aqua-Library — Shadowth117: <https://github.com/Shadowth117/Aqua-Toolset>, <https://github.com/Shadowth117/PSO2-Aqua-Library>
-- Blender-NaomiLib (Naomi/Dreamcast models): <https://github.com/NaomiMod/blender-NaomiLib>
-- pso_gc_tools — gered: <https://github.com/gered/pso_gc_tools>
-- pso-utils — choogiesaur: <https://github.com/choogiesaur/pso-utils>
-
-**Archives & compression (AFS/GSL/BML/PRS)**
-- PSOBMLExtract — Shadowth117: <https://github.com/Shadowth117/PSOBMLExtract>
-- prsutil — essen / fuzziqer: <https://github.com/essen/prsutil>
-- newserv — fuzziqersoftware (PSO server + RE tools, ItemPMT/rare-table conversion): <https://github.com/fuzziqersoftware/newserv>
-- GCFT — LagoLunatic: <https://github.com/LagoLunatic/GCFT>
-
-**Quests (QST/DAT/BIN)**
-- Sylverant pso_tools (qst_tool): <https://github.com/Sylverant/pso_tools>
-- YAQP — jtuu: <https://github.com/jtuu/yaqp>
-- psogc_quest_tool — gered: <https://github.com/gered/pso_gc_tools>
-
-**Items & battle parameters**
-- PSO Battle Parameter Editor — johndellarosa: <https://github.com/johndellarosa/pso_battle_parameter_editor>
-- Battle-Param-Editor — tofuman0: <https://github.com/tofuman0/Battle-Param-Editor>
-- newserv ItemPMT tooling: <https://github.com/fuzziqersoftware/newserv>
-
-**Servers**
-- Sylverant: <https://github.com/Sylverant>
-- newserv: <https://github.com/fuzziqersoftware/newserv>
-
-**Indexes & wikis**
-- Awesome PSO — tcardlab: <https://github.com/tcardlab/awesome-pso>
-- PSO Dev Wiki: <http://psodevwiki.sharnoth.com/>
-
-This project stands on the shoulders of the PSO modding and reverse-engineering community. Any omission above is unintentional — corrections welcome.
-
----
-
-## Contributing
-
-The backend ships with ~494 pytest unit tests, a 121-step end-to-end script, and a JSDOM frontend smoke test.
-
-```bash
-# Python unit + integration tests
-pip install -r requirements.txt
-python -m pytest tests/
-
-# End-to-end script (drives a real asset round-trip)
-python e2e_test.py
-
-# Frontend smoke test (needs Node + jsdom)
-npm install
-node tests/test_autoplay_jsdom.mjs
-```
-
-When adding an endpoint, follow the conventions in `ARCHITECTURE.md` ("Adding a new endpoint"): resolve user paths only through the safe resolvers (`safe_data_path`, `_resolve_under_roots`, `_safe_archive_name`, `_validate_bare_filename`), cap POST bodies with `_enforce_body_size`, use the `tmp.write_bytes(...)` + `os.replace(...)` atomic-write pattern for any write that lands in a real data dir, gate expensive idempotent work behind a per-key lock, and add a unit test (plus an e2e step for user-visible flows). A new binary format is a new module in `formats/` wired into the manifest classifier and the build/repack pipeline.
+psobb-studio **reads** from the data dir you point it at and **writes only to a dev mirror** — the playable game install is never modified until you explicitly promote a rebuilt file (the "deploy to game" flow, with timestamped backups of anything it replaces). The floor and audio editors in particular assert, in tests, that a create/copy/replace leaves the live directory byte-identical. Keep the server localhost-only.
 
 ---
 
@@ -219,4 +184,4 @@ When adding an endpoint, follow the conventions in `ARCHITECTURE.md` ("Adding a 
 
 psobb-studio is an unofficial, non-commercial hobbyist tool created by and for the PSOBB modding community. It is **not** affiliated with, endorsed by, or sponsored by SEGA or Sonic Team. Phantasy Star Online and Blue Burst are trademarks of their respective owners.
 
-**This repository contains no SEGA or PSOBB game assets, and you must not commit or distribute any.** psobb-studio operates only on game files that **you** already legally own and supply from your own installation (via `PSO_DATA_DIR`). Do not check game data — textures, models, archives, parameter files, or any extracted/derived asset — into this or any public repository, and do not redistribute it. The tool reads from your local install and writes rebuilt files back to directories you control; what you do with those files is your responsibility. Use it only with content you are licensed to modify, and keep your edited assets to yourself.
+**This repository contains no SEGA or PSOBB game assets, and you must not commit or distribute any.** psobb-studio operates only on game files that **you** already legally own and supply from your own installation (via `PSO_DATA_DIR`). Do not check game data — textures, models, archives, parameter files, or any extracted/derived asset — into this or any public repository, and do not redistribute it. Use it only with content you are licensed to modify, and keep your edited assets to yourself.
