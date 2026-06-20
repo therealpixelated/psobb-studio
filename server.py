@@ -1,4 +1,4 @@
-"""PSOBB Texture Editor - FastAPI backend.
+"""PSOBB Studio - FastAPI backend.
 
 Endpoints:
   GET  /api/health                      service health + tool resolution status
@@ -2484,7 +2484,7 @@ async def lifespan(app: "FastAPI"):
 
     Shutdown: stop watcher, log clean exit.
     """
-    log.info("startup: PSOBB Texture Editor v%s", VERSION)
+    log.info("startup: PSOBB Studio v%s", VERSION)
     log.info("startup: data dir = %s", DATA_DIR)
     log.info("startup: cache dir = %s", CACHE_DIR)
     cleanup_cache(verbose=True)
@@ -2525,7 +2525,7 @@ async def lifespan(app: "FastAPI"):
     log.info("shutdown: clean exit")
 
 
-app = FastAPI(title="PSOBB Texture Editor", version=VERSION, lifespan=lifespan)
+app = FastAPI(title="PSOBB Studio", version=VERSION, lifespan=lifespan)
 
 # Compress JSON-heavy endpoints. The minimum_size guard skips tiny payloads
 # (no point gzipping a 200-byte health response) but kicks in well below the
@@ -20480,7 +20480,7 @@ if __name__ == "__main__":
     workers = int(workers_env) if workers_env else 1
     # Startup banner intentionally on stdout (not via the logger) so it
     # appears even if logging is reconfigured by uvicorn before lifespan runs.
-    print(f"PSOBB Texture Editor v{VERSION} - http://127.0.0.1:8765")
+    print(f"PSOBB Studio v{VERSION} - http://127.0.0.1:8765")
     print(f"  data:  {DATA_DIR}")
     print(f"  cache: {CACHE_DIR}")
     print(f"  models from: {REALESRGAN_MODELS}")

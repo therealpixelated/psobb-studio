@@ -33,7 +33,7 @@
         <div class="hdr-tools-sep"></div>
         <div class="hdr-tools-label">Modes</div>
         <button id="btnEditMode" type="button" class="ghost" title="toggle Blender-style edit-mode on the 3D viewport (Tab) — vertex selection + transform gizmo" aria-pressed="false">Edit Mode</button>
-        <button id="btnClassicUiToggle" type="button" class="ghost" title="switch back to the legacy modal-stack UI" aria-pressed="true">classic UI</button>
+        <button id="btnClassicUiToggle" type="button" class="ghost" title="switch back to the legacy modal-stack UI" aria-pressed="false">classic UI</button>
       </div>
     </div>
     <input type="file" id="sessionImportInput" accept="application/json,.json" hidden />
@@ -164,8 +164,8 @@
           <span class="dim" id="curMeta"></span>
           <span class="tile-filter">
             <input type="text" id="tileFilterBox"
-                   placeholder="filter tiles... (idx 5-10, dim 1024, fmt6, has-edit) (/)"
-                   title="ranges like 5-10 / 5,7,9 ; dim like 1024 or <256 ; fmt6 ; has-edit / no-edit"
+                   placeholder="filter tiles…  (press / )"
+                   title="filters: index 5-10 or 5,7,9 · size 1024 or <256 · format fmt6 · has-edit / no-edit"
                    autocomplete="off" spellcheck="false" />
             <span id="tileFilterCount" class="dim"></span>
           </span>
