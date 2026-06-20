@@ -18185,6 +18185,475 @@ def api_floors_delete(floor_id: str):
 
 
 # ===========================================================================
+# Archive entry editor (2026-06-20) — duplicate / create / delete / rename
+# an inner entry inside a container archive (AFS or BML).
+#
+# Write model: edits write BACK to the path the archive was OPENED from.
+# We resolve the archive with the SAME dual-root resolver the readers use
+# (DATA_DIR first, then LIVE_DATA_DIR) via _resolve_under_roots, and write
+# the rewritten archive to THAT resolved location — DATA_DIR or LIVE,
+# wherever it was found. This follows the legacy /api/repack_afs_inner +
+# /api/repack_bml_inner write-target behaviour (they too write the
+# resolved, possibly-live, path), NOT the floor editor's DEV-only boundary.
+#
+# Safety kept: (1) atomic write (<target>.tmp -> fsync -> os.replace so a
+# crash can't leave a half-written archive), and (2) a .pre_edit_<ts>
+# backup of the target before overwriting. Per-archive lock (_REPACK_LOCKS)
+# serialises concurrent edits of the same archive; the inner cache is
+# invalidated (afs_reader.cache_dir_for rmtree) so subsequent
+# "<archive>#NNNN" reads see the new bytes; the frontend refreshes via
+# GET /api/manifest?force=1.
+# ===========================================================================
+from formats import archive_entry as _archive_entry
+
+
+def _archive_resolve_for_write(archive: str) -> Tuple[Path, str]:
+    """Resolve ``archive`` (bare filename) under DATA_DIR then LIVE_DATA_DIR.
+
+    Returns ``(resolved_path, kind)`` where ``kind`` is ``"afs"`` / ``"bml"``.
+    The resolved path is the actual file location the edit writes back to.
+
+    Raises HTTPException: 400 (bad name / unsupported container) or 404
+    (archive not found in either root).
+    """
+    bare = _validate_bare_filename(archive, label="archive")
+    kind = _archive_entry.archive_kind(bare)
+    if kind is None:
+        raise HTTPException(
+            400,
+            f"duplicate/create/delete/rename not supported for this container: {bare}",
+        )
+    target = _resolve_under_roots(
+        bare,
+        (DATA_DIR, LIVE_DATA_DIR),
+        label="archive",
+        missing_msg=f"archive not found in DATA_DIR or LIVE_DATA_DIR: {bare}",
+    )
+    return target, kind
+
+
+def _archive_backup_and_write(target: Path, new_bytes: bytes) -> Optional[str]:
+    """Back up ``target`` (.pre_edit_<ts>) then atomically overwrite it.
+
+    Returns the backup path string (or ``None`` if the target didn't exist
+    yet, which shouldn't happen since we only edit existing archives).
+    The write is <target>.tmp -> fsync -> os.replace so a crash can never
+    leave a torn archive on disk.
+    """
+    backup_path: Optional[str] = None
+    if target.exists():
+        ts = time.strftime("%Y%m%d_%H%M%S")
+        bak = target.with_name(f"{target.name}.pre_edit_{ts}")
+        counter = 0
+        while bak.exists():
+            counter += 1
+            bak = target.with_name(f"{target.name}.pre_edit_{ts}_{counter}")
+        try:
+            shutil.copy(target, bak)
+            backup_path = str(bak)
+        except OSError as e:
+            raise HTTPException(500, f"backup failed: {e}")
+    tmp = target.with_name(f"{target.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
+    try:
+        with open(tmp, "wb") as f:
+            f.write(new_bytes)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, target)
+    except OSError as e:
+        try:
+            if tmp.exists():
+                tmp.unlink()
+        except OSError:
+            pass
+        raise HTTPException(500, f"archive write failed: {e}")
+    finally:
+        try:
+            if tmp.exists():
+                tmp.unlink()
+        except OSError:
+            pass
+    return backup_path
+
+
+def _archive_invalidate_inner_cache(target: Path) -> None:
+    """Drop the cached materialised inner blobs for an edited AFS archive."""
+    if target.suffix.lower() != ".afs":
+        return
+    try:
+        from formats import afs_reader as _afs_reader
+        inner_cache = _afs_reader.cache_dir_for(target, CACHE_DIR)
+        if inner_cache.exists():
+            shutil.rmtree(inner_cache, ignore_errors=True)
+    except OSError as e:
+        log.debug("could not invalidate inner cache for %s: %s", target.name, e)
+
+
+def _archive_new_path_key(archive: str, kind: str, *,
+                          new_index: Optional[int] = None,
+                          new_entry_name: Optional[str] = None,
+                          inner_name: Optional[str] = None) -> Optional[str]:
+    """Build the manifest addressing key for a new/renamed entry.
+
+    AFS inner entries are positional: ``<archive>#<NNNN>_<inner_name>``
+    (matches manifest._synthesize_afs_entries). BML entries are
+    name-addressed: ``<archive>#<entry_name>``.
+    """
+    if kind == "afs" and new_index is not None:
+        suffix = f"_{inner_name}" if inner_name else ""
+        return f"{archive}#{new_index:04d}{suffix}"
+    if kind == "bml" and new_entry_name is not None:
+        return f"{archive}#{new_entry_name}"
+    return None
+
+
+def _archive_afs_inner_name(target: Path, index: int) -> Optional[str]:
+    """Best-effort display name for AFS slot ``index`` (for new_path)."""
+    try:
+        from formats import afs_reader as _afs_reader
+        rows = _afs_reader.list_inner_blobs(target)
+        for r in rows:
+            if r.get("index") == index:
+                return r.get("name")
+    except (OSError, ValueError) as e:
+        log.debug("could not derive inner name for %s#%d: %s", target.name, index, e)
+    return None
+
+
+def _archive_map_pure_error(e: Exception) -> "HTTPException":
+    """Map a pure-layer exception to the HTTP status the spec mandates.
+
+    ValueError -> 422; KeyError / IndexError -> 404. ValueErrors that read
+    as a name collision / "no name table" rename are surfaced as 409.
+    """
+    if isinstance(e, (KeyError, IndexError)):
+        return HTTPException(404, str(e).strip("'\""))
+    if isinstance(e, ValueError):
+        msg = str(e)
+        low = msg.lower()
+        if "already exists" in low or "no filename table" in low:
+            return HTTPException(409, msg)
+        return HTTPException(422, msg)
+    return HTTPException(500, str(e))
+
+
+class ArchiveDuplicateReq(BaseModel):
+    archive: str
+    index: Optional[int] = Field(default=None, ge=0, le=0xFFFF)  # AFS
+    entry_name: Optional[str] = None                              # BML
+    new_name: Optional[str] = None
+
+
+class ArchiveDeleteReq(BaseModel):
+    archive: str
+    index: Optional[int] = Field(default=None, ge=0, le=0xFFFF)  # AFS
+    entry_name: Optional[str] = None                              # BML
+
+
+class ArchiveRenameReq(BaseModel):
+    archive: str
+    index: Optional[int] = Field(default=None, ge=0, le=0xFFFF)  # AFS
+    entry_name: Optional[str] = None                              # BML
+    new_name: str
+
+
+class ArchiveCreateJsonReq(BaseModel):
+    """JSON body for AFS template create (no blob upload)."""
+    archive: str
+    new_name: Optional[str] = None
+    template: str = "empty"  # "empty" | "copy_first"
+
+
+def _archive_edit_locked(target: Path, kind: str, mutate):
+    """Run ``mutate(buf) -> (new_bytes, result_dict)`` under the archive lock.
+
+    Reads the resolved target, applies the pure mutation, atomically writes
+    back with a backup, invalidates the inner cache, and merges the result.
+    Maps pure-layer errors to HTTP status codes.
+    """
+    lock_key = target.name
+    lk = _get_lock(_REPACK_LOCKS, lock_key, MAX_REPACK_LOCKS)
+    if not lk.acquire(blocking=False):
+        raise HTTPException(409, f"archive edit already in progress for {target.name}")
+    try:
+        try:
+            buf = target.read_bytes()
+        except OSError as e:
+            raise HTTPException(500, f"archive read failed: {e}")
+        original_size = len(buf)
+        try:
+            new_bytes, extra = mutate(buf)
+        except HTTPException:
+            raise
+        except (ValueError, KeyError, IndexError) as e:
+            raise _archive_map_pure_error(e)
+        backup_path = _archive_backup_and_write(target, new_bytes)
+        _archive_invalidate_inner_cache(target)
+        out = {
+            "ok": True,
+            "archive": target.name,
+            "kind": kind,
+            "target_path": str(target),
+            "original_size": original_size,
+            "new_size": len(new_bytes),
+            "backup_path": backup_path,
+        }
+        out.update(extra)
+        return out
+    finally:
+        lk.release()
+
+
+@app.post("/api/archive/duplicate_entry")
+def api_archive_duplicate_entry(req: ArchiveDuplicateReq, request: Request):
+    """Duplicate one inner entry inside an AFS / BML archive (writes back).
+
+    AFS: pass ``index`` (positional). BML: pass ``entry_name`` +
+    ``new_name``. The rewritten archive is written to the resolved source
+    path (DATA_DIR or LIVE) with a .pre_edit backup. Returns the new
+    addressing key so the frontend can open the duplicate immediately.
+    """
+    _enforce_body_size(request, MAX_REPACK_BODY)
+    target, kind = _archive_resolve_for_write(req.archive)
+
+    if kind == "afs":
+        if req.index is None:
+            raise HTTPException(400, "AFS duplicate requires 'index'")
+        idx = req.index
+
+        def mutate(buf):
+            new_buf, new_index = _archive_entry.afs_duplicate(buf, idx)
+            return new_buf, {"new_index": new_index}
+
+        result = _archive_edit_locked(target, kind, mutate)
+        inner_name = _archive_afs_inner_name(target, result["new_index"])
+        result["new_path"] = _archive_new_path_key(
+            target.name, kind, new_index=result["new_index"], inner_name=inner_name)
+        return result
+
+    # BML
+    if not req.entry_name:
+        raise HTTPException(400, "BML duplicate requires 'entry_name'")
+    _validate_inner_name(req.entry_name, msg="invalid entry_name", required=True)
+    new_name = req.new_name or f"{req.entry_name}_copy"
+    _validate_inner_name(new_name, msg="invalid new_name", required=True)
+
+    def mutate(buf):
+        new_buf = _archive_entry.bml_duplicate(buf, req.entry_name, new_name)
+        return new_buf, {"new_entry_name": new_name}
+
+    result = _archive_edit_locked(target, kind, mutate)
+    result["new_path"] = _archive_new_path_key(
+        target.name, kind, new_entry_name=new_name)
+    return result
+
+
+@app.post("/api/archive/create_entry")
+async def api_archive_create_entry(
+    request: Request,
+    archive: str = Form(...),
+    new_name: Optional[str] = Form(default=None),
+    template: Optional[str] = Form(default=None),
+    is_compressed: bool = Form(default=False),
+    source_path: Optional[str] = Form(default=None),
+    file: Optional[UploadFile] = File(default=None),
+):
+    """Create a new inner entry from an uploaded blob, a DATA_DIR ref, or a
+    template ("empty" / "copy_first"). Multipart form.
+
+    AFS: blob OR template; ``new_name`` only used if the archive carries a
+    name table. BML: requires ``new_name`` and a blob (upload or
+    source_path); ``is_compressed`` marks an already-PRS blob.
+    """
+    _enforce_body_size(request, MAX_REPACK_BODY)
+    target, kind = _archive_resolve_for_write(archive)
+
+    blob: Optional[bytes] = None
+    if file is not None and file.filename:
+        blob = await file.read()
+    elif source_path:
+        blob = await asyncio.to_thread(_archive_read_source_blob, source_path)
+    if blob is not None and len(blob) > MAX_REPACK_BODY:
+        raise HTTPException(413, f"blob too large ({len(blob)} > {MAX_REPACK_BODY})")
+
+    if kind == "afs":
+        def mutate(buf):
+            new_buf, new_index = _archive_entry.afs_create(
+                buf, blob, template, new_name=new_name)
+            return new_buf, {"new_index": new_index}
+
+        result = _archive_edit_locked(target, kind, mutate)
+        inner_name = _archive_afs_inner_name(target, result["new_index"])
+        result["new_path"] = _archive_new_path_key(
+            target.name, kind, new_index=result["new_index"], inner_name=inner_name)
+        return result
+
+    # BML: a name + blob is required (no meaningful empty BML entry).
+    if not new_name:
+        raise HTTPException(400, "BML create requires 'new_name'")
+    _validate_inner_name(new_name, msg="invalid new_name", required=True)
+    if blob is None:
+        raise HTTPException(400, "BML create requires an uploaded file or source_path")
+    blob_bytes = blob
+
+    def mutate(buf):
+        new_buf = _archive_entry.bml_create(
+            buf, new_name, blob_bytes, is_compressed=is_compressed)
+        return new_buf, {"new_entry_name": new_name}
+
+    result = _archive_edit_locked(target, kind, mutate)
+    result["new_path"] = _archive_new_path_key(
+        target.name, kind, new_entry_name=new_name)
+    return result
+
+
+def _archive_read_source_blob(source_path: str) -> bytes:
+    """Read a DATA_DIR / LIVE blob referenced by ``source_path`` for create."""
+    try:
+        p = _resolve_under_roots(
+            source_path, (DATA_DIR, LIVE_DATA_DIR),
+            label="source_path",
+            missing_msg=f"source blob not found: {source_path}",
+        )
+        return p.read_bytes()
+    except HTTPException:
+        raise
+    except OSError as e:
+        raise HTTPException(404, f"source blob not found: {e}")
+
+
+@app.delete("/api/archive/entry")
+def api_archive_delete_entry(req: ArchiveDeleteReq, request: Request):
+    """Delete one inner entry (AFS ``index`` or BML ``entry_name``).
+
+    AFS deletes renumber every later slot; the frontend must refresh the
+    manifest after. Writes back to the resolved source path with a backup.
+    """
+    _enforce_body_size(request, MAX_REPACK_BODY)
+    target, kind = _archive_resolve_for_write(req.archive)
+
+    if kind == "afs":
+        if req.index is None:
+            raise HTTPException(400, "AFS delete requires 'index'")
+        idx = req.index
+
+        def mutate(buf):
+            return _archive_entry.afs_delete(buf, idx), {"deleted": f"#{idx:04d}"}
+
+        return _archive_edit_locked(target, kind, mutate)
+
+    if not req.entry_name:
+        raise HTTPException(400, "BML delete requires 'entry_name'")
+    _validate_inner_name(req.entry_name, msg="invalid entry_name", required=True)
+
+    def mutate(buf):
+        return _archive_entry.bml_delete(buf, req.entry_name), {"deleted": req.entry_name}
+
+    return _archive_edit_locked(target, kind, mutate)
+
+
+@app.post("/api/archive/rename_entry")
+def api_archive_rename_entry(req: ArchiveRenameReq, request: Request):
+    """Rename one inner entry.
+
+    AFS rename is allowed ONLY when the archive carries a real filename
+    table (else 409 — renaming a no-table AFS would change byte layout).
+    BML entries are always name-addressed and renamable.
+    """
+    _enforce_body_size(request, MAX_REPACK_BODY)
+    target, kind = _archive_resolve_for_write(req.archive)
+    if not req.new_name:
+        raise HTTPException(400, "rename requires 'new_name'")
+
+    if kind == "afs":
+        if req.index is None:
+            raise HTTPException(400, "AFS rename requires 'index'")
+        idx = req.index
+
+        def mutate(buf):
+            new_buf = _archive_entry.afs_rename(buf, idx, req.new_name)
+            return new_buf, {"new_entry_name": req.new_name}
+
+        result = _archive_edit_locked(target, kind, mutate)
+        inner_name = _archive_afs_inner_name(target, idx)
+        result["new_path"] = _archive_new_path_key(
+            target.name, kind, new_index=idx, inner_name=inner_name)
+        return result
+
+    if not req.entry_name:
+        raise HTTPException(400, "BML rename requires 'entry_name'")
+    _validate_inner_name(req.entry_name, msg="invalid entry_name", required=True)
+    _validate_inner_name(req.new_name, msg="invalid new_name", required=True)
+
+    def mutate(buf):
+        new_buf = _archive_entry.bml_rename(buf, req.entry_name, req.new_name)
+        return new_buf, {"new_entry_name": req.new_name}
+
+    result = _archive_edit_locked(target, kind, mutate)
+    result["new_path"] = _archive_new_path_key(
+        target.name, kind, new_entry_name=req.new_name)
+    return result
+
+
+@app.get("/api/archive/{name}/entries")
+def api_archive_entries(name: str):
+    """Read-only list of an archive's inner entries (for the entry editor).
+
+    Returns ``{ok, archive, kind, supported, entries:[...]}``. GSL /
+    unknown containers return ``supported=false`` with an empty list so
+    the frontend can disable the controls with a clear note.
+    """
+    bare = _validate_bare_filename(name, label="archive")
+    kind = _archive_entry.archive_kind(bare)
+    if kind is None:
+        return {
+            "ok": True, "archive": bare, "kind": None, "supported": False,
+            "note": "entry editing is not supported for this container",
+            "entries": [],
+        }
+    target = _resolve_under_roots(
+        bare, (DATA_DIR, LIVE_DATA_DIR), label="archive",
+        missing_msg=f"archive not found in DATA_DIR or LIVE_DATA_DIR: {bare}",
+    )
+    entries: list = []
+    if kind == "afs":
+        from formats import afs_reader as _afs_reader
+        try:
+            rows = _afs_reader.list_inner_blobs(target)
+        except (OSError, ValueError) as e:
+            raise HTTPException(400, f"AFS parse failed: {e}")
+        for r in rows:
+            entries.append({
+                "index": r.get("index"),
+                "name": r.get("name"),
+                "size": r.get("size"),
+                "inner_format": r.get("inner_format"),
+                "compressed": r.get("compressed"),
+                "path": f"{bare}#{r.get('index'):04d}_{r.get('name')}",
+            })
+    else:  # bml
+        try:
+            buf = target.read_bytes()
+            pack_entries = _archive_entry.parse_bml_for_pack(buf)
+        except (OSError, ValueError) as e:
+            raise HTTPException(400, f"BML parse failed: {e}")
+        for i, ent in enumerate(pack_entries):
+            entries.append({
+                "index": i,
+                "name": ent.name,
+                "size": len(ent.data),
+                "inner_format": "NJ_IFF",
+                "compressed": ent.is_compressed,
+                "has_texture": ent.texture_data is not None and len(ent.texture_data) > 0,
+                "path": f"{bare}#{ent.name}",
+            })
+    return {
+        "ok": True, "archive": bare, "kind": kind, "supported": True,
+        "target_path": str(target), "entries": entries,
+    }
+
+
+# ===========================================================================
 # Endpoints added 2026-04-25 (finishing-line polish batch).
 # Kept in a single block at the bottom of server.py to minimize merge
 # surface with parallel agents that may also be editing earlier sections.

@@ -806,6 +806,13 @@
        picker, waveform canvas, and a DEV-only Replace input. -->
   <script src="/static/audio_panel.js"></script>
 
+  <!-- Archive entry editor perspective (2026-06-20).
+       Owns the "archive-entries" perspective (registers itself after
+       perspectives.js): duplicate / create / delete / rename an inner
+       entry inside an AFS or BML container. Writes back to the opened
+       archive's resolved path with an automatic backup. -->
+  <script src="/static/archive_panel.js"></script>
+
   <!-- In-viewport texture + subdivide panel (2026-04-25).
        Mounts a docked sidebar inside the 3D-view's .model-stage that
        lists every bound texture (with thumbnail + dim + per-tile

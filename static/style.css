@@ -4898,3 +4898,38 @@ header button.imp-header-btn { margin-right: 4px; }
   color: #fff;
   border-color: var(--accent, #3d7be4);
 }
+
+/* =====================================================================
+ * Archive entry editor (archive_panel.js, 2026-06-20)
+ * ===================================================================== */
+.arc-perspective { display: flex; flex-direction: column; height: 100%; gap: 8px; padding: 8px; box-sizing: border-box; }
+.arc-toolbar { display: flex; align-items: center; gap: 10px; padding: 6px 4px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+.arc-toolbar .arc-archive { font-family: monospace; }
+.arc-toolbar .grow { flex: 1; }
+.arc-note { font-size: 0.85em; padding: 0 4px; }
+.arc-status.err { color: #ff8080; }
+.arc-list { flex: 1; overflow-y: auto; border: 1px solid rgba(255,255,255,0.06); border-radius: 4px; }
+.arc-empty { padding: 16px; }
+.arc-row { display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 5px 10px; border-bottom: 1px solid rgba(255,255,255,0.04); }
+.arc-row:hover { background: rgba(255,255,255,0.03); }
+.arc-row-main { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; }
+.arc-idx { font-family: monospace; color: #88a; min-width: 3.5em; }
+.arc-name { font-family: monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.arc-fmt, .arc-tag { font-size: 0.72em; padding: 1px 5px; border-radius: 3px;
+  background: rgba(120,140,160,0.18); color: #aac; }
+.arc-tag { background: rgba(78,157,221,0.18); color: #a4c8f0; }
+.arc-size { margin-left: auto; font-size: 0.82em; }
+.arc-row-actions { display: flex; gap: 4px; flex-shrink: 0; }
+.arc-row-actions button { font-size: 0.8em; padding: 2px 8px; }
+.arc-row-actions button.danger { border-color: rgba(221,78,78,0.5); color: #f0a4a4; }
+.arc-modal { position: absolute; inset: 0; background: rgba(0,0,0,0.55);
+  display: flex; align-items: center; justify-content: center; z-index: 50; }
+.arc-modal-card { background: #1c1f26; border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 6px; padding: 16px; width: 360px; max-width: 92%; display: flex;
+  flex-direction: column; gap: 10px; box-shadow: 0 8px 32px rgba(0,0,0,0.5); }
+.arc-modal-title { font-weight: 600; }
+.arc-field { display: flex; flex-direction: column; gap: 3px; font-size: 0.88em; }
+.arc-field input[type=text], .arc-field select { padding: 4px 6px; }
+.arc-opt { font-size: 0.85em; display: flex; align-items: center; gap: 6px; }
+.arc-modal-btns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }

@@ -617,6 +617,81 @@
     if (banner) banner.style.display = "none";
   }
 
+  // ---- "edit entries" affordance for AFS / BML container leaves ------
+
+  // When the user opens a TOP-LEVEL .afs or .bml file (not an inner
+  // entry), offer a one-click switch to the archive entry editor
+  // (duplicate / create / delete / rename inner entries). Mirrors the
+  // floor-editor switchTo branch below: the archive editor is a registered
+  // perspective (static/archive_panel.js). No-op when the file isn't a
+  // supported container or perspectives.js isn't present.
+  function isTopLevelArchive(path) {
+    if (!path || path.indexOf("#") >= 0) return false; // inner entry, not the container
+    const lower = String(path).toLowerCase();
+    return lower.endsWith(".afs") || lower.endsWith(".bml");
+  }
+
+  function switchToArchiveEditor(path, entry) {
+    if (window.PSOPerspectives && typeof window.PSOPerspectives.switchTo === "function") {
+      window.PSOPerspectives.switchTo("archive-entries", {
+        path: path, entry: entry || {},
+        fileName: (String(path).split("/").pop() || path),
+      });
+      return true;
+    }
+    return false;
+  }
+
+  function offerEditEntries(path, entry) {
+    if (!isTopLevelArchive(path)) { hideEditEntriesBanner(); return; }
+    if (!window.PSOPerspectives || typeof window.PSOPerspectives.switchTo !== "function") {
+      hideEditEntriesBanner();
+      return;
+    }
+    showEditEntriesBanner(path, entry);
+  }
+
+  function showEditEntriesBanner(path, entry) {
+    let banner = document.getElementById("assetEditEntriesBanner");
+    if (!banner) {
+      banner = document.createElement("div");
+      banner.id = "assetEditEntriesBanner";
+      banner.className = "edit-entries-banner";
+      banner.style.cssText = [
+        "padding: 4px 12px", "margin: 4px 0",
+        "background: rgba(78,157,221,0.12)",
+        "border: 1px solid rgba(78,157,221,0.5)",
+        "border-radius: 4px", "color: #a4c8f0", "font-size: 0.9em",
+        "display: flex", "align-items: center", "gap: 8px",
+      ].join(";");
+      const fw = document.getElementById("fileWorkspace");
+      if (fw && fw.firstChild) fw.insertBefore(banner, fw.firstChild);
+      else if (fw) fw.appendChild(banner);
+      else document.body.appendChild(banner);
+    }
+    banner.innerHTML = "";
+    const msg = document.createElement("span");
+    msg.textContent = "This is a container archive. ";
+    banner.appendChild(msg);
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.textContent = "Edit entries →";
+    btn.title = `Open ${path} in the archive entry editor (duplicate / create / delete / rename)`;
+    btn.style.cssText = [
+      "background: transparent", "border: 1px solid rgba(78,157,221,0.7)",
+      "color: #a4c8f0", "padding: 2px 10px", "border-radius: 3px",
+      "cursor: pointer", "font: inherit",
+    ].join(";");
+    btn.onclick = function () { switchToArchiveEditor(path, entry); };
+    banner.appendChild(btn);
+    banner.style.display = "flex";
+  }
+
+  function hideEditEntriesBanner() {
+    const banner = document.getElementById("assetEditEntriesBanner");
+    if (banner) banner.style.display = "none";
+  }
+
   // ---- top-level dispatch -------------------------------------------
 
   function dispatch(evt) {
@@ -653,6 +728,7 @@
     // navigates away — we'll re-show it below if the next click is a
     // BML-inner texture.
     hideViewAsModelBanner();
+    hideEditEntriesBanner();
 
     // 2026-04-24: when unified-viewport mode is on, perspectives.js
     // owns asset routing and renders into the persistent vp-stage. The
@@ -666,6 +742,8 @@
           || (cat === "ui" && ext === ".prs")) {
         try { offerViewAsModel(evt.path, entry); } catch (_e) {}
       }
+      // Top-level AFS/BML container: offer the archive entry editor.
+      try { offerEditEntries(evt.path, entry); } catch (_e) {}
       return;
     }
 
@@ -684,10 +762,14 @@
         // Doesn't auto-route — the user picked a texture and may want
         // to edit it.
         offerViewAsModel(evt.path, entry);
+        // Top-level AFS/BML container leaf: also offer the entry editor.
+        offerEditEntries(evt.path, entry);
         return;
       }
       case "model":
         openModel(evt.path, entry);
+        // Top-level .bml model leaf: offer the archive entry editor.
+        offerEditEntries(evt.path, entry);
         return;
       case "audio":
         openAudio(evt.path, entry);
