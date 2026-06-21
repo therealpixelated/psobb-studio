@@ -349,20 +349,25 @@ def test_archive_pattern_propagates_to_inner_blobs():
     archive itself is well-known. The matcher checks ``parent_archive``
     against plain-glob patterns as a fallback after the basename try.
     """
-    # plAtex.afs#0000_..., parent_archive='plAtex.afs', pattern='pl?tex.afs'
+    # plAtex.afs#0000_..., parent_archive='plAtex.afs', pattern='pl?tex.afs'.
+    # The per-class texture archives now route to the dedicated "Player
+    # Textures" bucket (the inner blobs are numerically named with no
+    # body/headgear/hair token, so a finer split isn't possible) instead of
+    # the old 4767-entry "Player Misc" catch-all.
     assert infer_category(
         "plAtex.afs#0000_plAtex_0000.xvr",
         parent_archive="plAtex.afs",
-    ) == "Player Misc"
+    ) == "Player Textures"
     assert infer_category(
         "plRtex.afs#0123_plRtex_0123.xvr",
         parent_archive="plRtex.afs",
-    ) == "Player Misc"
-    # plZsmpnj.afs has its own pattern matching the archive
+    ) == "Player Textures"
+    # plZsmpnj.afs (generic player skeleton+samples template) is rig/sample
+    # data, now bucketed under "Player Rigs".
     assert infer_category(
         "plZsmpnj.afs#0000_plZsmpnj_0000.nj",
         parent_archive="plZsmpnj.afs",
-    ) == "Player Misc"
+    ) == "Player Rigs"
 
 
 # ---------------------------------------------------------------------------
@@ -537,3 +542,111 @@ def test_psov2_unknown_asset_has_no_display_name():
     """An asset psov2 doesn't enumerate gets no curated display name."""
     _psov2_names_cache_clear()
     assert psov2_display_name("totally_made_up_asset_xyz.bml") is None
+
+
+# ---------------------------------------------------------------------------
+# 2026-06-20 categorization overhaul — owner-flagged miscategorizations.
+#
+# These lock in the six fixes from the categorization overhaul so a future
+# DB edit can't silently regress them:
+#   1. bm_obj_ep4_boss09_* attack effects -> Boss Attack Effects (NOT Bosses),
+#      while the boss core (core*/bossiwa*) stays Bosses.
+#   2. pm_mdl.bml mag bodies -> Mags; photon-blast inners -> Photon Blasts
+#      (was a single 'pm_mdl.bml'->Effects blanket via archive-fallback).
+#   3. NPC/wall models that missed the strict rule (bm_n_*_body_*.bml,
+#      fe_obj<digits>) no longer leak into the canonical "Models" bucket.
+#   4. pl?tex.afs -> Player Textures, pl?nj/smp/plZsmpnj -> Player Rigs
+#      (retiring the 4767-entry "Player Misc" catch-all).
+# ---------------------------------------------------------------------------
+
+def test_boss09_attack_effects_split_from_boss_core():
+    """The EP4 final-boss attack/projectile subparts route to
+    'Boss Attack Effects'; the boss core body stays 'Bosses'."""
+    # Attack effects / projectiles / hazards.
+    for nm in (
+        "bm_obj_ep4_boss09_sonic.bml",
+        "bm_obj_ep4_boss09_sandsonic.bml",
+        "bm_obj_ep4_boss09_storm.bml",
+        "bm_obj_ep4_boss09_laser.bml",
+        "bm_obj_ep4_boss09_missile.bml",
+        "bm_obj_ep4_boss09_nemesis.bml",
+        "bm_obj_ep4_boss09_ptcl_anim.bml",
+        "bm_obj_ep4_boss09_kabe.bml",
+        "bm_obj_ep4_boss09_kabe01.bml",
+    ):
+        assert infer_category(nm) == "Boss Attack Effects", nm
+    # Boss core body + rock-shell stay Bosses.
+    assert infer_category("bm_obj_ep4_boss09_core.bml") == "Bosses"
+    assert infer_category("bm_obj_ep4_boss09_core_tex.xvm") == "Bosses"
+    assert infer_category("bm_obj_ep4_boss09_bossiwa.bml") == "Bosses"
+    # The actual boss ENTITY (bm_ene_boss09*) is unaffected.
+    assert infer_category("bm_ene_boss09.bml") == "Bosses"
+    assert infer_category("bm_ene_boss09_tentacle.bml") == "Bosses"
+
+
+def test_pm_mdl_inners_are_mags_and_photon_blasts_not_effects():
+    """pm_mdl.bml mag bodies -> Mags, photon-blast inners -> Photon Blasts.
+    Previously the lone 'pm_mdl.bml'->Effects rule blanketed every inner."""
+    arch = "pm_mdl.bml"
+    # Mag bodies + the summon circle.
+    for inner in ("farlla_body.nj", "leilla_body.nj", "mahoujin_base.nj"):
+        assert infer_category(f"pm_mdl.bml#{inner}", parent_archive=arch) == "Mags", inner
+    # Photon Blasts (pm_b_ bodies + pmN_s cores + pmback backdrops).
+    for inner in (
+        "pm_b_estlla_body.nj",
+        "pm_b_mylla_body.nj",
+        "pm_b_youlla_body.nj",
+        "pm1_s_body.nj",
+        "pm2_s_body.nj",
+        "pmback_s_niji.nj",
+    ):
+        assert infer_category(f"pm_mdl.bml#{inner}", parent_archive=arch) == "Photon Blasts", inner
+    # No pm_mdl inner remains in Effects.
+    for inner in ("farlla_body.nj", "pm_b_estlla_body.nj", "mahoujin_base.nj"):
+        assert infer_category(f"pm_mdl.bml#{inner}", parent_archive=arch) != "Effects", inner
+
+
+def test_npc_and_obj_models_no_longer_leak_into_models_bucket():
+    """Broadened NPC + forest-object globs catch the numbered/suffixed
+    variants that previously fell through to the canonical 'Models' bucket."""
+    # bm_n_*_body_3 missed the strict 'bm_n_*_body.bml' tail.
+    assert infer_category("bm_n_efsm_i_body_3.bml") == "NPCs"
+    assert infer_category(
+        "bm_n_efsm_i_body_3.bml#n_efsm_i_body.nj",
+        parent_archive="bm_n_efsm_i_body_3.bml",
+    ) == "NPCs"
+    # fe_obj<digits> missed the 'fe_obj_*' (underscore) glob.
+    assert infer_category("fe_obj306_hashi.bml") == "Objects"
+    assert infer_category("fe_obj321_hashi.bml") == "Objects"
+    # The original underscore form still works.
+    assert infer_category("fe_obj_hashi.bml") == "Objects"
+
+
+def test_player_misc_catchall_is_split():
+    """The 4767-entry 'Player Misc' bucket is gone: textures -> Player
+    Textures, rigs/samples -> Player Rigs."""
+    assert infer_category("plAtex.afs", parent_archive="plAtex.afs") == "Player Textures"
+    assert infer_category(
+        "plItex.afs#0042_plItex_0042.xvr", parent_archive="plItex.afs"
+    ) == "Player Textures"
+    assert infer_category("plAnj.bml") == "Player Rigs"
+    assert infer_category("plAsmp.rel") == "Player Rigs"
+    assert infer_category("plZsmpnj.afs") == "Player Rigs"
+    # The loose player NJ models still split by role (unchanged).
+    assert infer_category("plAbdy00.nj") == "Player Bodies"
+    assert infer_category("plAhai00.nj") == "Player Headgear"
+
+
+def test_no_rule_emits_legacy_player_misc_category():
+    """'Player Misc' must no longer appear as any rule's category — it was
+    fully decomposed into Player Textures + Player Rigs + role buckets."""
+    db = _load_category_db()
+    cats = {r.get("category") for r in db.get("rules", [])}
+    assert "Player Misc" not in cats
+
+
+def test_mkv_cutscenes_not_unknown():
+    """The PSO-X .mkv cutscene videos route to Quests (cinematic), not the
+    Unknown fallback bucket."""
+    assert infer_category("pso_x_op_e.mkv") == "Quests"
+    assert infer_category("pso_x_ed_ep2.mkv") == "Quests"

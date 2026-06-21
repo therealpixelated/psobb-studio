@@ -157,6 +157,11 @@ _EXT_MAP: dict[str, tuple[str, str, str]] = {
     ".bin": ("map",       "BIN",       "no"),
     ".evt": ("script",    "EVT",       "no"),
     ".pae": ("cinematic", "PAE",       "no"),
+    # .mkv = the PSO-X opening/ending cutscene videos (pso_x_op_*, pso_x_ed_*).
+    # Matroska container; not decoded by the editor, but a known cinematic
+    # asset — route it to the cinematic category so it stops falling through
+    # to UNKNOWN. A DB rule labels the specific pso_x_* family.
+    ".mkv": ("cinematic", "MKV",       "no"),
     ".gsl": ("script",    "GSL",       "no"),
     ".pr2": ("metadata",  "PR2",       "no"),
     ".pr3": ("metadata",  "PR3",       "no"),
@@ -559,6 +564,18 @@ def _is_backup_name(name: str) -> bool:
     for pre in BACKUP_PATTERNS_PREFIX:
         if nl.startswith(pre):
             return True
+    # Owner quarantine siblings carry an ad-hoc "<name>.<orig_ext>.<tag>bak"
+    # suffix (e.g. ".markbak", ".cloudsbak", ".stockbak") — a personal
+    # convention for "stash the stock/original next to the live file". The
+    # final extension ends in "bak" but isn't a plain ".bak", so the suffix
+    # list above misses it and the file leaked into the tree's Unknown
+    # bucket. Treat any final extension ending in "bak" as a backup, but
+    # only when it is NOT a real known asset extension (so a hypothetical
+    # ".bak"-free format ending in those letters is unaffected — none of
+    # _EXT_MAP's keys end in "bak").
+    ext = Path(nl).suffix  # includes the leading dot, e.g. ".markbak"
+    if ext.endswith("bak") and ext not in _EXT_MAP:
+        return True
     return False
 
 

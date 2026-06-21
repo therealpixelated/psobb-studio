@@ -30,10 +30,12 @@ Generated 2026-04-26. Companion to `categorization_db.json` — human-readable e
 | `pl[A-Z]hed??.nj` | Player class head | hed00 base, hed01-09 alts |
 | `pl[A-Z]hai??.nj` | Player class hair | (Some classes only) |
 | `pl[A-Z]cap??.nj` | Player class headgear | (FOmar caps etc.) |
-| `pl[A-Z]nj.bml` | Player class skeleton bundle | |
-| `pl[A-Z]smp.rel` | Player class skin/anim map | |
-| `pl[A-Z]tex.afs` | Player class textures | |
-| `plZsmpnj.afs` | Generic player template | "Z" = template proto |
+| `pl[A-Z]nj.bml` | Player class skeleton bundle → **Player Rigs** | |
+| `pl[A-Z]smp.rel` | Player class skin/anim map → **Player Rigs** | |
+| `pl[A-Z]tex.afs` | Player class textures → **Player Textures** | inner blobs are numeric-named (`plXtex_NNNN.xvr`); no body/hed/hai token → single class-level bucket |
+| `plZsmpnj.afs` | Generic player template → **Player Rigs** | "Z" = template proto |
+
+> 2026-06-20: the old 4767-entry **"Player Misc"** catch-all was retired. `pl?tex.afs` (the bulk, via archive-fallback over its inner textures) → **Player Textures**; the `pl?nj.bml` / `pl?smp.rel` / `plZsmpnj.afs` rig+sample data → **Player Rigs**. Loose `pl?bdy/hed/hai/cap` NJ models keep their Player Bodies / Player Headgear buckets.
 
 Source: data tree directory listing.
 
@@ -113,8 +115,9 @@ This is THE important resolution: the editor was treating `bm4_ps_*` and `bm7_ps
 | `bm_boss7_de_rol_le_c.bml` | Barba Ray (De Rol Le clone) | EP2 Temple | Phantasmal `BarbaRay` |
 | `bm_boss8_dragon.bml` | **Gol Dragon (EP4 Crater)** | EP4 Crater | binary `goldeath.adx` neighbor |
 | `bm_obj_boss8_*` (demoroom/monitor/piller) | Gol Dragon subparts | EP4 Crater | psobb_binary_scan.md note: NOT Vol Opt despite naming |
-| `bm_obj_ep4_boss09_*` | Saint-Million / Shambertin / Kondrieu subparts | EP4 final | Phantasmal (boss09 = EP4 final) |
-| `bm_ene_boss09*` | Saint-Million / Shambertin / Kondrieu | EP4 final | Phantasmal |
+| `bm_obj_ep4_boss09_core*` / `_bossiwa*` | Saint-Million boss **core** body + rock-shell (Bosses) | EP4 final | Phantasmal (boss09 = EP4 final) |
+| `bm_obj_ep4_boss09_*` (sonic/sandsonic/storm/laser/missile/nemesis/ptcl_anim/kabe) | Saint-Million **attack effects / projectiles** → category **Boss Attack Effects** (NOT Bosses) | EP4 final | Owner-confirmed 2026-06-20 |
+| `bm_ene_boss09*` | Saint-Million / Shambertin / Kondrieu (the boss entity) | EP4 final | Phantasmal |
 | `boss06_plotfalz_dat.bml` + `darkfalz_dat.bml` | Dark Falz | EP1 Ruins | binary @darkfalz |
 
 ### 3.4 Objects (`bm_obj_*`, `bm_o_*`, `bm_fe_*`, `bm_fs_*`, `bm_fd_*`, `fe_obj_*`, `fs_obj_*`)
@@ -203,8 +206,19 @@ This is THE important resolution: the editor was treating `bm4_ps_*` and `bm7_ps
 |---|---|
 | `bm_eff_*` (e.g. ice) | Effect geometry |
 | `eff_boss09_saint_emilion.dat` | Saint-Million boss effect |
-| `pm_mdl.bml` | Photon Magic projectiles (FARLLA/ESTLLA/GOLLA/PILLA/LEILLA/MYLLA — all techniques) |
 | `particleentryaNN.dat` | Per-area particle tables |
+| `effect_nt.xvm` / `technic.xvm` / `technic_pt.xvm` | Effect glow / technique spell textures (visual-categorized 2026-06-20) |
+
+> `pm_mdl.bml` is NO LONGER "Effects". Its inner blobs are split (2026-06-20, owner-confirmed): mag bodies (`farlla`/`leilla`/`estlla`/`mylla`/`youlla`/`golla`) + `mahoujin` → **Mags**; photon-blast inners (`pm_b_*`, `pm1_s`/`pm2_s`, `pmback_*`) → **Photon Blasts**. See §3.x Mags / Photon Blasts.
+
+### 3.7a Mags / Photon Blasts
+
+| Pattern | Category | In-game |
+|---|---|---|
+| `pm_mdl.bml#*farlla*` / `*leilla*` / `*estlla*` / `*mylla*` / `*youlla*` / `*golla*` / `*pilla*` | **Mags** | Mag body |
+| `pm_mdl.bml#*mahoujin*` | **Mags** | Mag/photon summon circle (mahoujin = magic circle) |
+| `pm_mdl.bml#pm_b_*` / `#pm?_s_*` / `#pmback_*` | **Photon Blasts** | Photon Blast bodies / cores / rainbow backdrops |
+| `pm_mdl.bml` (bare archive) | **Mags** | Mag + Photon-Blast model container |
 
 ### 3.8 Maps & terrain
 
