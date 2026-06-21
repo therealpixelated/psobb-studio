@@ -14060,6 +14060,8 @@ def api_composite_bundle(path: str, meta_only: int = 0):
             "rot_euler": [rx, ry, rz],   # ZYX intrinsic, radians
             "scale": [sx, sy, sz],
             "parent_inner": null | "<other inner name>",
+            "parent_bone": null | <int DFS node index in parent inner>,
+            "local_offset": [x, y, z],   # offset in the parent BONE frame
             "notes": "<provenance / caveat string>",
             "skinned": <api_model_skinned wire shape>,
             "binding": <per-inner binding (passthrough from skinned)>
@@ -14162,6 +14164,12 @@ def api_composite_bundle(path: str, meta_only: int = 0):
             "rot_euler":    list(part.rot_euler),
             "scale":        list(part.scale),
             "parent_inner": part.parent_inner,
+            # Bone-attach metadata (2026-06-21): when ``parent_bone`` is set
+            # the frontend attaches this fragment to the parent inner's
+            # animated bone matrix (DFS node index) + ``local_offset`` so it
+            # rides the skeleton instead of using a plain world-space TRS.
+            "parent_bone":  part.parent_bone,
+            "local_offset": list(part.local_offset),
             "notes":        part.notes,
             "skinned":      None,
             "binding":      None,

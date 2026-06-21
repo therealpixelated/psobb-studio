@@ -193,6 +193,11 @@ const state = {
     bones: [],
     bindWorld: null,
     skinSubmeshes: [],
+    // 2026-06-21: bone-attached composite parts (De Rol Le fins/sting/
+    // tentacle). Each {group, bone, offset}; driven off the body's
+    // animated bone matrices after every re-bake. Empty for non-bone-
+    // attach composites and single-inner models.
+    boneAttachParts: [],
     motions: [],
     currentMotion: null,
     currentData: null,
@@ -3320,17 +3325,39 @@ async function tryLoadCompositeBmlMesh(bmlPath, innerNames) {
     // a forward reference (curator may list parent below child).
     const part = curatedAssembly ? partsByInner.get(inner.toLowerCase()) : null;
     if (part) {
-      const [px, py, pz] = part.pos || [0, 0, 0];
-      const [rx, ry, rz] = part.rot_euler || [0, 0, 0];
-      const [sx, sy, sz] = part.scale || [1, 1, 1];
-      innerGroup.position.set(px, py, pz);
-      innerGroup.rotation.order = "ZYX";
-      innerGroup.rotation.set(rx, ry, rz);
-      innerGroup.scale.set(sx, sy, sz);
-      innerGroup.userData.compositePart = {
-        parent_inner: part.parent_inner || null,
-        notes: part.notes || "",
-      };
+      const hasBoneAttach =
+        part.parent_bone !== null && part.parent_bone !== undefined;
+      if (hasBoneAttach) {
+        // BONE-ATTACH (2026-06-21): this fragment rides a specific bone of
+        // the parent inner's skeleton (e.g. De Rol Le fins on the head
+        // bones, sting/tentacle on the tail). Its world matrix is driven
+        // each frame from the body's animated bone world-matrix (computed
+        // by _computeAnimatedBoneMatrices into _MAT_SCRATCH_WORLD), so we
+        // DON'T set a static TRS here. The group stays a child of
+        // compositeGroup (a sibling of the body inner, which sits at
+        // identity inside compositeGroup) and we disable matrixAutoUpdate
+        // so our per-frame matrix write isn't clobbered. local_offset is
+        // applied in the bone frame. Registered in boneAttachParts below.
+        innerGroup.matrixAutoUpdate = false;
+        innerGroup.userData.compositePart = {
+          parent_inner: part.parent_inner || null,
+          parent_bone: part.parent_bone | 0,
+          local_offset: part.local_offset || [0, 0, 0],
+          notes: part.notes || "",
+        };
+      } else {
+        const [px, py, pz] = part.pos || [0, 0, 0];
+        const [rx, ry, rz] = part.rot_euler || [0, 0, 0];
+        const [sx, sy, sz] = part.scale || [1, 1, 1];
+        innerGroup.position.set(px, py, pz);
+        innerGroup.rotation.order = "ZYX";
+        innerGroup.rotation.set(rx, ry, rz);
+        innerGroup.scale.set(sx, sy, sz);
+        innerGroup.userData.compositePart = {
+          parent_inner: part.parent_inner || null,
+          notes: part.notes || "",
+        };
+      }
     }
     compositeGroup.add(innerGroup);
     for (const [mid, tex] of boundTex) {
@@ -3348,8 +3375,30 @@ async function tryLoadCompositeBmlMesh(bmlPath, innerNames) {
   // hand-curated table the offsets are authored as parent-relative
   // already, so re-parenting just gives the engine a hierarchical
   // transform stack — no math fix-up needed.
+  // 2026-06-21: bone-attach registry. A part with `parent_bone` rides a
+  // bone of the parent inner's skeleton instead of being a plain Group
+  // child. We collect those here and drive their matrices from the body's
+  // animated bone world-matrices in _updateBoneAttachments (called after
+  // every skinned re-bake + once at bind pose). Each entry keeps the
+  // child group, the bone index, and the local-frame offset.
+  const boneAttachParts = [];
   if (curatedAssembly) {
     for (const p of curatedAssembly.parts) {
+      const hasBoneAttach =
+        p.parent_bone !== null && p.parent_bone !== undefined;
+      if (hasBoneAttach) {
+        // Bone-attached parts are NOT reparented to the inner Group —
+        // they stay under compositeGroup and follow the bone matrix.
+        const child = innerGroupByName.get(p.inner.toLowerCase());
+        if (child) {
+          boneAttachParts.push({
+            group: child,
+            bone: p.parent_bone | 0,
+            offset: Array.isArray(p.local_offset) ? p.local_offset : [0, 0, 0],
+          });
+        }
+        continue;
+      }
       if (!p.parent_inner) continue;
       const child = innerGroupByName.get(p.inner.toLowerCase());
       const parent = innerGroupByName.get(p.parent_inner.toLowerCase());
@@ -3357,6 +3406,17 @@ async function tryLoadCompositeBmlMesh(bmlPath, innerNames) {
         parent.add(child);
       }
     }
+  }
+
+  // Initial bind-pose placement of bone-attached parts BEFORE the AABB
+  // fit so the viewport centring accounts for the appendages. The primary
+  // inner's bind-pose bone matrices are still in _MAT_SCRATCH_WORLD from
+  // buildSkinnedMeshGroupFromPayload's AABB bake, but a sibling inner's
+  // own bind bake may have clobbered them — so recompute from the primary
+  // bones first. (No-op when there are no bone-attached parts / no primary.)
+  if (boneAttachParts.length > 0 && primarySkinned && primarySkinned.bones) {
+    _computeAnimatedBoneMatrices(primarySkinned.bones, null, null);
+    _updateBoneAttachments(boneAttachParts, primarySkinned.bones.length);
   }
 
   if (compositeGroup.children.length === 0 ||
@@ -3445,9 +3505,26 @@ async function tryLoadCompositeBmlMesh(bmlPath, innerNames) {
     state.anim.time = 0.0;
     state.anim.playing = false;
     state.anim.lastTimestamp = 0;
+    // 2026-06-21: bone-attached parts (De Rol Le fins/sting/tentacle) ride
+    // the primary's animated bone matrices. Stash the registry so
+    // tickAnimation can re-drive them after each re-bake. The initial
+    // bind-pose placement already ran above (before the AABB fit).
+    state.anim.boneAttachParts = boneAttachParts;
   } else {
     state.anim.skinned = false;
     state.anim.playing = false;
+    state.anim.boneAttachParts = [];
+    // No skinned primary body to drive bone attachment (rare: the body
+    // inner fell back to /api/model_mesh). Re-enable matrixAutoUpdate on
+    // any group we'd flagged for bone-attach + reset to identity so they
+    // at least render at the body origin (their world-baked verts are
+    // near it) instead of frozen at a never-written matrix.
+    for (const ap of boneAttachParts) {
+      ap.group.matrixAutoUpdate = true;
+      ap.group.position.set(0, 0, 0);
+      ap.group.quaternion.set(0, 0, 0, 1);
+      ap.group.scale.set(1, 1, 1);
+    }
   }
   const animBar = $("#modelAnimBar");
   // populateAnimationPanel will un-hide the bar if motions exist; we
@@ -4399,6 +4476,58 @@ function _bakeSkinnedSubmeshes(skinSubmeshes, boneCount) {
     }
     posAttr.needsUpdate = true;
     if (normAttr) normAttr.needsUpdate = true;
+  }
+}
+
+// Scratch THREE objects reused by _updateBoneAttachments (avoid per-frame
+// allocation in the render loop).
+const _BONE_ATTACH_BONE_M4 = (typeof THREE !== "undefined") ? new THREE.Matrix4() : null;
+const _BONE_ATTACH_OFFSET_M4 = (typeof THREE !== "undefined") ? new THREE.Matrix4() : null;
+
+/**
+ * Drive bone-attached composite parts (De Rol Le fins/sting/tentacle).
+ *
+ * Each entry in `attachParts` is `{group, bone, offset}`. The body inner's
+ * animated bone WORLD matrices already live in `_MAT_SCRATCH_WORLD`
+ * (row-major, one 16-float matrix per DFS bone index — populated by the
+ * immediately-preceding `_computeAnimatedBoneMatrices` call). Because the
+ * body inner group sits at identity inside compositeGroup, that bone world
+ * matrix IS the child's local matrix relative to compositeGroup. We compose
+ * it with the part's `local_offset` (a translation in the bone frame) and
+ * write the result into the child group's `matrix` directly. The child has
+ * `matrixAutoUpdate = false`, so this write survives the render tick.
+ *
+ * This is the faithful in-game behaviour: the fragment rides the specific
+ * body joint it's parented to, inheriting the snake's animation — instead
+ * of a fixed world-space TRS that floats off a curved/animated body.
+ */
+function _updateBoneAttachments(attachParts, boneCount) {
+  if (!attachParts || attachParts.length === 0) return;
+  if (!_BONE_ATTACH_BONE_M4) return;
+  for (const ap of attachParts) {
+    let bi = ap.bone | 0;
+    if (bi < 0 || bi >= boneCount) bi = 0;
+    const o = bi * 16;
+    // _MAT_SCRATCH_WORLD is ROW-major (translation at +3/+7/+11). THREE's
+    // Matrix4.set() takes ROW-major args and stores column-major, so we
+    // can feed the scratch values straight through.
+    _BONE_ATTACH_BONE_M4.set(
+      _MAT_SCRATCH_WORLD[o + 0], _MAT_SCRATCH_WORLD[o + 1], _MAT_SCRATCH_WORLD[o + 2], _MAT_SCRATCH_WORLD[o + 3],
+      _MAT_SCRATCH_WORLD[o + 4], _MAT_SCRATCH_WORLD[o + 5], _MAT_SCRATCH_WORLD[o + 6], _MAT_SCRATCH_WORLD[o + 7],
+      _MAT_SCRATCH_WORLD[o + 8], _MAT_SCRATCH_WORLD[o + 9], _MAT_SCRATCH_WORLD[o + 10], _MAT_SCRATCH_WORLD[o + 11],
+      0, 0, 0, 1,
+    );
+    const off = ap.offset || [0, 0, 0];
+    if (off[0] || off[1] || off[2]) {
+      _BONE_ATTACH_OFFSET_M4.makeTranslation(off[0] || 0, off[1] || 0, off[2] || 0);
+      _BONE_ATTACH_BONE_M4.multiply(_BONE_ATTACH_OFFSET_M4);
+    }
+    const g = ap.group;
+    g.matrix.copy(_BONE_ATTACH_BONE_M4);
+    // Keep the decomposed pos/quat/scale in sync so any code that reads
+    // them (inspector, Box3) sees the driven transform.
+    g.matrix.decompose(g.position, g.quaternion, g.scale);
+    g.matrixWorldNeedsUpdate = true;
   }
 }
 
@@ -5979,6 +6108,11 @@ function tickAnimation(nowMs) {
     const frameT = (a.time * a.fps) % Math.max(1, fc);
     _computeAnimatedBoneMatrices(a.bones, a.currentData, frameT);
     _bakeSkinnedSubmeshes(a.skinSubmeshes, a.bones.length);
+    // Drive bone-attached composite parts (De Rol Le fins/sting/tentacle)
+    // off the just-computed body bone matrices so they ride the animation.
+    if (a.boneAttachParts && a.boneAttachParts.length > 0) {
+      _updateBoneAttachments(a.boneAttachParts, a.bones.length);
+    }
     updateAnimationUi();
   }
 }
