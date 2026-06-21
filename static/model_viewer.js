@@ -409,6 +409,12 @@ function _tearDownPsov2Mixer() {
   a.psov2Clips = null;
   a.psov2Action = null;
   a.psov2Clock = 0;
+  // Lazy-motion bookkeeping (model-scoped — drop so the next model can't
+  // fetch a stale path or reuse the previous loader's clip list).
+  a.psov2Loader = null;
+  a.psov2MotionFetch = null;
+  if (a.psov2LazyPending) { try { a.psov2LazyPending.clear(); } catch {} }
+  a.psov2LazyPending = null;
 }
 
 function buildGeometry(shape) {
@@ -755,6 +761,20 @@ function setFallbackBanner(shape, reason) {
   if (!el) return;
   const why = reason ? `model unavailable: ${reason}` : "model unavailable";
   el.textContent = `primitive (${shape || "?"}) — ${why}`;
+  el.classList.add("model-mesh-fallback");
+  el.hidden = false;
+}
+
+// Banner for a motion-only archive (a BML that packs only .njm animation
+// chunks, no .nj/.xj mesh — e.g. NpcApcMot.bml). This is NOT a load
+// failure: there is simply nothing to render. Surfacing it distinctly
+// stops these archives from showing the misleading grey "model
+// unavailable" cube, while still telling the user what the file is.
+function setMotionOnlyBanner(motionCount) {
+  const el = $("#modelMeshStats");
+  if (!el) return;
+  const n = motionCount ? `${motionCount} ` : "";
+  el.textContent = `motion-only archive — ${n}animation(s), no mesh to render`;
   el.classList.add("model-mesh-fallback");
   el.hidden = false;
 }
@@ -2750,9 +2770,14 @@ async function _discoverBmlInners(bmlPath) {
     return null;
   }
   const inners = [];
+  let motionCount = 0;
+  let totalEntries = 0;
   for (const e of entries.entries || []) {
+    totalEntries++;
     if (/\.(nj|xj)$/i.test(e.name)) {
       inners.push({ name: e.name, kind: _classifyInner(e.name) });
+    } else if (/\.njm$/i.test(e.name)) {
+      motionCount++;
     }
   }
   return {
@@ -2760,6 +2785,12 @@ async function _discoverBmlInners(bmlPath) {
     inners,
     primaries: inners.filter((x) => x.kind === "primary").map((x) => x.name),
     destroyed: inners.filter((x) => x.kind === "destroyed").map((x) => x.name),
+    // Motion-only archives (e.g. NpcApcMot.bml = 120 .njm, 0 mesh inners)
+    // carry no geometry. The caller surfaces a clear "motion-only" banner
+    // instead of the misleading grey "model unavailable" cube.
+    motionOnly: inners.length === 0 && motionCount > 0,
+    motionCount,
+    totalEntries,
   };
 }
 
@@ -3582,9 +3613,16 @@ async function openByPath(modelPath, _entry, matchedTextures) {
   const inputIsBml = lowerModel.endsWith(".bml") && !modelPath.includes("#");
   let composited = false;
   let realLoaded = false;
+  let motionOnly = false;
   if (inputIsBml) {
     const info = await _discoverBmlInners(modelPath);
-    if (info && info.inners.length >= 1) {
+    if (info && info.motionOnly) {
+      // A motion-only BML (only .njm animation chunks, no mesh inner).
+      // There is nothing to render — surface a clear banner instead of
+      // the grey "model unavailable" cube and skip the mesh pipeline.
+      motionOnly = true;
+      state.bmlInnersInfo = info;
+    } else if (info && info.inners.length >= 1) {
       // The inner-picker only makes sense with 2+ inners.
       if (info.inners.length >= 2) {
         state.bmlInnersInfo = info;
@@ -3635,15 +3673,15 @@ async function openByPath(modelPath, _entry, matchedTextures) {
   // here first. The server-payload skinned/world-baked paths remain as
   // fallbacks (on parse/fetch failure, or for .xj which psov2 doesn't
   // handle).
-  if (!composited && isNj) {
+  if (!composited && !motionOnly && isNj) {
     realLoaded = await tryLoadPsov2NinjaModel(resolvedMeshPath, null);
   }
-  if (!composited && !realLoaded && isNj) {
+  if (!composited && !motionOnly && !realLoaded && isNj) {
     // psov2 path failed — fall back to the legacy server-payload skinned
     // pipeline (animation panel + bone re-bake).
     realLoaded = await tryLoadSkinnedMesh(resolvedMeshPath, null);
   }
-  if (!composited && !realLoaded) {
+  if (!composited && !motionOnly && !realLoaded) {
     // Skinned didn't work (or .xj model) — fall back to world-baked.
     realLoaded = await tryLoadRealMesh({ path: resolvedMeshPath });
     // World-baked path doesn't have an animation panel; hide it.
@@ -3651,7 +3689,15 @@ async function openByPath(modelPath, _entry, matchedTextures) {
     if (animBar) animBar.hidden = true;
     state.anim.skinned = false;
   }
-  if (!realLoaded) {
+  if (motionOnly) {
+    // Motion-only archive: nothing to render. Clear any prior mesh and
+    // show the dedicated banner instead of the grey cube fallback.
+    disposeMesh();
+    const animBar = $("#modelAnimBar");
+    if (animBar) animBar.hidden = true;
+    setMotionOnlyBanner(state.bmlInnersInfo && state.bmlInnersInfo.motionCount);
+    setStatus("motion-only archive (no mesh)");
+  } else if (!realLoaded) {
     // Fallback: build a primitive so the user sees something, but tag
     // the overlay so they know it's not the real geometry. Use the
     // immediate-fire path because this is the cold-load fallback and
@@ -5334,9 +5380,14 @@ function _installPsov2Motions(mesh, nativeMotions) {
   for (const c of clips) {
     if (c && c.name) clipMap.set(c.name, c);
   }
-  // Keep only motion descriptors that have a real clip (dropped/failed
-  // motions never reach the dropdown).
-  const motionDescs = nativeMotions.list.filter((m) => clipMap.has(m.name));
+  // LAZY MOTIONS (2026-06-21): _fetchNativeMotions now fetches ONLY the
+  // default motion's bytes upfront (commit ff8aefd stopped the per-open
+  // N-request flood that timed bosses out into the grey cube). So only the
+  // default clip is built here. We still list EVERY motion in the dropdown
+  // (from nativeMotions.list) and lazy-fetch + build any non-default clip
+  // the first time it's played (see _lazyBuildPsov2Motion / loadMotion).
+  // Show every motion that has a real clip OR can be lazily fetched.
+  const motionDescs = nativeMotions.list.slice();
   if (motionDescs.length === 0) {
     if (animBar) animBar.hidden = true;
     return;
@@ -5349,6 +5400,19 @@ function _installPsov2Motions(mesh, nativeMotions) {
   a.psov2Clock = 0;
   a.motions = motionDescs;
   a.loop = true;
+  // Stash everything the lazy per-motion fetch needs: the live psov2
+  // loader (its addAnimation() appends a built clip to loader.animList),
+  // the mesh (so we can copy the new clip onto geometry.animations), and
+  // the base/inner URL parts to rebuild the /api/animation_njm request.
+  a.psov2Loader = (mesh.userData && mesh.userData.ninjaLoader) || null;
+  a.psov2Mesh = mesh;
+  a.psov2MotionFetch = {
+    base: nativeMotions.base || null,
+    innerQuery: nativeMotions.innerQuery || "",
+  };
+  // In-flight lazy-fetch promises, keyed by motion name, so two rapid
+  // picks of the same motion share one request and never double-build.
+  a.psov2LazyPending = new Map();
 
   // Populate the Motions dropdown (#modelAnimSel). Mirrors
   // populateAnimationPanel's option layout so the existing change handler
@@ -5381,6 +5445,89 @@ function _installPsov2Motions(mesh, nativeMotions) {
     _psov2PlayMotion(autoName);
   } else {
     updateAnimationUi();
+  }
+}
+
+/**
+ * Lazily fetch a non-default psov2 motion's RAW NMDM bytes, build its
+ * THREE.AnimationClip via the live ninja loader, and cache it in the
+ * mixer's clip map. Returns the built clip (or null on failure).
+ *
+ * This is the on-demand half of the lazy-motion design: the open path
+ * only built the DEFAULT motion's clip (commit ff8aefd), so the first
+ * time the user selects another motion we fetch + build it here. The
+ * result is memoised in a.psov2Clips so re-selecting it is instant, and
+ * concurrent requests for the same motion share one in-flight promise.
+ */
+async function _lazyBuildPsov2Motion(motionName) {
+  const a = state.anim;
+  if (!a || !a.psov2 || !motionName) return null;
+  // Already built (default motion or a prior lazy fetch).
+  if (a.psov2Clips && a.psov2Clips.has(motionName)) {
+    return a.psov2Clips.get(motionName);
+  }
+  const loader = a.psov2Loader;
+  const fetchCtx = a.psov2MotionFetch;
+  if (!loader || !fetchCtx || !fetchCtx.base) return null;
+  // Coalesce concurrent requests for the SAME motion.
+  if (a.psov2LazyPending && a.psov2LazyPending.has(motionName)) {
+    return a.psov2LazyPending.get(motionName);
+  }
+
+  const run = (async () => {
+    const { base, innerQuery } = fetchCtx;
+    const url = `/api/animation_njm/${base}?${innerQuery ? innerQuery + "&" : ""}motion=${encodeURIComponent(motionName)}`;
+    let ab;
+    try {
+      const rr = await _lifecycleFetch(url);
+      if (!rr.ok) {
+        setAnimStatus(`motion fetch failed: ${motionName} (http ${rr.status})`);
+        return null;
+      }
+      ab = await rr.arrayBuffer();
+    } catch (e) {
+      if (_isAbortError(e)) return null;
+      console.warn(`model_viewer: lazy njm fetch failed for ${motionName}:`, e);
+      return null;
+    }
+    if (!ab || ab.byteLength <= 8) {
+      setAnimStatus(`motion has no data: ${motionName}`);
+      return null;
+    }
+    // Build the clip via the live loader. addAnimation() parses the NMDM
+    // bitstream and pushes the resulting clip onto loader.animList; we
+    // pull the newly-appended clip off the tail and rename it to the bare
+    // motion name (the dropdown key) for a 1:1 match.
+    let clip = null;
+    try {
+      const beforeLen = (loader.animList || []).length;
+      const bs = new _NinjaBitStream(`${motionName}.njm`, ab);
+      loader.addAnimation(bs);
+      const list = loader.animList || [];
+      if (list.length > beforeLen) {
+        clip = list[list.length - 1];
+        if (clip) clip.name = motionName;
+      }
+    } catch (e) {
+      console.warn(`model_viewer: lazy njm parse failed for ${motionName}:`, e);
+      return null;
+    }
+    if (!clip) return null;
+    if (!a.psov2Clips) a.psov2Clips = new Map();
+    a.psov2Clips.set(motionName, clip);
+    // Keep mesh.geometry.animations in sync so any consumer reading the
+    // canonical clip list (export, debug) sees the lazily-added motion.
+    const m = a.psov2Mesh || state.mesh;
+    if (m && m.geometry) m.geometry.animations = loader.animList || [];
+    return clip;
+  })();
+
+  if (!a.psov2LazyPending) a.psov2LazyPending = new Map();
+  a.psov2LazyPending.set(motionName, run);
+  try {
+    return await run;
+  } finally {
+    a.psov2LazyPending.delete(motionName);
   }
 }
 
@@ -5782,10 +5929,19 @@ async function populateAnimationPanel(modelPath) {
 async function loadMotion(motionName) {
   const a = state.anim;
 
-  // psov2 native-motion path: clips are already parsed + mounted on the
-  // mixer (no per-motion fetch). Route through the mixer player. The empty
-  // -name case (reset to bind pose) is handled inside _psov2PlayMotion.
+  // psov2 native-motion path. The default motion's clip is already built;
+  // any OTHER motion is lazy-fetched + built on first play (no per-open
+  // flood). Empty name (reset to bind pose) needs no clip. Route through
+  // the mixer player once the clip exists.
   if (a.psov2 && a.psov2Mixer) {
+    if (motionName && !(a.psov2Clips && a.psov2Clips.has(motionName))) {
+      setAnimStatus(`loading motion ${motionName}...`);
+      const clip = await _lazyBuildPsov2Motion(motionName);
+      if (!clip) {
+        // Fetch/parse failed — status already set by the lazy builder.
+        return;
+      }
+    }
     _psov2PlayMotion(motionName || "");
     return;
   }

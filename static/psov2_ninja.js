@@ -585,7 +585,17 @@ class NinjaModel {
       a: 1,
     };
 
+    // Hard iteration cap so a corrupt stream (e.g. the head/flag bytes never
+    // resolving to NJD_ENDOFF) can't spin forever. A valid model emits far
+    // fewer chunks than this; exceeding it means corruption — fail fast so
+    // the caller's server-side fallback takes over immediately.
+    let _chunkIters = 0;
+    const _CHUNK_ITER_CAP = 1 << 20;
+
     do {
+      if (++_chunkIters > _CHUNK_ITER_CAP) {
+        throw new Error("psov2: chunk loop iteration cap exceeded (corrupt stream)");
+      }
       chunk = {
         head: this.bs.readByte(),
         flag: this.bs.readByte(),
@@ -673,6 +683,18 @@ class NinjaModel {
         break;
       case 5:
         this.mem_stack = this.mem_stack || [];
+        // Guard against a corrupt/misaligned stream whose case-5 cache-list
+        // (NJD "restore offset") never terminates: restoreOfs rewinds the
+        // stream, and if it lands back on another case-5 the mem_stack grows
+        // without bound until `push` throws "Invalid array length" — which on
+        // a few ItemModelEp4.afs inners cost ~5s of unbounded looping before
+        // failing. Real Ninja models nest this only a handful deep; a high
+        // cap fails FAST on the pathological case (the caller then falls back
+        // to the server skinned mesh, which renders these in ~9ms) without
+        // touching the parse of the 2700+ valid models.
+        if (this.mem_stack.length >= 4096) {
+          throw new Error("psov2: NJD cache-list overflow (corrupt chunk stream)");
+        }
         this.mem_stack.push(this.bs.tell());
         this.bs.restoreOfs(chunk.flag);
         break;

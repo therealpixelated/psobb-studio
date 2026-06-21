@@ -279,16 +279,10 @@
   }
 
   // ── data-dir callout / header pill ───────────────────────────────
-  function refreshDataDir(info) {
-    info = info || {};
-    var path = info.data_dir || "";
-    var count = (typeof info.count === "number") ? info.count : null;
-    // `exists` defaults to true when a count is known and >0; the health
-    // probe (below) provides an authoritative value when available.
-    var exists = (typeof info.exists === "boolean")
-      ? info.exists
-      : (count != null ? count > 0 : true);
-
+  // Paint the data-dir callout/chip/header from a resolved info object.
+  // Pure DOM work — NO network. The health probe in refreshDataDir calls
+  // this directly so the authoritative repaint can't re-trigger a probe.
+  function paintDataDir(path, count, exists) {
     // Empty-state callout.
     var ddCode = $("#obDataDir");
     if (ddCode) ddCode.textContent = path || "(unknown)";
@@ -311,23 +305,47 @@
       hdr.classList.remove("dd-ok", "dd-warn");
       hdr.classList.add(exists && (count == null || count > 0) ? "dd-ok" : "dd-warn");
     }
+  }
+
+  // De-dupe guard: the health probe is a one-shot existence check, not a
+  // poll. Without this, the .then() below used to call refreshDataDir()
+  // again, which re-issued /api/health on every resolve — an unbounded
+  // recursion that flooded the endpoint with 1000+ requests. We probe at
+  // most once per session (re-armed only if the call itself fails).
+  var _healthProbeInFlight = false;
+  var _healthProbedPath = null;
+
+  function refreshDataDir(info) {
+    info = info || {};
+    var path = info.data_dir || "";
+    var count = (typeof info.count === "number") ? info.count : null;
+    // `exists` defaults to true when a count is known and >0; the health
+    // probe (below) provides an authoritative value when available.
+    var exists = (typeof info.exists === "boolean")
+      ? info.exists
+      : (count != null ? count > 0 : true);
+
+    paintDataDir(path, count, exists);
 
     // Authoritative existence check via /api/health (cheap, cached server
-    // side). Gate the chip on data_dir.exists, NOT health.ok.
+    // side). One-shot PER DATA-DIR PATH: paint the result DIRECTLY (never
+    // recurse back into refreshDataDir, which would re-probe and flood the
+    // endpoint). A genuine data-dir change (new path) re-arms the probe.
+    if (_healthProbeInFlight || _healthProbedPath === path) return;
+    _healthProbeInFlight = true;
     fetch("/api/health")
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (h) {
+        // Mark this path probed so steady-state repaints don't re-fetch.
+        _healthProbedPath = path;
         if (!h) return;
         var dd = (h.tools_resolved && h.tools_resolved.data_dir) || {};
         if (typeof dd.exists === "boolean") {
-          refreshDataDir({
-            data_dir: dd.path || path,
-            exists: dd.exists,
-            count: count,
-          });
+          paintDataDir(dd.path || path, count, dd.exists);
         }
       })
-      .catch(function () { /* offline / older server — keep the count-based guess */ });
+      .catch(function () { /* offline / older server — keep the count-based guess; allow a retry */ })
+      .finally(function () { _healthProbeInFlight = false; });
   }
 
   function ensureCategories() {

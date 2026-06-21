@@ -780,6 +780,47 @@ def _validate_bare_filename(name: str, *, label: str = "filename") -> str:
     return bare
 
 
+# Data-tree subdirectories that hold loadable model assets. The live
+# install keeps map meshes under ``scene/`` (e.g. scene/map_acave01_00s.nj),
+# which the manifest emits as forward-slash relative paths. The strict
+# bare-filename guard above forbids ALL path components, so these scene
+# meshes used to 400 ("invalid path") and render as the grey cube. We
+# allow a SINGLE known subdirectory prefix here while still resolving the
+# final path strictly inside the data root (the ``relative_to`` check in
+# the resolver rejects any ``..`` / absolute escape).
+_ALLOWED_MODEL_SUBDIRS = ("scene",)
+
+
+def _validate_contained_relpath(name: str, *, label: str = "path") -> str:
+    """Validate `name` is a bare filename OR a known-subdir-prefixed relpath.
+
+    Accepts either ``"foo.nj"`` (bare) or ``"scene/foo.nj"`` (a single
+    allowed subdirectory from ``_ALLOWED_MODEL_SUBDIRS`` + a bare basename).
+    Backslashes, ``..`` traversal, absolute paths, and any other / deeper
+    directory component are rejected. Returns the normalised forward-slash
+    relative path. The caller still re-validates containment via
+    ``relative_to`` after joining to the root.
+    """
+    if not name or not isinstance(name, str):
+        raise HTTPException(400, f"missing {label}")
+    if "\\" in name:
+        raise HTTPException(400, f"invalid {label} (path components forbidden)")
+    parts = name.split("/")
+    if len(parts) == 1:
+        # Bare filename — defer to the strict validator for parity.
+        return _validate_bare_filename(name, label=label)
+    if len(parts) == 2:
+        subdir, base = parts
+        if (
+            subdir in _ALLOWED_MODEL_SUBDIRS
+            and base
+            and base not in _INVALID_FILENAMES
+            and Path(base).name == base
+        ):
+            return f"{subdir}/{base}"
+    raise HTTPException(400, f"invalid {label} (path components forbidden)")
+
+
 def _validate_inner_name(inner: str, *, msg: str = "invalid inner name", required: bool = False) -> None:
     """Reject path separators or reserved names in a BML/AFS inner entry name.
 
@@ -874,14 +915,39 @@ def _resolve_under_roots(name: str, roots: tuple[Path, ...], *, label: str, miss
     raise HTTPException(404, missing_msg)
 
 
+def _resolve_under_roots_relpath(
+    name: str, roots: tuple[Path, ...], *, label: str, missing_msg: str
+) -> Path:
+    """Like `_resolve_under_roots` but accepts a known-subdir relpath.
+
+    Validates `name` with `_validate_contained_relpath` (bare basename OR
+    ``scene/<basename>``), then resolves it under the first matching root.
+    The post-join `relative_to` check still guarantees the result stays
+    strictly inside the root, so the relaxed prefix cannot be abused for
+    traversal. This is what lets ``scene/map_*.nj`` map meshes load
+    instead of rendering the grey cube.
+    """
+    rel = _validate_contained_relpath(name, label=label)
+    for root in roots:
+        candidate = (root / rel).resolve()
+        try:
+            candidate.relative_to(root)
+        except ValueError:
+            continue
+        if candidate.exists() and candidate.is_file():
+            return candidate
+    raise HTTPException(404, missing_msg)
+
+
 def _resolve_base_path(base: str) -> Path:
     """Resolve a BASE filename under DATA_DIR or LIVE_DATA_DIR (read-only).
 
     Same injection guard as `safe_data_path` but extends the search to
     LIVE_DATA_DIR. The DATA_DIR copy wins if both exist (matches the
-    precedence used by `_resolve_bml_path`).
+    precedence used by `_resolve_bml_path`). Also accepts a known
+    subdirectory relpath (``scene/<file>``) so map meshes resolve.
     """
-    return _resolve_under_roots(
+    return _resolve_under_roots_relpath(
         base,
         (DATA_DIR, LIVE_DATA_DIR),
         label="base",
@@ -8530,7 +8596,7 @@ def _resolve_model_mesh_path(path: str) -> Path:
     /api/model_mesh endpoint without polluting DATA_DIR.
     """
     subdiv_dir = (CACHE_DIR / "subdivided").resolve()
-    return _resolve_under_roots(
+    return _resolve_under_roots_relpath(
         path,
         (DATA_DIR, LIVE_DATA_DIR, subdiv_dir),
         label="path",

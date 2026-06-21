@@ -319,6 +319,60 @@ def materialize_inner(afs_path: Path, index: int, root_cache_dir: Path,
     archive — encoded in the parent dir's contents. We rebuild whenever
     the parent stat changes.
     """
+    # ---- FAST CACHE-HIT PATH (perf 2026-06-21) ------------------------
+    # The hot caller (server `_extract_afs_inner_bytes`) only consumes the
+    # returned *path*. The old flow read + fully parsed the ENTIRE archive
+    # (`read_bytes` + `parse_afs`) on EVERY call — even a cache hit — which
+    # for a 300+-inner archive like ItemModelEp4.afs meant re-indexing the
+    # whole AFS per inner. Under the every-model sweep that re-index ran
+    # hundreds of times and showed up as multi-second cold spikes. When the
+    # stat-key matches and the inner's cache file already exists, we can
+    # return it WITHOUT touching the archive at all. The `info` is rebuilt
+    # by sniffing the (tiny) cached blob — same keys, no archive read.
+    if not force:
+        sub = cache_dir_for(afs_path, root_cache_dir)
+        stat_file_fast = sub / "_archive.stat"
+        try:
+            cur_stat_fast = afs_path.stat()
+        except OSError:
+            cur_stat_fast = None
+        if cur_stat_fast is not None and stat_file_fast.exists():
+            cur_key_fast = f"{cur_stat_fast.st_size}-{int(cur_stat_fast.st_mtime)}"
+            try:
+                cached_key_fast = stat_file_fast.read_text(encoding="utf-8").strip()
+            except OSError:
+                cached_key_fast = ""
+            if cached_key_fast == cur_key_fast:
+                # Locate the already-materialised inner (any extension).
+                hit = None
+                for cand in sub.glob(f"{index:04d}.*"):
+                    if cand.is_file() and cand.stat().st_size > 0:
+                        hit = cand
+                        break
+                if hit is not None:
+                    # Sniff the small cached blob for fmt/cat (cheap), so the
+                    # returned info matches the slow path without re-reading
+                    # the archive. Decompressed bytes have a normal magic, so
+                    # sniff is reliable; `compressed` is unknown post-decode,
+                    # reported False (the cached bytes are already decoded).
+                    head = b""
+                    try:
+                        with hit.open("rb") as fh:
+                            head = fh.read(64)
+                    except OSError:
+                        head = b""
+                    fmt_fast, cat_fast, ext_fast = sniff_inner_format(head)
+                    info_fast = {
+                        "size": hit.stat().st_size,
+                        "inner_format": fmt_fast,
+                        "inner_category": cat_fast,
+                        "inner_ext": ext_fast or hit.suffix,
+                        "compressed": False,
+                        "warnings": [],
+                        "cached": True,
+                    }
+                    return hit, info_fast
+
     buf = afs_path.read_bytes()
     blobs = afs_mod.parse_afs(buf)
     if index < 0 or index >= len(blobs):

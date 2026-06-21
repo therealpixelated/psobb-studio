@@ -689,7 +689,11 @@ _DAT_BIN_FAMILY: list[tuple[str, str]] = [
     ("ws_data_*.bin",      "metadata"),
     ("ggerr_*.dat",        "metadata"),  # error-string tables
     ("ggerr_*.bin",        "metadata"),
-    ("npcplayerchar.dat",  "model"),     # NPC player-char model data
+    # NOT a mesh — magic is "NOL\0" (NPC roster/config table, fixed-size
+    # records). It carries no .nj/.xj geometry, so routing it as a "model"
+    # only ever yielded the grey "model unavailable" cube. Bucket it as
+    # metadata alongside the other NOL/string data tables.
+    ("npcplayerchar.dat",  "metadata"),  # NPC roster table (NOL), not a mesh
 ]
 
 
