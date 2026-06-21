@@ -427,7 +427,11 @@ aside#assetTree pso-asset-tree {
   /* host is display:flex; this keeps the light-DOM box block-level so
      the flex sizing applies (a bare custom element is inline by default). */
   display: block;
-  overflow: hidden;
+  /* 2026-06-20 (scroll regression fix): the host IS the scroll container.
+     Its shadow content (~5000px of tree rows) far exceeds the host's
+     flex box (~700px), so overflow-y:auto gives a real, visible, usable
+     scrollbar. `overflow:hidden` here was what removed scrolling entirely. */
+  overflow-y: auto;
 }
 
 /* ────────────────────────────────────────────────────────────── */
@@ -474,6 +478,13 @@ body {
   flex-direction: column;
   font-size: 13px;
   -webkit-font-smoothing: antialiased;
+  /* 2026-06-20 (scroll regression fix): fixed-viewport app shell. The
+     body must NOT grow with content — otherwise height:100% children
+     (the asset tree, panels) resolve against grown content and never get
+     a bounded box to scroll inside, so long lists become unreachable.
+     Clip at the body so every panel scrolls INTERNALLY (psov2 behaviour). */
+  height: 100vh;
+  overflow: hidden;
 }
 
 [hidden] { display: none !important; }
