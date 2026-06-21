@@ -5263,41 +5263,41 @@ async function _fetchNativeMotions(modelPath, signal) {
     return null;
   }
 
-  // Fetch raw NMDM bytes for every motion in parallel (bounded by the
-  // motion count, typically < 12). Each uses the SAME ?motion= resolver
-  // as the listing, so names line up 1:1.
+  // PERF (2026-06-21): fetch ONLY the DEFAULT motion's NMDM bytes upfront.
+  // Eagerly fetching EVERY motion's bytes (one /api/animation_njm request per
+  // motion) BLOCKED the mesh open behind N requests — a ~15-motion boss with
+  // several inners flooded the backend (the de_rol_le/dragon composite opens
+  // took 11-30+s and timed out -> grey cube). The Motions dropdown still lists
+  // ALL motions (from listData); a non-default motion lazy-loads its bytes the
+  // first time it's played (see _lazyFetchMotionBuffer / loadMotion).
   const buffers = new Map();
-  await Promise.all(listData.motions.map(async (m) => {
-    const url = `/api/animation_njm/${base}?${innerQuery ? innerQuery + "&" : ""}motion=${encodeURIComponent(m.name)}`;
-    try {
-      const rr = await _fetch(url);
-      if (!rr.ok) return;
-      const ab = await rr.arrayBuffer();
-      if (ab && ab.byteLength > 8) buffers.set(m.name, ab);
-    } catch (e) {
-      if (!_isAbortError(e)) {
-        console.warn(`model_viewer: njm raw fetch failed for ${m.name}:`, e);
-      }
-    }
-  }));
-
-  if (buffers.size === 0) return null;
-
-  // Default motion name (walk/idle/etc. per the backend resolver).
   let defaultName = null;
   if (listData.default_index != null && listData.default_index >= 0 &&
       listData.default_index < listData.motions.length) {
     const d = listData.motions[listData.default_index];
-    if (d && buffers.has(d.name)) defaultName = d.name;
+    if (d && d.name) defaultName = d.name;
   }
-  // Fall back to the first motion that actually decoded.
-  if (!defaultName) {
-    for (const m of listData.motions) {
-      if (buffers.has(m.name)) { defaultName = m.name; break; }
+  if (!defaultName && listData.motions[0]) defaultName = listData.motions[0].name;
+
+  if (defaultName) {
+    const url = `/api/animation_njm/${base}?${innerQuery ? innerQuery + "&" : ""}motion=${encodeURIComponent(defaultName)}`;
+    try {
+      const rr = await _fetch(url);
+      if (rr.ok) {
+        const ab = await rr.arrayBuffer();
+        if (ab && ab.byteLength > 8) buffers.set(defaultName, ab);
+      }
+    } catch (e) {
+      if (!_isAbortError(e)) {
+        console.warn(`model_viewer: njm raw fetch failed for ${defaultName}:`, e);
+      }
     }
   }
 
-  return { list: listData.motions, default: defaultName, buffers };
+  // Even if the default failed to decode, return the list so the dropdown
+  // still shows every motion name (each lazy-loads on demand). base +
+  // innerQuery are carried so the lazy fetch can build the same URL.
+  return { list: listData.motions, default: buffers.has(defaultName) ? defaultName : null, buffers, base, innerQuery };
 }
 
 /**
