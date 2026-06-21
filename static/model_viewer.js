@@ -6238,19 +6238,15 @@ window.psoReloadTexture = async function (tileIdx) {
       state.boundTextures.set(mid, fresh);
     }
   }
-  // Walk the live mesh group and re-bind material.map. Property name
-  // matches mesh.userData.materialId (camelCase) set by
-  // buildMeshGroupFromPayload.
-  if (state.meshGroup) {
-    state.meshGroup.traverse((c) => {
-      if (!c.isMesh) return;
-      const mid = c.userData && c.userData.materialId;
-      if (matIds.indexOf(mid | 0) < 0) return;
-      if (c.material) {
-        c.material.map = fresh;
-        c.material.needsUpdate = true;
-      }
-    });
+  // Re-bind onto the live mesh via psoSetMaterialTexture, which handles BOTH
+  // the legacy single-material mesh (c.material.map) AND the psov2
+  // multi-material SkinnedMesh (c.material[slot].map via
+  // userData.materialGroups). The old bespoke userData.materialId walk was a
+  // silent NO-OP on the psov2 path: c.material is an Array there (so
+  // `c.material.map = fresh` drops onto undefined) and userData.materialId is
+  // undefined on the single multi-material mesh — so an upscale never showed.
+  for (const mid of matIds) {
+    window.psoSetMaterialTexture(mid, fresh);
   }
   // Paint the new texture on demand.
   requestRender();
