@@ -380,9 +380,13 @@ class NinjaModel {
         mat.blending = 2;
       }
 
-      if (this.matList[i].doubleSide) {
-        mat.side = THREE.DoubleSide;
-      }
+      // DEFECT #3 (hole-in-top-of-head): PSO Ninja strips are authored
+      // single-winding, and many caps (scalp, palms, soles) rely on the
+      // fixed-function pipeline NOT culling. psov2 only set DoubleSide
+      // when the strip flag bit was present, so single-winding caps
+      // culled to holes on our path. Default EVERY psov2 material to
+      // DoubleSide; the per-flag doubleSide is now a no-op superset.
+      mat.side = THREE.DoubleSide;
 
       if (this.matList[i].texId !== -1 && this.texList[this.matList[i].texId]) {
         mat.map = this.texList[this.matList[i].texId];

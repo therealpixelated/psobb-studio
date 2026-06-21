@@ -906,6 +906,39 @@ function deriveTextureArchivePath(meshUrl, filename, hint) {
 }
 
 /**
+ * Resolve ONE binding row to the concrete `{archive, tile}` the
+ * `/api/tile_png/<archive>/<tile>` endpoint serves. Handles the three
+ * binding `source` kinds (in_bml / cross_bml / cross_afs) identically
+ * to the legacy fetch path. Returns null when the row carries no usable
+ * source (e.g. `missing` with no cross-archive fallback).
+ *
+ * Shared by `fetchBoundTextures` (texture upload) and
+ * `psoListMeshTextures` (panel thumbnails) so both agree on the URL.
+ */
+function resolveBindingRowTile(b, archivePath) {
+  if (!b) return null;
+  if (b.missing && b.source !== "cross_bml" && b.source !== "cross_afs") return null;
+  const src = b.source || (b.missing ? "missing" : "in_bml");
+  let arch = archivePath;
+  let tile = b.tile_index | 0;
+  if (src === "cross_bml" && b.cross_bml && b.cross_bml.bml && b.cross_bml.inner) {
+    arch = `${b.cross_bml.bml}#${b.cross_bml.inner}.xvm`;
+    tile = (b.cross_bml.xvr_index | 0);
+  } else if (src === "cross_afs" && b.cross_afs && b.cross_afs.archive && b.cross_afs.inner_index >= 0) {
+    const archive = String(b.cross_afs.archive);
+    const idx = b.cross_afs.inner_index | 0;
+    const stem = archive.replace(/\.afs$/i, "");
+    const idx4 = String(idx).padStart(4, "0");
+    arch = `${archive}#${idx4}_${stem}_${idx4}.xvr`;
+    tile = (b.cross_afs.xvr_index | 0);
+    if (tile < 0) tile = 0;
+  } else if (!arch) {
+    return null;
+  }
+  return { archive: arch, tile };
+}
+
+/**
  * Fetch and decode all per-mesh textures listed in `binding`.
  *
  * Walks the binding array, deduplicates `tile_index` values, fetches
@@ -948,39 +981,10 @@ async function fetchBoundTextures(archivePath, binding) {
   const wanted = new Map();   // fetchKey -> {archive, tile}
   const rowKeys = new Map();  // material_id -> fetchKey
   for (const b of binding) {
-    if (b.missing && b.source !== "cross_bml" && b.source !== "cross_afs") continue;
-    const src = b.source || (b.missing ? "missing" : "in_bml");
-    let arch = archivePath;
-    let tile = b.tile_index | 0;
-    if (src === "cross_bml" && b.cross_bml && b.cross_bml.bml && b.cross_bml.inner) {
-      // Sibling-BML archive path. Backend's
-      // _build_model_texture_binding stamps the cross_bml.inner with
-      // the .nj/.xj source extension already; we just append .xvm.
-      arch = `${b.cross_bml.bml}#${b.cross_bml.inner}.xvm`;
-      tile = (b.cross_bml.xvr_index | 0);
-    } else if (src === "cross_afs" && b.cross_afs && b.cross_afs.archive && b.cross_afs.inner_index >= 0) {
-      // Sibling-AFS archive path. The server's _parse_afs_inner_name
-      // accepts "NNNN_<basename>" as the inner-name shape; we use the
-      // archive stem twice so the cached file lands at
-      // cache/afs/<stem>/<NNNN>.xvr (afs_reader.cache_path_for_inner).
-      // The server wraps bare XVRs in a synthesised single-record XVMH
-      // before handing the path to extract_tiles, so tile 0 of the
-      // wrapped archive IS the texture for this slot.
-      const archive = String(b.cross_afs.archive);
-      const idx = b.cross_afs.inner_index | 0;
-      const stem = archive.replace(/\.afs$/i, "");
-      const idx4 = String(idx).padStart(4, "0");
-      arch = `${archive}#${idx4}_${stem}_${idx4}.xvr`;
-      // For bare-XVR AFS rows, xvr_index is always 0 (single record);
-      // for XVM-wrapped AFS rows (Item*.afs), xvr_index >= 0 selects
-      // which XVRT inside the inner XVM container.
-      tile = (b.cross_afs.xvr_index | 0);
-      if (tile < 0) tile = 0;
-    } else if (!arch) {
-      continue;
-    }
-    const k = fetchKey(arch, tile);
-    wanted.set(k, { archive: arch, tile });
+    const resolved = resolveBindingRowTile(b, archivePath);
+    if (!resolved) continue;
+    const k = fetchKey(resolved.archive, resolved.tile);
+    wanted.set(k, { archive: resolved.archive, tile: resolved.tile });
     rowKeys.set(b.material_id | 0, k);
   }
 
@@ -2106,17 +2110,29 @@ function init() {
 
   $("#modelWireframe").addEventListener("change", (e) => {
     state.wireframe = !!e.target.checked;
+    // DEFECT #4: a multi-material mesh (every psov2 SkinnedMesh, the
+    // skinned/world-baked groups) carries a material ARRAY, so
+    // `mesh.material.wireframe = …` set a property on the Array object
+    // and silently no-op'd. Walk the array (and the single-material
+    // case) so the toggle reaches each material. setMaterialWireframe
+    // also covers state.mesh when it's the SkinnedMesh directly (not a
+    // Group), which is how the psov2 path assigns it.
+    const setWire = (mat) => {
+      if (!mat) return;
+      if (Array.isArray(mat)) {
+        mat.forEach((m) => { if (m) { m.wireframe = state.wireframe; m.needsUpdate = true; } });
+      } else {
+        mat.wireframe = state.wireframe;
+        mat.needsUpdate = true;
+      }
+    };
     if (state.mesh) {
       if (state.mesh.isGroup) {
         state.mesh.traverse((c) => {
-          if (c.isMesh && c.material) {
-            c.material.wireframe = state.wireframe;
-            c.material.needsUpdate = true;
-          }
+          if (c.isMesh) setWire(c.material);
         });
-      } else if (state.mesh.material) {
-        state.mesh.material.wireframe = state.wireframe;
-        state.mesh.material.needsUpdate = true;
+      } else {
+        setWire(state.mesh.material);
       }
     }
     requestRender();
@@ -4091,39 +4107,100 @@ function _psov2TextureArchive(modelPath) {
 
 /**
  * Build the psov2 `texList` (Array<THREE.Texture> indexed by chunk
- * texId) from OUR decoded tiles. We fetch exactly the tile indices the
- * model's materials reference (psov2 binds per-material texId), so a
- * model that uses tex 0..5 fetches tiles 0..5. Missing tiles resolve to
- * undefined and getModel() leaves that material un-mapped (flat), never
- * crashing. Returns { texList, fetched } where `fetched` are the live
- * textures (for disposal bookkeeping).
+ * texId) using the SERVER-RESOLVED texture binding.
+ *
+ * Why the server binding (not a naive `<model>.nj.xvm` sibling fetch):
+ * many PSOBB models — most visibly the player bodies (`pl[A-Z]bdy00.nj`)
+ * — carry NO inline XVM appendix. Their textures live in a SEPARATE
+ * archive (`pl[A-Z]tex.afs`) and bind by `material_id`/positional slot.
+ * The reference psov2 resolves these by hand (`AssetPlayer.js` pulls
+ * `plBtex.afs` tiles and remaps them into the body's small texId space).
+ * Our server already computes the equivalent mapping in
+ * `_build_model_texture_binding`, returning per-`material_id` rows whose
+ * `source` is `in_bml` / `cross_afs` / `cross_bml`. Crucially, for an NJ
+ * model the server's `material_id` IS the chunk texId (see
+ * formats/material.py: `material_id = cur_tex_id`), so a binding row's
+ * `material_id` indexes the psov2 texList directly.
+ *
+ * We fetch `/api/model_textures/<modelPath>` for the binding, then reuse
+ * `fetchBoundTextures()` (the same in_bml/cross_afs/cross_bml resolver
+ * the legacy skinned path uses) to turn the binding into a
+ * `Map<material_id, THREE.Texture>`. Indexing that map by material_id ==
+ * texId yields the texList `getModel()` expects.
+ *
+ * Returns `{ texList, fetched, binding, archive }`:
+ *   texList  — Array<THREE.Texture> indexed by chunk texId (sparse).
+ *   fetched  — flat list of unique textures (for disposal bookkeeping).
+ *   binding  — the raw binding rows (for the texture panel + reset).
+ *   archive  — the in_bml archive path (for the texture panel thumbs).
  */
-async function _psov2BuildTexList(archive, texIds) {
+async function _psov2BuildTexList(modelPath, texIds) {
+  const archive = _psov2TextureArchive(modelPath);
+  const empty = { texList: [], fetched: [], binding: [], archive };
+
+  // Step 1: ask the server for the resolved per-material binding. This
+  // covers cross_afs (player bodies) / cross_bml / in_bml uniformly.
+  let binding = [];
+  try {
+    const r = await _lifecycleFetch(
+      `/api/model_textures/${encodeURIComponent(modelPath)}`,
+    );
+    if (r.ok) {
+      const j = await r.json();
+      binding = Array.isArray(j.binding) ? j.binding : [];
+    } else {
+      console.warn(
+        `model_viewer: psov2 model_textures ${modelPath} -> http ${r.status}`,
+      );
+    }
+  } catch (e) {
+    if (_isAbortError(e)) return empty;
+    console.warn(`model_viewer: psov2 model_textures fetch failed:`, e);
+  }
+
+  // Step 2: resolve the binding rows to live THREE.Textures, keyed by
+  // material_id, via the shared resolver. If the server gave us nothing
+  // (older build / no binding), fall back to a positional fetch against
+  // the in_bml archive so an inline-XVM model still textures.
+  let texByMid = new Map();
+  if (binding.length > 0) {
+    texByMid = await fetchBoundTextures(archive, binding);
+  }
+  if (texByMid.size === 0) {
+    // Positional fallback: fetch tile == texId directly from the
+    // in_bml archive (the original behaviour, kept for inline-XVM
+    // models the binding endpoint can't enumerate).
+    const ids = Array.from(
+      new Set(texIds.filter((n) => Number.isInteger(n) && n >= 0)),
+    );
+    const results = await Promise.all(
+      ids.map((id) => loadTileTexture(archive, id)),
+    );
+    ids.forEach((id, i) => {
+      if (results[i]) texByMid.set(id, results[i]);
+    });
+  }
+
+  // Step 3: project the material_id->texture map into the texId-indexed
+  // texList getModel() wires (`mat.map = texList[texId]`). For NJ models
+  // material_id === texId, so this is a direct index. Dedupe the live
+  // textures for disposal bookkeeping.
   const texList = [];
+  const seen = new Set();
   const fetched = [];
-  // Dedupe the requested ids; fetch in parallel.
-  const ids = Array.from(new Set(texIds.filter((n) => Number.isInteger(n) && n >= 0)));
-  const results = await Promise.all(ids.map((id) => loadTileTexture(archive, id)));
-  ids.forEach((id, i) => {
-    const tex = results[i];
-    if (tex) {
-      // psov2's NinjaTexture stamped `.transparent` so getModel() could
-      // flip alphaTest. Our loadTileTexture already sets flipY=false +
-      // MirroredRepeatWrapping (matches the psov2 object-texture default);
-      // mark transparent so getModel()'s alphaTest branch can engage when
-      // the source PNG carries alpha.
-      if (tex.transparent === undefined) {
-        const img = tex.image;
-        // Heuristic: PNGs decoded by THREE keep their alpha channel; we
-        // can't cheaply scan pixels here, so default transparent=false and
-        // let the material's own blend flags (from the NJ chunk) drive it.
-        tex.transparent = false;
-      }
-      texList[id] = tex;
+  for (const [mid, tex] of texByMid.entries()) {
+    if (!tex) continue;
+    // psov2's NinjaTexture stamped `.transparent` so getModel() could
+    // flip alphaTest. We leave it false unless explicitly set; the
+    // NJ chunk's own blend flags drive transparency on our path.
+    if (tex.transparent === undefined) tex.transparent = false;
+    texList[mid | 0] = tex;
+    if (!seen.has(tex)) {
+      seen.add(tex);
       fetched.push(tex);
     }
-  });
-  return { texList, fetched };
+  }
+  return { texList, fetched, binding, archive };
 }
 
 async function tryLoadPsov2NinjaModel(modelPath, hint) {
@@ -4177,15 +4254,20 @@ async function tryLoadPsov2NinjaModel(modelPath, hint) {
   }
   const texIds = (loader.matList || []).map((mm) => mm.texId).filter((n) => n >= 0);
 
-  // Step 3: bind OUR tiles as the texList.
-  const archive = _psov2TextureArchive(modelPath);
+  // Step 3: bind OUR tiles as the texList via the server-resolved
+  // binding (handles player-body cross_afs textures, cross_bml, and
+  // inline-XVM uniformly — see _psov2BuildTexList).
+  let archive = _psov2TextureArchive(modelPath);
   let texList = [];
   let fetchedTextures = [];
+  let psov2Binding = [];
   if (texIds.length > 0) {
     try {
-      const built = await _psov2BuildTexList(archive, texIds);
+      const built = await _psov2BuildTexList(modelPath, texIds);
       texList = built.texList;
       fetchedTextures = built.fetched;
+      psov2Binding = built.binding || [];
+      archive = built.archive || archive;
     } catch (e) {
       console.warn(`model_viewer: psov2 texlist fetch failed for ${archive}:`, e);
     }
@@ -4213,6 +4295,13 @@ async function tryLoadPsov2NinjaModel(modelPath, hint) {
   const group = new THREE.Group();
   group.add(mesh);
 
+  // getModel() builds MeshBasicMaterials without honouring the current
+  // wireframe toggle (unlike the world-baked path which bakes it in), so
+  // re-apply state.wireframe if it's already on when this model loads.
+  if (state.wireframe && Array.isArray(mesh.material)) {
+    mesh.material.forEach((m) => { if (m) { m.wireframe = true; m.needsUpdate = true; } });
+  }
+
   let aabb = new THREE.Box3();
   const posAttr = mesh.geometry.getAttribute("position");
   if (posAttr && posAttr.count > 0) {
@@ -4232,12 +4321,22 @@ async function tryLoadPsov2NinjaModel(modelPath, hint) {
   ensureRenderer();
   disposeMesh();
   // Register textures in boundTextures so disposeMesh frees them on the
-  // next model swap (avoids one-GPU-texture-per-open leak).
+  // next model swap (avoids one-GPU-texture-per-open leak). Key by
+  // material_id (== chunk texId on the NJ path) so the texture panel's
+  // psoListMeshTextures()/psoReloadTexture() — which look up
+  // state.boundTextures.get(material_id) — resolve the live texture.
   const boundMap = new Map();
-  fetchedTextures.forEach((t, i) => boundMap.set(i, t));
+  for (let texId = 0; texId < texList.length; texId++) {
+    const t = texList[texId];
+    if (t) boundMap.set(texId, t);
+  }
   state.boundTextures = boundMap;
   state.boundTextureArchive = archive;
-  state.boundBinding = [];
+  // Expose the server binding so the texture-list panel populates (defect
+  // #5) and the reset/upscale hooks can resolve tiles (defect #6). Rows
+  // are {material_id, tile_index, source, ...}; psoListMeshTextures
+  // buckets by tile_index.
+  state.boundBinding = psov2Binding;
   state.mesh = group;
   state.meshGroup = group;
   state.realMesh = true;
@@ -4795,6 +4894,30 @@ window.psoGetCurrentTextureArchive = function () {
   return state.boundTextureArchive || null;
 };
 
+// Read-only diagnostic: flatten the currently-rendered mesh's materials
+// into a plain summary (map presence, side, wireframe, vertexColors).
+// Used by render-polish verification + future debugging; never mutates.
+window.psoDebugMeshMaterials = function () {
+  const mats = [];
+  const collect = (m) => {
+    if (!m) return;
+    if (Array.isArray(m)) m.forEach(collect);
+    else mats.push(m);
+  };
+  const root = state.mesh;
+  if (root) {
+    if (root.isGroup) root.traverse((c) => { if (c.isMesh) collect(c.material); });
+    else collect(root.material);
+  }
+  return mats.map((m) => ({
+    hasMap: !!m.map,
+    mapSize: m.map && m.map.image ? `${m.map.image.width || 0}x${m.map.image.height || 0}` : null,
+    side: m.side,
+    wireframe: !!m.wireframe,
+    vertexColors: !!m.vertexColors,
+  }));
+};
+
 // Return the binding rows for the currently-rendered mesh:
 //   [{material_id, tile_index, missing?, ...}, ...]
 // Comes straight from /api/model_mesh's payload.binding (verbatim),
@@ -4815,22 +4938,29 @@ window.psoGetTextureBinding = function () {
 window.psoListMeshTextures = function () {
   const arch = state.boundTextureArchive;
   const binding = Array.isArray(state.boundBinding) ? state.boundBinding : [];
-  if (!arch || binding.length === 0) return [];
-  // Bucket bindings by tile_index.
-  const byTile = new Map();
+  if (binding.length === 0) return [];
+  // Bucket bindings by the RESOLVED (archive, tile) so cross_afs rows
+  // (player bodies — all tile_index 0 but distinct inner archives) show
+  // as separate rows with correct thumbnails, not collapsed into one.
+  // The bucket KEY is the resolved archive#tile; the displayed
+  // tile_index/archive come from the resolution too.
+  const byKey = new Map();   // key -> {archive, tile, mids: []}
   for (const b of binding) {
     if (b == null) continue;
-    if (b.missing) continue;
-    const ti = b.tile_index | 0;
-    if (!byTile.has(ti)) byTile.set(ti, []);
-    byTile.get(ti).push(b.material_id | 0);
+    const resolved = resolveBindingRowTile(b, arch);
+    if (!resolved) continue;
+    const key = `${resolved.archive}${resolved.tile}`;
+    if (!byKey.has(key)) {
+      byKey.set(key, { archive: resolved.archive, tile: resolved.tile, mids: [] });
+    }
+    byKey.get(key).mids.push(b.material_id | 0);
   }
   const out = [];
-  for (const [tile, mids] of byTile) {
+  for (const { archive, tile, mids } of byKey.values()) {
     let w = null, h = null;
-    // Pull dims from the THREE.Texture image — every material_id in
-    // this bucket points at the same texture object, so we only check
-    // the first one.
+    // Pull dims from the THREE.Texture image (keyed by material_id ==
+    // texId on the psov2 path). Every material_id in this bucket points
+    // at the same texture object, so we only check the first one.
     const firstMid = mids[0];
     const tex = state.boundTextures && state.boundTextures.get
       ? state.boundTextures.get(firstMid)
@@ -4844,12 +4974,16 @@ window.psoListMeshTextures = function () {
       material_ids: mids.slice().sort((a, b) => a - b),
       width: w,
       height: h,
-      archive: arch,
-      thumbnail_url: `/api/tile_png/${encodeURIComponent(arch)}/${tile}`,
+      archive: archive,
+      thumbnail_url: `/api/tile_png/${encodeURIComponent(archive)}/${tile}`,
     });
   }
-  // Stable sort by tile_index for deterministic display.
-  out.sort((a, b) => a.tile_index - b.tile_index);
+  // Stable sort by archive then tile for deterministic display.
+  out.sort((a, b) =>
+    a.archive === b.archive
+      ? a.tile_index - b.tile_index
+      : (a.archive < b.archive ? -1 : 1),
+  );
   return out;
 };
 
