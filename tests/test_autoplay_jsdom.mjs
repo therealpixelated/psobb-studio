@@ -81,8 +81,17 @@ window.psoEditor = { state: { tileEdits: {} } };
 
 // Load model_viewer.js into the jsdom context
 const code = readFileSync(resolve(REPO, 'static/model_viewer.js'), 'utf8');
-// Strip the import statement at top
-const stripped = code.replace(/^import \* as THREE.*$/m, '// THREE injected');
+// Strip ALL top-level `import ... from ...` statements (the module is run
+// via `new Function`, which can't parse ES import syntax). The THREE
+// binding is injected as a Function arg below; the psov2 ninja loader
+// bindings (parseNinjaModel / BitStream) are stubbed because this test
+// exercises the LEGACY skinned path (psoOpenSkinnedModel), which never
+// reaches the psov2 loader.
+const stripped = code
+  .replace(/^import \* as THREE.*$/m, '// THREE injected')
+  .replace(/^import \{[^}]*\}\s+from\s+["'][^"']*psov2_ninja\.js["'];?$/m,
+           'const parseNinjaModel = () => { throw new Error("psov2 not stubbed"); };'
+           + ' const _NinjaBitStream = function(){};');
 
 // Run code inside the window context
 const fn = new window.Function(stripped);

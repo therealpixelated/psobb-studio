@@ -27,7 +27,7 @@ import * as THREE from "https://unpkg.com/three@0.160.0/build/three.module.js";
 // (raw inner NJ bytes from /api/raw_nj -> parseNinjaModel -> SkinnedMesh)
 // INSTEAD of the diverged server-side reconstruction. The old skinned /
 // world-baked paths remain as fallbacks for non-.nj assets and on error.
-import { parseNinjaModel } from "/static/psov2_ninja.js";
+import { parseNinjaModel, BitStream as _NinjaBitStream } from "/static/psov2_ninja.js";
 
 const $ = (s) => document.querySelector(s);
 
@@ -49,6 +49,35 @@ function _isAbortError(e) {
     return window.psoAssetLifecycle.isAbort(e);
   }
   return e && e.name === "AbortError";
+}
+
+// fix/perf — epoch generation guard.
+//
+// The lifecycle's beginAsset() bumps an epoch + aborts the prior fetch
+// controller on every model open. But abort only cancels in-flight
+// fetches; a parse/build that ALREADY resolved still runs to completion
+// and would commit its (now stale) mesh to the scene. On a rapid
+// A->B->C switch that produces the documented flicker/clobber — A and B
+// both paint before C, and a slow A can even land LAST and clobber C.
+//
+// `_currentEpoch()` snapshots the active generation at the START of an
+// open; `_epochStale(snapshot)` returns true once a NEWER open has begun.
+// Every long async model path checks this just before it mutates the
+// shared scene (disposeMesh + scene.add) and bails if stale, so only the
+// most-recent open ever commits.
+function _currentEpoch() {
+  if (window.psoAssetLifecycle && typeof window.psoAssetLifecycle.epoch === "function") {
+    return window.psoAssetLifecycle.epoch();
+  }
+  return 0;
+}
+
+function _epochStale(snapshot) {
+  // No lifecycle module (unit-test harness) → never stale.
+  if (!(window.psoAssetLifecycle && typeof window.psoAssetLifecycle.epoch === "function")) {
+    return false;
+  }
+  return _currentEpoch() !== snapshot;
 }
 
 const state = {
@@ -314,7 +343,13 @@ function disposeMesh() {
   // resource so we MUST dispose them or the tab leaks one texture per
   // model open. The single-tile `state.texture` is managed separately
   // (it can outlive a mesh swap if the user only changed shapes).
+  //
+  // fix/perf — textures held by the parsed-model LRU cache are owned by
+  // the cache (so a re-open stays instant + textured); they must survive
+  // this swap. The cache disposes them itself on LRU eviction. Only
+  // dispose textures that NO live cache entry references.
   for (const tex of state.boundTextures.values()) {
+    if (_psov2TextureIsCached(tex)) continue;
     try { tex.dispose(); } catch {}
   }
   state.boundTextures = new Map();
@@ -818,6 +853,260 @@ function prefetchModelBundle(modelPath) {
 function _invalidateBundle(modelPath) {
   if (modelPath) _bundleCache.delete(modelPath);
   if (modelPath === _lastBundlePath) _lastBundlePath = null;
+}
+
+// ---- parsed-model LRU cache (fix/perf) -----------------------------
+//
+// Re-opening a recently-viewed `.nj` model used to re-run the FULL cold
+// pipeline: /api/raw_nj -> parse -> texlist fetch -> N njm fetches ->
+// re-parse. The network legs dominate (server first-decode is ~1s cold);
+// the client parse is cheap (~1-3ms). So we cache the SLOW-to-fetch raw
+// inputs (the decoded NJ ArrayBuffer, the resolved THREE.Textures, the
+// raw motion buffers + names, and the binding metadata) keyed by the
+// RESOLVED model path. On a cache hit we re-parse the bytes (cheap) into
+// a FRESH THREE.Group per open — never sharing a Group/geometry across
+// scene commits — and re-wire the already-resolved textures.
+//
+// GPU discipline: the cached THREE.Textures are shared with the live
+// mesh while it's on screen. disposeMesh() frees the *materials* but the
+// texture objects are owned by this cache, so we DON'T dispose them on a
+// normal model swap (that would break the cached entry). Instead the LRU
+// disposes a texture's GPU resource ONLY when its entry is EVICTED and is
+// not the currently-displayed model. This keeps re-opens instant without
+// leaking one GPU texture set per distinct model beyond the LRU bound.
+const PSOV2_MODEL_CACHE_MAX = 8;
+/** @type {Map<string, {buf:ArrayBuffer, texList:Array, fetched:Array, binding:Array, archive:string, motionBuffers:Array, motionNames:Array, nativeMotions:Object|null, texIds:Array}>} */
+const _psov2ModelCache = new Map();
+
+/** Mark `key` most-recently-used (Map preserves insertion order). */
+function _psov2CacheTouch(key) {
+  const v = _psov2ModelCache.get(key);
+  if (v === undefined) return undefined;
+  _psov2ModelCache.delete(key);
+  _psov2ModelCache.set(key, v);
+  return v;
+}
+
+/**
+ * Insert/replace a parsed-model entry and evict the LRU tail past the
+ * bound. Evicted textures get their GPU resource freed UNLESS they're
+ * still referenced by the on-screen model (`keepArchive` === the live
+ * model's path) — disposing a live texture would blank the viewport.
+ */
+function _psov2CacheStore(key, entry) {
+  if (_psov2ModelCache.has(key)) _psov2ModelCache.delete(key);
+  _psov2ModelCache.set(key, entry);
+  while (_psov2ModelCache.size > PSOV2_MODEL_CACHE_MAX) {
+    const oldestKey = _psov2ModelCache.keys().next().value;
+    const old = _psov2ModelCache.get(oldestKey);
+    _psov2ModelCache.delete(oldestKey);
+    if (old && oldestKey !== state.realMeshArchive) {
+      for (const t of (old.fetched || [])) { try { t.dispose(); } catch {} }
+    }
+  }
+}
+
+/** True if a THREE.Texture is referenced by ANY live parsed-model cache
+ *  entry. disposeMesh() consults this so it never frees a texture the
+ *  cache still owns (which would blank a future re-open). */
+function _psov2TextureIsCached(tex) {
+  if (!tex) return false;
+  for (const v of _psov2ModelCache.values()) {
+    const f = v && v.fetched;
+    if (f && f.indexOf(tex) !== -1) return true;
+  }
+  return false;
+}
+
+/** Evict cache entries whose key matches `modelPath` exactly or shares
+ *  its `.bml` base (so a `<bml>#<inner>` reload busts that inner even when
+ *  the caller passed the bare bml). Frees freed-entry GPU textures unless
+ *  they back the on-screen model. */
+function _psov2CacheEvictForPath(modelPath) {
+  if (!modelPath) return;
+  const base = modelPath.split("#")[0];
+  for (const [k, v] of Array.from(_psov2ModelCache.entries())) {
+    if (k === modelPath || k.split("#")[0] === base) {
+      _psov2ModelCache.delete(k);
+      if (k !== state.realMeshArchive) {
+        for (const t of (v.fetched || [])) { try { t.dispose(); } catch {} }
+      }
+    }
+  }
+}
+
+/** Forget every cached parsed model (force a fully cold reload). Frees
+ *  the GPU textures of every entry that isn't the on-screen model. */
+function _psov2CacheClear() {
+  for (const [k, v] of _psov2ModelCache.entries()) {
+    if (k === state.realMeshArchive) continue;
+    for (const t of (v.fetched || [])) { try { t.dispose(); } catch {} }
+  }
+  _psov2ModelCache.clear();
+}
+
+// ---- idle-time model preload (fix/perf) ----------------------------
+//
+// Warm the parsed-model cache for LIKELY-NEXT models during browser idle
+// time so the next open is instant. Discipline:
+//   * IDLE: scheduled via requestIdleCallback (falls back to a short
+//     setTimeout) so preload never competes with the active open's
+//     fetch/parse for the main thread.
+//   * BOUNDED: at most ONE preload runs at a time (single-flight) and the
+//     pending queue is capped (PSOV2_PRELOAD_QUEUE_MAX). Excess requests
+//     are dropped — a preload miss just costs a normal cold open later.
+//   * ABORTABLE: each preload rides its OWN AbortController. Starting a
+//     real model open (openByPath) aborts any in-flight preload so the
+//     user-driven request gets the network immediately.
+//   * SKIP-WORK: a model already in the cache (or being preloaded) is
+//     skipped; only `.nj` paths are eligible.
+// A preload commits NOTHING to the scene — it only populates the cache.
+const PSOV2_PRELOAD_QUEUE_MAX = 6;
+const _psov2PreloadQueue = [];        // pending model paths (FIFO, deduped)
+const _psov2PreloadInflight = new Set(); // paths currently preloading
+let _psov2PreloadController = null;   // AbortController for the active preload
+let _psov2PreloadActive = false;      // single-flight guard
+let _psov2PreloadIdleHandle = null;
+
+function _idle(fn) {
+  if (typeof requestIdleCallback === "function") {
+    return requestIdleCallback(fn, { timeout: 1500 });
+  }
+  return setTimeout(fn, 120);
+}
+
+/** Cancel any in-flight preload + clear the pending queue. Called when a
+ *  real open begins so the user-driven fetch isn't starved. */
+function _psov2PreloadAbortAll() {
+  if (_psov2PreloadController) {
+    try { _psov2PreloadController.abort(); } catch {}
+    _psov2PreloadController = null;
+  }
+  _psov2PreloadQueue.length = 0;
+  _psov2PreloadInflight.clear();
+  _psov2PreloadActive = false;
+}
+
+/** Queue `modelPath` for idle-time preload (deduped, bounded). No-op if
+ *  it's already cached/queued/inflight or isn't a `.nj` model. */
+function preloadPsov2Model(modelPath) {
+  if (!modelPath || typeof modelPath !== "string") return;
+  if (!modelPath.toLowerCase().endsWith(".nj")) return;
+  if (_psov2ModelCache.has(modelPath)) return;
+  if (_psov2PreloadInflight.has(modelPath)) return;
+  if (_psov2PreloadQueue.indexOf(modelPath) !== -1) return;
+  _psov2PreloadQueue.push(modelPath);
+  while (_psov2PreloadQueue.length > PSOV2_PRELOAD_QUEUE_MAX) {
+    _psov2PreloadQueue.shift(); // drop oldest — bounded
+  }
+  if (!_psov2PreloadIdleHandle) {
+    _psov2PreloadIdleHandle = _idle(() => {
+      _psov2PreloadIdleHandle = null;
+      _psov2PreloadPump();
+    });
+  }
+}
+
+/** Drain the preload queue one model at a time, on idle. */
+function _psov2PreloadPump() {
+  if (_psov2PreloadActive) return;
+  const modelPath = _psov2PreloadQueue.shift();
+  if (!modelPath) return;
+  if (_psov2ModelCache.has(modelPath)) {
+    // Already warmed (e.g. user opened it meanwhile) — move on.
+    _idle(() => _psov2PreloadPump());
+    return;
+  }
+  _psov2PreloadActive = true;
+  _psov2PreloadInflight.add(modelPath);
+  _psov2PreloadController = new AbortController();
+  const signal = _psov2PreloadController.signal;
+  _psov2FetchModelDataForCache(modelPath, signal)
+    .then((entry) => {
+      if (entry && !signal.aborted && !_psov2ModelCache.has(modelPath)) {
+        _psov2CacheStore(modelPath, entry);
+      } else if (entry && (signal.aborted || _psov2ModelCache.has(modelPath))) {
+        // Discard a result we won't keep; free its GPU textures.
+        for (const t of (entry.fetched || [])) { try { t.dispose(); } catch {} }
+      }
+    })
+    .catch(() => { /* preload failures are silent — a cold open will retry */ })
+    .finally(() => {
+      _psov2PreloadInflight.delete(modelPath);
+      _psov2PreloadActive = false;
+      if (_psov2PreloadQueue.length) {
+        _idle(() => _psov2PreloadPump());
+      }
+    });
+}
+
+/**
+ * Fetch + decode everything needed to build a psov2 model, WITHOUT
+ * touching the scene. Returns a cache-entry object (same shape
+ * _psov2CacheStore expects) or null on failure/abort. Uses an explicit
+ * AbortSignal so preload can be cancelled independently of the active
+ * open's lifecycle signal.
+ */
+async function _psov2FetchModelDataForCache(modelPath, signal) {
+  // Step 1: raw inner NJ bytes (own signal, NOT the lifecycle signal).
+  let buf;
+  try {
+    const r = await fetch(`/api/raw_nj/${encodeURIComponent(modelPath)}`, { signal });
+    if (!r.ok) return null;
+    buf = await r.arrayBuffer();
+  } catch (_e) {
+    return null; // abort or network error
+  }
+  if (!buf || buf.byteLength < 8 || signal.aborted) return null;
+
+  // Step 2: one header parse to read texIds (no mesh kept).
+  let loader;
+  try {
+    const probe = parseNinjaModel(buf, { name: modelPath, texList: [] });
+    loader = probe.userData.ninjaLoader;
+    try { probe.geometry.dispose(); } catch {}
+  } catch (_e) {
+    return null;
+  }
+  if (!loader || !loader.bones.length) return null;
+  const texIds = (loader.matList || []).map((mm) => mm.texId).filter((n) => n >= 0);
+
+  // Step 3: textures + native motions, in parallel, on the preload signal.
+  let archive = _psov2TextureArchive(modelPath);
+  let texList = [];
+  let fetchedTextures = [];
+  let psov2Binding = [];
+  const texPromise = texIds.length > 0
+    ? _psov2BuildTexList(modelPath, texIds, signal).catch(() => null)
+    : Promise.resolve(null);
+  const motionPromise = _fetchNativeMotions(modelPath, signal).catch(() => null);
+  const [built, nativeMotions] = await Promise.all([texPromise, motionPromise]);
+  if (signal.aborted) {
+    if (built) for (const t of (built.fetched || [])) { try { t.dispose(); } catch {} }
+    return null;
+  }
+  if (built) {
+    texList = built.texList;
+    fetchedTextures = built.fetched;
+    psov2Binding = built.binding || [];
+    archive = built.archive || archive;
+  }
+  const motionBuffers = [];
+  const motionNames = [];
+  if (nativeMotions && nativeMotions.list && nativeMotions.list.length) {
+    for (const m of nativeMotions.list) {
+      const b2 = nativeMotions.buffers.get(m.name);
+      if (b2 && b2.byteLength > 8) {
+        motionBuffers.push(b2);
+        motionNames.push(`${m.name}.njm`);
+      }
+    }
+  }
+  return {
+    buf, texIds, archive, texList,
+    fetched: fetchedTextures, binding: psov2Binding,
+    nativeMotions: nativeMotions || null, motionBuffers, motionNames,
+  };
 }
 
 // ---- real-mesh path (XJ via /api/model_mesh) -----------------------
@@ -2311,6 +2600,57 @@ if (document.readyState === "loading") {
   init();
 }
 
+// fix/perf — idle-time preload wiring.
+//
+// (a) HOVER: delegate over the document so hovering a model row in the
+//     asset tree warms its parsed-model cache before the click. We read
+//     the model path from common data-attributes the tree/perspectives
+//     rows carry (data-path / data-asset-path / title). Only `.nj` paths
+//     are eligible; preloadPsov2Model() dedupes + bounds + idle-schedules,
+//     so a fast mouse sweep can't flood.
+// (b) POST-OPEN: when a model finishes opening we warm a couple of
+//     likely-next models — the lifecycle bus emits the active path; the
+//     tree's currently-rendered sibling rows are the best "next" guess, so
+//     we preload the nearest visible model rows around the active one.
+function _preloadPathFromEl(el) {
+  if (!el || !el.getAttribute) return null;
+  const p =
+    el.getAttribute("data-model-path") ||
+    el.getAttribute("data-path") ||
+    el.getAttribute("data-asset-path") ||
+    el.dataset && (el.dataset.modelPath || el.dataset.path || el.dataset.assetPath);
+  if (p && p.toLowerCase().endsWith(".nj")) return p;
+  return null;
+}
+
+function _wirePreloadHover() {
+  if (window.__psoPreloadHoverWired) return;
+  window.__psoPreloadHoverWired = true;
+  let lastHover = 0;
+  document.addEventListener(
+    "pointerover",
+    (e) => {
+      // Cheap throttle: at most ~10 hover-preloads/sec.
+      const now = (performance && performance.now) ? performance.now() : Date.now();
+      if (now - lastHover < 90) return;
+      let el = e.target;
+      // Walk up a few levels to the row element that carries the path.
+      for (let i = 0; i < 4 && el; i++) {
+        const p = _preloadPathFromEl(el);
+        if (p) { lastHover = now; preloadPsov2Model(p); return; }
+        el = el.parentElement;
+      }
+    },
+    { passive: true },
+  );
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", _wirePreloadHover);
+} else {
+  _wirePreloadHover();
+}
+
 // =====================================================================
 // Phase 2 (asset-router) hooks — additive surface for opening a model
 // directly from the asset tree (rather than from a texture's "view 3D"
@@ -3142,6 +3482,11 @@ async function openByPath(modelPath, _entry, matchedTextures) {
       window.psoAssetLifecycle.path() !== modelPath) {
     try { window.psoAssetLifecycle.beginAsset(modelPath); } catch (_e) {}
   }
+  // fix/perf — a user-driven open takes priority over idle preloads:
+  // cancel any in-flight preload + drain the queue so the network/CPU go
+  // to THIS open. (If we're opening a model that was being preloaded, the
+  // cache may already be warm and the cold path is skipped entirely.)
+  try { _psov2PreloadAbortAll(); } catch (_e) {}
   // Pick the highest-confidence matched texture (manifest sorts by
   // confidence desc, so [0] is the best); we'll drive the regular
   // tile pipeline against it after the mesh loads.
@@ -3461,11 +3806,60 @@ function setSkeleton(bones) {
 
 window.psoOpenModelByPath = openByPath;
 window.psoSetSkeleton = setSkeleton;
+// fix/perf — read-only diagnostic: report per-material texture-map status
+// for the on-screen psov2 mesh. Lets tests confirm textures are actually
+// wired (mat.map present + decoded image) on BOTH cold and cache opens
+// without reaching into module-private state. Returns null when no real
+// mesh is shown.
+window.psoDebugMeshTextures = function () {
+  const g = state.meshGroup;
+  if (!g) return null;
+  const mats = [];
+  g.traverse((c) => {
+    if (!c.isMesh || !c.material) return;
+    const list = Array.isArray(c.material) ? c.material : [c.material];
+    for (const m of list) {
+      const map = m && m.map;
+      const img = map && (map.source && map.source.data || map.image);
+      mats.push({
+        hasMap: !!map,
+        imgW: img ? (img.width || img.naturalWidth || 0) : 0,
+        imgH: img ? (img.height || img.naturalHeight || 0) : 0,
+      });
+    }
+  });
+  return {
+    archive: state.realMeshArchive,
+    boundTextures: state.boundTextures ? state.boundTextures.size : 0,
+    materials: mats,
+    cacheSize: _psov2ModelCache.size,
+  };
+};
 // Bundle prefetch: asset_router calls this as soon as the user clicks a
 // model node, so the JSON round-trip starts in parallel with three.js's
 // renderer / DOM-modal setup. Returns a Promise<bundle|null> — null
 // means the bundle endpoint isn't available, callers fall back.
 window.psoPrefetchModelBundle = prefetchModelBundle;
+// fix/perf — public preload API. Queue a likely-next `.nj` model for
+// idle-time, abortable, bounded prefetch so its next open is instant
+// (warms the parsed-model cache without touching the scene). Safe to call
+// liberally (deduped, capped, idle-scheduled, cancelled by any real open).
+window.psoPreloadModel = preloadPsov2Model;
+window.psoPreloadModels = function (paths) {
+  if (!Array.isArray(paths)) return;
+  for (const p of paths) preloadPsov2Model(p);
+};
+// fix/perf — read-only diagnostics for the parsed-model cache + preload
+// queue (tests / devtools). Returns counts only; no THREE refs.
+window.psoModelCacheInfo = function () {
+  return {
+    cacheSize: _psov2ModelCache.size,
+    cacheKeys: Array.from(_psov2ModelCache.keys()),
+    preloadQueue: _psov2PreloadQueue.slice(),
+    preloadInflight: Array.from(_psov2PreloadInflight),
+    preloadActive: _psov2PreloadActive,
+  };
+};
 // Debug-overlay surface so tests + devtools can drive it without DOM
 // events. setDebugMode flips the toggle; getDebugMeshes returns a
 // shallow snapshot of the metadata array (no THREE.Mesh refs to keep
@@ -4225,15 +4619,23 @@ function _psov2TextureArchive(modelPath) {
  *   binding  — the raw binding rows (for the texture panel + reset).
  *   archive  — the in_bml archive path (for the texture panel thumbs).
  */
-async function _psov2BuildTexList(modelPath, texIds) {
+async function _psov2BuildTexList(modelPath, texIds, signal) {
   const archive = _psov2TextureArchive(modelPath);
   const empty = { texList: [], fetched: [], binding: [], archive };
+
+  // fix/perf — when an explicit AbortSignal is passed (preload path), use
+  // plain fetch on THAT signal so the preload can be cancelled
+  // independently of the active-open lifecycle signal. Otherwise ride the
+  // lifecycle signal via _lifecycleFetch (the interactive open path).
+  const _fetch = signal
+    ? (url, init) => fetch(url, Object.assign({}, init, { signal }))
+    : _lifecycleFetch;
 
   // Step 1: ask the server for the resolved per-material binding. This
   // covers cross_afs (player bodies) / cross_bml / in_bml uniformly.
   let binding = [];
   try {
-    const r = await _lifecycleFetch(
+    const r = await _fetch(
       `/api/model_textures/${encodeURIComponent(modelPath)}`,
     );
     if (r.ok) {
@@ -4305,113 +4707,220 @@ async function tryLoadPsov2NinjaModel(modelPath, hint) {
 
   setStatus(`loading ninja model ${modelPath} (psov2)...`);
 
-  // Step 1: raw inner NJ bytes.
-  let buf;
-  try {
-    const r = await _lifecycleFetch(`/api/raw_nj/${encodeURIComponent(modelPath)}`);
-    if (!r.ok) {
-      let detail = `http ${r.status}`;
-      try { const eb = await r.json(); if (eb && eb.detail) detail = eb.detail; } catch {}
-      _setMeshFailure(`raw_nj: ${detail}`);
+  // fix/perf — snapshot the lifecycle epoch for this open. We re-check it
+  // just before mutating the shared scene; if a newer open started while
+  // our fetch/parse was in flight, we DISCARD our result instead of
+  // clobbering the newer model (the abort-on-switch correctness guard).
+  const openEpoch = _currentEpoch();
+
+  // fix/perf — parsed-model LRU cache. Re-opening a recently-viewed model
+  // skips ALL network legs (raw_nj + texlist + motion fetches): we keep
+  // the decoded NJ ArrayBuffer, the resolved THREE.Textures, the raw
+  // motion buffers, and the binding, then re-parse the bytes (cheap) into
+  // a FRESH group per open. parseNinjaModel is pure over the buffer, so a
+  // re-parse is safe and deterministic.
+  let buf, loader, texIds, archive, texList, fetchedTextures, psov2Binding;
+  let nativeMotions, motionBuffers, motionNames, mesh;
+
+  const cached = _psov2CacheTouch(modelPath);
+  if (cached) {
+    buf = cached.buf;
+    texIds = cached.texIds;
+    archive = cached.archive;
+    texList = cached.texList;
+    fetchedTextures = cached.fetched;
+    psov2Binding = cached.binding;
+    nativeMotions = cached.nativeMotions;
+    motionBuffers = cached.motionBuffers;
+    motionNames = cached.motionNames;
+    try {
+      mesh = parseNinjaModel(buf, {
+        name: modelPath,
+        texList,
+        motions: motionBuffers,
+        motionNames,
+      });
+    } catch (e) {
+      // Cache entry somehow no longer parses — drop it and fall through
+      // to the cold path below.
+      _psov2ModelCache.delete(modelPath);
+      cached.__bad = true;
+    }
+    if (mesh) {
+      loader = mesh.userData.ninjaLoader;
+    }
+  }
+
+  if (!mesh) {
+    // ---- COLD path: fetch + parse ONCE + assign textures post-hoc ----
+
+    // Step 1: raw inner NJ bytes.
+    try {
+      const r = await _lifecycleFetch(`/api/raw_nj/${encodeURIComponent(modelPath)}`);
+      if (!r.ok) {
+        let detail = `http ${r.status}`;
+        try { const eb = await r.json(); if (eb && eb.detail) detail = eb.detail; } catch {}
+        _setMeshFailure(`raw_nj: ${detail}`);
+        return false;
+      }
+      buf = await r.arrayBuffer();
+    } catch (e) {
+      if (_isAbortError(e)) return false;
+      _setMeshFailure(`raw_nj fetch error: ${e?.message || e}`);
       return false;
     }
-    buf = await r.arrayBuffer();
-  } catch (e) {
-    if (_isAbortError(e)) return false;
-    _setMeshFailure(`raw_nj fetch error: ${e?.message || e}`);
-    return false;
-  }
-  if (!buf || buf.byteLength < 8) {
-    _setMeshFailure(`raw_nj ${modelPath}: empty/short buffer`);
-    return false;
-  }
+    if (!buf || buf.byteLength < 8) {
+      _setMeshFailure(`raw_nj ${modelPath}: empty/short buffer`);
+      return false;
+    }
 
-  // Step 2: first parse WITHOUT textures to discover which texIds the
-  // materials reference (so we fetch exactly those tiles). The parse is
-  // cheap relative to the round-trip; we then re-parse with the texList
-  // bound (parseNinjaModel is pure on the buffer, so a second pass over
-  // the same ArrayBuffer is safe — DataView reads don't mutate it).
-  let probeMesh;
-  try {
-    probeMesh = parseNinjaModel(buf, { name: modelPath, texList: [] });
-  } catch (e) {
-    _setMeshFailure(`psov2 parse error: ${e?.message || e}`);
-    return false;
-  }
-  const loader = probeMesh.userData.ninjaLoader;
-  if (!loader || !loader.bones.length) {
-    _setMeshFailure(`psov2 ${modelPath}: no bones parsed`);
-    return false;
-  }
-  const texIds = (loader.matList || []).map((mm) => mm.texId).filter((n) => n >= 0);
-
-  // Step 3: bind OUR tiles as the texList via the server-resolved
-  // binding (handles player-body cross_afs textures, cross_bml, and
-  // inline-XVM uniformly — see _psov2BuildTexList).
-  let archive = _psov2TextureArchive(modelPath);
-  let texList = [];
-  let fetchedTextures = [];
-  let psov2Binding = [];
-  if (texIds.length > 0) {
+    // Step 2: SINGLE parse (fix/perf). The old flow parsed twice over the
+    // same buffer — once un-textured to discover texIds, then again with
+    // the resolved texList. The two parses produced byte-identical
+    // geometry/bones/skeleton; only mat.map differed (getModel() wires
+    // `mat.map = texList[matList[i].texId]` at material-build time). So we
+    // parse ONCE here (texList still empty — textures aren't fetched yet),
+    // read texIds off loader.matList, fetch the textures, then assign
+    // mat.map onto the EXISTING materials below. No second decode, no
+    // second skeleton build.
+    //
+    // Motions are parsed in this single pass too; their raw buffers are
+    // fetched in parallel with the geometry below and addAnimation() only
+    // needs the bone tree, which this parse already built — but we must
+    // have the motion buffers BEFORE getModel() runs (animations land on
+    // mesh.geometry.animations during getModel). So we fetch textures and
+    // motions first, then do the one parse. (Texture fetch needs texIds,
+    // which we get from a tiny header-only parse below — but that parse is
+    // discarded immediately and is the same ~1ms cost the old probe paid,
+    // now WITHOUT a second full re-parse + texture-aware material build.)
+    //
+    // To keep the single decode honest we discover texIds via the loader's
+    // matList from ONE parse and then re-wire textures, rather than parse a
+    // throwaway probe AND a real mesh. We parse once into `mesh`, fetch in
+    // parallel using its texIds, then assign mat.map.
+    let parsed0;
     try {
-      const built = await _psov2BuildTexList(modelPath, texIds);
+      parsed0 = parseNinjaModel(buf, { name: modelPath, texList: [] });
+    } catch (e) {
+      _setMeshFailure(`psov2 parse error: ${e?.message || e}`);
+      return false;
+    }
+    loader = parsed0.userData.ninjaLoader;
+    if (!loader || !loader.bones.length) {
+      _setMeshFailure(`psov2 ${modelPath}: no bones parsed`);
+      return false;
+    }
+    texIds = (loader.matList || []).map((mm) => mm.texId).filter((n) => n >= 0);
+
+    // Step 3: bind OUR tiles as the texList via the server-resolved
+    // binding (handles player-body cross_afs textures, cross_bml, and
+    // inline-XVM uniformly — see _psov2BuildTexList) AND fetch native
+    // motions, both in parallel.
+    archive = _psov2TextureArchive(modelPath);
+    texList = [];
+    fetchedTextures = [];
+    psov2Binding = [];
+    nativeMotions = null;
+
+    const texPromise = texIds.length > 0
+      ? _psov2BuildTexList(modelPath, texIds).catch((e) => {
+          console.warn(`model_viewer: psov2 texlist fetch failed for ${archive}:`, e);
+          return null;
+        })
+      : Promise.resolve(null);
+    // Fetch the model's NATIVE .njm motions (list + raw NMDM bytes). The
+    // bind-pose mesh is sized by this.bones (already built above), and each
+    // motion's per-bone table is keyed by the SAME bone DFS order, so the
+    // clips bind 1:1 to the SkinnedMesh skeleton. A failure is non-fatal —
+    // the static bind pose still loads.
+    const motionPromise = _fetchNativeMotions(modelPath).catch((e) => {
+      if (_isAbortError(e)) return "__abort__";
+      console.warn(`model_viewer: native motion fetch failed for ${modelPath}:`, e);
+      return null;
+    });
+
+    const [built, motionsResult] = await Promise.all([texPromise, motionPromise]);
+    if (motionsResult === "__abort__") return false;
+
+    if (built) {
       texList = built.texList;
       fetchedTextures = built.fetched;
       psov2Binding = built.binding || [];
       archive = built.archive || archive;
-    } catch (e) {
-      console.warn(`model_viewer: psov2 texlist fetch failed for ${archive}:`, e);
     }
-  }
+    nativeMotions = motionsResult || null;
 
-  // Fetch the model's NATIVE .njm motions (list + raw NMDM bytes) so the
-  // re-parse below can build real THREE.AnimationClips via psov2_ninja's
-  // readAnim port. This is the native-animation pipeline: the bind-pose
-  // mesh is sized by this.bones (built by the model parse), and each
-  // motion's per-bone table is keyed by the SAME bone DFS order, so the
-  // clips bind 1:1 to the SkinnedMesh skeleton. A failure here is
-  // non-fatal — the static bind pose still loads.
-  let nativeMotions = null;   // { list:[{name,...}], default:string|null, buffers:Map<name,ArrayBuffer> }
-  try {
-    nativeMotions = await _fetchNativeMotions(modelPath);
-  } catch (e) {
-    if (_isAbortError(e)) return false;
-    console.warn(`model_viewer: native motion fetch failed for ${modelPath}:`, e);
-  }
-  const motionBuffers = [];
-  const motionNames = [];
-  if (nativeMotions && nativeMotions.list.length) {
-    for (const m of nativeMotions.list) {
-      const buf2 = nativeMotions.buffers.get(m.name);
-      if (buf2 && buf2.byteLength > 8) {
-        motionBuffers.push(buf2);
-        // psov2 names the clip from the BitStream name minus ".njm"; pass
-        // the bare motion name so clip.name === m.name (the dropdown key).
-        motionNames.push(`${m.name}.njm`);
+    motionBuffers = [];
+    motionNames = [];
+    if (nativeMotions && nativeMotions.list.length) {
+      for (const m of nativeMotions.list) {
+        const buf2 = nativeMotions.buffers.get(m.name);
+        if (buf2 && buf2.byteLength > 8) {
+          motionBuffers.push(buf2);
+          // psov2 names the clip from the BitStream name minus ".njm"; pass
+          // the bare motion name so clip.name === m.name (the dropdown key).
+          motionNames.push(`${m.name}.njm`);
+        }
       }
     }
-  }
 
-  // Re-parse with the real texList so getModel() wires mat.map. (We
-  // discard the probe mesh; it was geometry-identical but un-textured.)
-  // Pass the native motions so getModel()'s mesh.geometry.animations holds
-  // the playable clips.
-  let mesh;
-  try {
-    mesh = parseNinjaModel(buf, {
-      name: modelPath,
+    // SINGLE-PARSE completion: we already have a parsed mesh (parsed0) with
+    // built materials and a bound skeleton — but it has neither textures
+    // nor animations yet. Assigning mat.map post-hoc (below) handles
+    // textures. For animations, addAnimation() must run on the loader and
+    // land on mesh.geometry.animations; getModel() already returned, so we
+    // add the motions to the live loader and copy the resulting clips onto
+    // the existing geometry. This avoids a second full geometry/skeleton
+    // decode.
+    mesh = parsed0;
+    if (motionBuffers.length) {
+      for (let i = 0; i < motionBuffers.length; i++) {
+        try {
+          const mbs = new _NinjaBitStream(motionNames[i] || `motion_${i}.njm`, motionBuffers[i]);
+          loader.addAnimation(mbs);
+        } catch (e) {
+          console.warn(`model_viewer: motion ${i} parse failed:`, e);
+        }
+      }
+      mesh.geometry.animations = loader.animList || [];
+    }
+
+    // Assign resolved textures onto the EXISTING materials (the single-
+    // parse texture wire). getModel() built one MeshBasicMaterial per
+    // matList entry; here we set mat.map = texList[texId] exactly as
+    // getModel() would have on a textured parse.
+    if (Array.isArray(mesh.material)) {
+      const mats = mesh.material;
+      const ml = loader.matList || [];
+      for (let i = 0; i < mats.length && i < ml.length; i++) {
+        const tid = ml[i].texId;
+        const tex = (tid !== -1 && tid >= 0) ? texList[tid] : null;
+        if (tex) {
+          mats[i].map = tex;
+          if (tex.transparent) {
+            mats[i].transparent = true;
+            mats[i].alphaTest = 0.05;
+          }
+          mats[i].needsUpdate = true;
+        }
+      }
+    }
+
+    // Populate the parsed-model cache for instant re-opens. Store the SLOW
+    // inputs; re-parse is cheap. The cached textures are GPU-owned by the
+    // cache and disposed only on LRU eviction (see _psov2CacheStore).
+    _psov2CacheStore(modelPath, {
+      buf,
+      texIds,
+      archive,
       texList,
-      motions: motionBuffers,
+      fetched: fetchedTextures,
+      binding: psov2Binding,
+      nativeMotions,
+      motionBuffers,
       motionNames,
     });
-  } catch (e) {
-    _setMeshFailure(`psov2 re-parse error: ${e?.message || e}`);
-    for (const t of fetchedTextures) { try { t.dispose(); } catch {} }
-    return false;
   }
-
-  // Dispose the probe mesh's GPU geometry (it never hit the scene).
-  try { probeMesh.geometry.dispose(); } catch {}
 
   // psov2 bakes the bind pose into vertex positions (vertex.applyMatrix4
   // (bone.matrixWorld) in readVertexChunk), so the geometry is already in
@@ -4441,6 +4950,21 @@ async function tryLoadPsov2NinjaModel(modelPath, hint) {
     const scale = 2.0 / maxDim;
     group.scale.set(scale, scale, scale);
     group.position.set(-c.x * scale, -c.y * scale, -c.z * scale);
+  }
+
+  // fix/perf — epoch guard. If a newer model open began while our
+  // fetch+parse was in flight, DISCARD this result instead of clobbering
+  // the newer model. Dispose the freshly-built geometry/materials we'd
+  // otherwise have committed; do NOT dispose the textures (they're owned
+  // by the parsed-model cache and may back the newer/other on-screen
+  // model). This is the fix for the rapid A->B->C clobber where a stale
+  // parse paints over the current model.
+  if (_epochStale(openEpoch)) {
+    try { mesh.geometry.dispose(); } catch {}
+    if (Array.isArray(mesh.material)) {
+      for (const m of mesh.material) { try { m.dispose(); } catch {} }
+    }
+    return false;
   }
 
   // Commit to the scene.
@@ -4541,21 +5065,31 @@ function _modelApiUrlParts(modelPath) {
  *     buffers: Map<name, ArrayBuffer> }.
  * Motions whose raw fetch fails are dropped (but never sink the others).
  */
-async function _fetchNativeMotions(modelPath) {
+async function _fetchNativeMotions(modelPath, signal) {
   const { base, innerQuery } = _modelApiUrlParts(modelPath);
   const q = innerQuery ? `?${innerQuery}` : "";
+
+  // fix/perf — preload path passes its own AbortSignal: fetch on THAT
+  // signal and SKIP the prefetchModelBundle shortcut (which mutates the
+  // shared _bundleCache / _lastBundlePath and would disturb the active
+  // open's bundle). The interactive path keeps the bundle shortcut.
+  const _fetch = signal
+    ? (url, init) => fetch(url, Object.assign({}, init, { signal }))
+    : _lifecycleFetch;
 
   // Prefer the bundle's animations sub-payload if it's already prefetched
   // (saves a redundant /api/animations round-trip). Bundle never carries
   // raw NMDM bytes, so we still fetch those per-motion below.
   let listData = null;
-  try {
-    const bundle = await prefetchModelBundle(modelPath);
-    if (bundle && bundle.animations) listData = bundle.animations;
-  } catch (_e) { /* fall through to direct fetch */ }
+  if (!signal) {
+    try {
+      const bundle = await prefetchModelBundle(modelPath);
+      if (bundle && bundle.animations) listData = bundle.animations;
+    } catch (_e) { /* fall through to direct fetch */ }
+  }
 
   if (!listData) {
-    const r = await _lifecycleFetch(`/api/animations/${base}${q}`);
+    const r = await _fetch(`/api/animations/${base}${q}`);
     if (!r.ok) return null;
     listData = await r.json();
   }
@@ -4570,7 +5104,7 @@ async function _fetchNativeMotions(modelPath) {
   await Promise.all(listData.motions.map(async (m) => {
     const url = `/api/animation_njm/${base}?${innerQuery ? innerQuery + "&" : ""}motion=${encodeURIComponent(m.name)}`;
     try {
-      const rr = await _lifecycleFetch(url);
+      const rr = await _fetch(url);
       if (!rr.ok) return;
       const ab = await rr.arrayBuffer();
       if (ab && ab.byteLength > 8) buffers.set(m.name, ab);
@@ -5509,6 +6043,14 @@ window.psoReloadTexture = async function (tileIdx) {
   if (typeof tileIdx !== "number") return false;
   const arch = state.boundTextureArchive;
   if (!arch) return false;
+  // fix/perf — a texture reload mutates the live bound textures, which the
+  // parsed-model cache also references. Evict the on-screen model from the
+  // cache so a future re-open re-fetches the edited tile instead of
+  // re-binding a disposed/stale texture. (We do NOT dispose here — the
+  // model is still on screen; eviction just drops the cache reference.)
+  if (state.realMeshArchive) {
+    _psov2ModelCache.delete(state.realMeshArchive);
+  }
   // Find which material_ids point at this tile.
   const binding = Array.isArray(state.boundBinding) ? state.boundBinding : [];
   const matIds = binding
@@ -5555,6 +6097,12 @@ window.psoReloadTexture = async function (tileIdx) {
 // path. The caller is responsible for passing the manifest entry +
 // matched textures so the texture binding survives the rebuild.
 window.psoReloadModel = async function (modelPath, entry, matchedTextures) {
+  // fix/perf — an explicit reload must bypass the parsed-model cache (the
+  // user is asking for a fresh decode, e.g. after a texture edit or a
+  // server-side asset change). Evict the resolved-path entries so the
+  // open below re-fetches. We evict broadly (any key that shares the same
+  // base) because a `<bml>#<inner>` reload should invalidate that inner.
+  try { _psov2CacheEvictForPath(modelPath); } catch (_e) {}
   return openByPath(modelPath, entry || {}, Array.isArray(matchedTextures) ? matchedTextures : []);
 };
 
