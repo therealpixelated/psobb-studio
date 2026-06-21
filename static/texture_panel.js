@@ -508,6 +508,27 @@
         flex-direction: column;
         height: 100%;
       }
+      /* fix/tooltabs — collapsible sub-sections of the unified Animation tab
+         (keyframe editor). Keeps "animations ARE motions" as one surface. */
+      .pso-anim-subsection {
+        border-top: 1px solid #2a313a;
+        background: rgba(0,0,0,0.12);
+      }
+      .pso-anim-subsection > summary {
+        cursor: pointer;
+        padding: 6px 8px;
+        color: #56c8c8;
+        font-size: 12px;
+        user-select: none;
+        list-style: revert;
+      }
+      .pso-anim-subsection > summary:hover { color: #00ffff; }
+      .pso-anim-subsection[open] > summary { border-bottom: 1px solid #2a313a; }
+      .pso-anim-subsection > [data-region="keyframe-editor-body"] {
+        padding: 0;
+        max-height: 60vh;
+        overflow: auto;
+      }
       .pso-motions-toolbar {
         padding: 6px 8px;
         display: flex;
@@ -748,7 +769,7 @@
       <div class="pso-tex-panel-tabs">
         <button data-tab="textures" class="active">Textures</button>
         <button data-tab="layers" title="all bound texture stages, grouped by submesh">Layers</button>
-        <button data-tab="motions" title="full motion list with grouping + Loop-all">Motions</button>
+        <button data-tab="motions" title="motions + keyframe editor + imported clip library — the unified Animation surface">Animation</button>
         <button data-tab="subdivide">Subdivide</button>
       </div>
       <div class="pso-tex-panel-body" data-region="body"></div>
@@ -1406,7 +1427,18 @@
   // (same data-tab) that the existing click delegation already handles;
   // we just relocate it into a popdown. The active tab is always hoisted
   // inline so the user can see what's selected.
-  const PRIMARY_TABS = ["textures", "layers", "motions", "subdivide"];
+  // fix/tooltabs — tightened top-level ordering after the 12->10 tab
+  // consolidation. "motions" is the renamed unified Animation tab (it now
+  // hosts the keyframe editor + imported-clip library as sub-sections). The
+  // standalone "anim_editor" and Blender-style "edit" tabs are no longer
+  // registered as buttons (their renderers stay registered, reversibly).
+  // Order: working texture core -> Animation -> mesh tools -> inspectors.
+  const PRIMARY_TABS = [
+    "textures", "layers", "material",
+    "motions",
+    "sculpt", "subdivide", "rig",
+    "paint", "uv", "skeleton",
+  ];
 
   function reflowTabs() {
     if (!panel) return;
@@ -1934,6 +1966,21 @@
       }).join("");
 
     const loopActiveAttr = loopAllState.active ? "active" : "";
+    // fix/tooltabs — the unified Animation tab. The motion list + play/scrub
+    // (this block) is the top section; the keyframe editor and (already-
+    // inline) imported-clip library are folded in as collapsible
+    // sub-sections so "animations ARE motions" reads as ONE concept instead
+    // of three separate tabs. The keyframe editor is mounted lazily on first
+    // expand (it owns its own DOM via window.psoAnimEditorRender).
+    const hasKeyframeEditor = (typeof window.psoAnimEditorRender === "function");
+    const keyframeSection = hasKeyframeEditor
+      ? `<details class="pso-anim-subsection" data-region="keyframe-editor">
+           <summary>Keyframe editor — scrub &amp; edit per-bone TRS, save .njm</summary>
+           <div data-region="keyframe-editor-body">
+             <div class="pso-tex-panel-empty">expand to load the keyframe editor…</div>
+           </div>
+         </details>`
+      : "";
     body.innerHTML = `<div class="pso-motions-block">
       <div class="pso-motions-toolbar">
         <button data-act="bind-pose" title="reset to bind pose">bind pose</button>
@@ -1942,7 +1989,27 @@
         <button data-act="create-blend" title="weighted blend of 2-3 motions">Create blend</button>
       </div>
       <div class="pso-motions-list">${importedHtml}${groupHtml}</div>
+      ${keyframeSection}
     </div>`;
+
+    // Lazily mount the keyframe editor into its sub-section on first expand.
+    if (hasKeyframeEditor) {
+      const details = body.querySelector('details[data-region="keyframe-editor"]');
+      const kbody = body.querySelector('[data-region="keyframe-editor-body"]');
+      if (details && kbody) {
+        let mounted = false;
+        const mount = () => {
+          if (mounted || !details.open) return;
+          mounted = true;
+          try { window.psoAnimEditorRender(kbody); }
+          catch (e) {
+            kbody.innerHTML = `<div class="pso-tex-panel-empty">keyframe editor failed: ${escapeHtml(String(e))}</div>`;
+            mounted = false;
+          }
+        };
+        details.addEventListener("toggle", mount);
+      }
+    }
 
     // Wire row clicks for VANILLA motions (string-name path).
     body.querySelectorAll(".pso-motion-row[data-motion]").forEach((r) => {

@@ -1223,7 +1223,7 @@
     // Clone tool: Alt+click sets the source pixel and exits early.
     if (state.activeTool === "clone" && (ev.altKey || ev.metaKey)) {
       const hit = raycastMesh(ev);
-      if (hit && state.activeMaterialIds.indexOf((hit.object && hit.object.userData && hit.object.userData.materialId) | 0) >= 0 && hit.uv) {
+      if (hit && hitIsActive(hit) && hit.uv) {
         const [px, py] = uvToPixel(hit.uv.x, hit.uv.y, state.canvasW, state.canvasH);
         setCloneSourceFromEvent(ev, px, py);
         state.cloneOffsetX = null;
@@ -1239,7 +1239,7 @@
     // pointerup commits.
     if (state.activeTool === "gradient") {
       const hit = raycastMesh(ev);
-      if (!hit || state.activeMaterialIds.indexOf((hit.object && hit.object.userData && hit.object.userData.materialId) | 0) < 0 || !hit.uv) return;
+      if (!hit || !hitIsActive(hit) || !hit.uv) return;
       const [px, py] = uvToPixel(hit.uv.x, hit.uv.y, state.canvasW, state.canvasH);
       pushUndo();
       state.redoStack.length = 0;
@@ -1282,7 +1282,7 @@
     ev.stopPropagation();
     if (state.activeTool === "gradient" && state.gradDrag) {
       const hit = raycastMesh(ev);
-      if (hit && state.activeMaterialIds.indexOf((hit.object && hit.object.userData && hit.object.userData.materialId) | 0) >= 0 && hit.uv) {
+      if (hit && hitIsActive(hit) && hit.uv) {
         const [px, py] = uvToPixel(hit.uv.x, hit.uv.y, state.canvasW, state.canvasH);
         state.gradDrag.endTex = { x: px, y: py };
         state.gradDrag.endScreen = { x: ev.clientX, y: ev.clientY };
@@ -1372,6 +1372,35 @@
     const hits = rc.intersectObjects(meshes, false);
     if (!hits.length) return null;
     return hits[0]; // {object, face, uv, point, ...}
+  }
+
+  // fix/tooltabs — resolve the material_id a raycast hit landed on. The
+  // legacy single-material path stores it on hit.object.userData.materialId.
+  // The psov2 SkinnedMesh is ONE multi-material mesh: material identity is
+  // PER-FACE (hit.face.materialIndex) and the slot->material_id map lives on
+  // userData.materialGroups. Resolve via the face's materialIndex first, then
+  // fall back to the bare userData.materialId so both paths work.
+  function hitMaterialId(hit) {
+    if (!hit || !hit.object) return null;
+    const ud = hit.object.userData || {};
+    const groups = ud.materialGroups;
+    if (Array.isArray(groups) && hit.face && typeof hit.face.materialIndex === "number") {
+      const g = groups[hit.face.materialIndex | 0];
+      if (g) return g.materialId | 0;
+    }
+    if (typeof ud.materialId === "number") return ud.materialId | 0;
+    return null;
+  }
+
+  // Is the hit on a material we're actively painting? null id (untagged
+  // single-material mesh) is allowed through only when exactly one material
+  // is active — the historical single-tile behaviour.
+  function hitIsActive(hit) {
+    const mid = hitMaterialId(hit);
+    if (mid === null) {
+      return state.activeMaterialIds.length === 1;
+    }
+    return state.activeMaterialIds.indexOf(mid) >= 0;
   }
 
   function uvToPixel(u, v, w, h) {
@@ -1732,8 +1761,14 @@
     // Only act if the hit's mesh is bound to one of our active material_ids.
     // That keeps us from painting on a sibling submesh that uses a
     // different texture. (Both can be visible at once.)
-    const hitMid = hit.object && hit.object.userData && hit.object.userData.materialId;
-    if (state.activeMaterialIds.indexOf(hitMid | 0) < 0) {
+    //
+    // fix/tooltabs — resolve the material via hit.face.materialIndex for the
+    // psov2 multi-material SkinnedMesh (one mesh, per-face material), falling
+    // back to userData.materialId for legacy single-material meshes. The old
+    // code read userData.materialId off the whole SkinnedMesh, which is
+    // undefined there -> `undefined|0 === 0`, so every stroke on a tile other
+    // than material 0 was silently dropped.
+    if (!hitIsActive(hit)) {
       // Hit was on a sibling mesh that isn't bound to our active tile —
       // ignore so we don't streak the wrong texture.
       return;

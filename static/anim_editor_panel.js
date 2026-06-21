@@ -582,9 +582,18 @@
   function injectAnimEditorTab() {
     if (typeof window.psoTexturePanelAddTabButton !== "function") return false;
     if (typeof window.psoTexturePanelRegisterTab !== "function") return false;
-    const ok = window.psoTexturePanelAddTabButton(TAB_NAME, TAB_LABEL, TAB_TITLE);
+    // fix/tooltabs — the keyframe editor is now a SUB-SECTION of the unified
+    // "Animation" tab (the renamed Motions tab), not its own tab. We keep the
+    // renderer registered (so the Animation tab can mount it, and so a dev
+    // flag can restore the standalone tab) but stop adding the standalone
+    // "Anim Editor" tab button. Export the renderer for texture_panel to call
+    // inline. Set window.PSO_ENABLE_ANIM_EDITOR_TAB = true to restore the tab.
     window.psoTexturePanelRegisterTab(TAB_NAME, (body) => renderPanel(body));
-    return ok;
+    window.psoAnimEditorRender = (body) => renderPanel(body);
+    if (window.PSO_ENABLE_ANIM_EDITOR_TAB) {
+      return window.psoTexturePanelAddTabButton(TAB_NAME, TAB_LABEL, TAB_TITLE);
+    }
+    return true;
   }
 
   function waitForPanel(deadline) {

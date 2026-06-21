@@ -1128,8 +1128,16 @@
   function tryRegisterTab() {
     if (typeof window.psoTexturePanelRegisterTab === "function" &&
         typeof window.psoTexturePanelAddTabButton === "function") {
+      // fix/tooltabs — the Blender-style vertex/gizmo Edit mode is OVERKILL
+      // for an asset tool and was non-functional on the psov2 path anyway
+      // (Edge/Face select are admitted P1 stubs). DEMOTE it: keep the
+      // renderer registered (so it's instantly re-enableable behind a dev
+      // flag) but do NOT add its tab button to the strip. Set
+      // window.PSO_ENABLE_EDIT_TAB = true before load to restore it.
       window.psoTexturePanelRegisterTab(TAB_NAME, renderTabBody);
-      window.psoTexturePanelAddTabButton(TAB_NAME, TAB_LABEL, TAB_TITLE);
+      if (window.PSO_ENABLE_EDIT_TAB) {
+        window.psoTexturePanelAddTabButton(TAB_NAME, TAB_LABEL, TAB_TITLE);
+      }
       return true;
     }
     return false;

@@ -208,6 +208,7 @@ const state = {
     // (GPU skinning re-poses the SkinnedMesh) ticked in the render loop.
     // These fields are INERT for the server-payload skinned path.
     psov2: false,        // true when the psov2 mixer is the active driver
+    psov2Mesh: null,     // the live THREE.SkinnedMesh (skeleton + groups source)
     psov2Mixer: null,    // THREE.AnimationMixer bound to the SkinnedMesh
     psov2Clips: null,    // Map<motionName, THREE.AnimationClip>
     psov2Action: null,   // currently-playing THREE.AnimationAction (or null)
@@ -361,6 +362,16 @@ function disposeMesh() {
   // so the materials its `mesh.userData.origMaterial` pointed at are
   // gone too. Reset the table; the next buildMeshGroupFromPayload call
   // repopulates it.
+  //
+  // fix/tooltabs — the psov2 path builds INSPECTOR-ONLY view meshes (one
+  // per submesh, NOT added to the scene) whose sliced BufferGeometry the
+  // scene-traversal dispose above never reaches. Dispose those geometries
+  // explicitly so a model swap doesn't leak one GPU buffer per submesh.
+  for (const e of state.debugMeshes) {
+    if (e && e.mesh && e.mesh.userData && e.mesh.userData.psov2View && e.mesh.geometry) {
+      try { e.mesh.geometry.dispose(); } catch {}
+    }
+  }
   state.debugMeshes = [];
   state.debugActiveIdx = -1;
   // Animation state cleanup (2026-04-24). The Float32Array snapshots of
@@ -393,6 +404,7 @@ function _tearDownPsov2Mixer() {
     try { a.psov2Mixer.uncacheRoot(a.psov2Mixer.getRoot()); } catch {}
   }
   a.psov2 = false;
+  a.psov2Mesh = null;
   a.psov2Mixer = null;
   a.psov2Clips = null;
   a.psov2Action = null;
@@ -3868,6 +3880,13 @@ window.psoSetDebugMode = setDebugMode;
 window.psoGetDebugMeshes = function () {
   return state.debugMeshes.map((e) => ({
     idx: e.idx,
+    // fix/tooltabs — include the live THREE.Mesh. The UV panel
+    // (uv_panel.collectSubmeshes) and Edit panel both read
+    // e.mesh.geometry; the previous accessor stripped `.mesh` and
+    // returned only scalars, so those tabs saw "no submesh" even on the
+    // legacy path. The mesh is already a live scene/inspector object —
+    // exposing the reference (not a clone) is correct and cheap.
+    mesh: e.mesh,
     material_id: e.material_id,
     vertex_count: e.vertex_count,
     triangle_count: e.triangle_count,
@@ -4696,6 +4715,115 @@ async function _psov2BuildTexList(modelPath, texIds, signal) {
   return { texList, fetched, binding, archive };
 }
 
+// fix/tooltabs — radians (THREE.Bone Euler) -> BAMS (PSO binary angle).
+// _BAMS_TO_RAD = 2π/65536, so rad / _BAMS_TO_RAD == BAMS. Round to int so
+// the Skeleton inspector's BAMS/deg readouts are clean.
+function _radToBams(rad) {
+  return Math.round((rad || 0) / _BAMS_TO_RAD);
+}
+
+// fix/tooltabs — adapt the live psov2 THREE.Skeleton bone tree into the
+// {index,parent,position,rotation_bams,scale,eval_flags} shape the Skeleton
+// panel (psoGetSkeleton) expects. The psov2 loader builds a real
+// THREE.Skeleton (mesh.skeleton.bones[], DFS order, parent links via
+// THREE.Bone.parent), but tryLoadPsov2NinjaModel never mirrored it into
+// state.anim.bones — so the panel saw [] and rendered "No skeleton loaded".
+// We read each bone's LOCAL TRS (position/rotation Euler radians/scale)
+// straight off the Object3D and convert the rotation to BAMS. parent is the
+// index of bone.parent within the same bones[] array, or -1 when the parent
+// isn't a bone (the SkinnedMesh root the rootBone is attached to).
+function _psov2AdaptSkeletonBones(mesh) {
+  const out = [];
+  if (!mesh || !mesh.skeleton || !Array.isArray(mesh.skeleton.bones)) return out;
+  const bones = mesh.skeleton.bones;
+  if (!bones.length) return out;
+  // index map for O(1) parent resolution.
+  const idxOf = new Map();
+  for (let i = 0; i < bones.length; i++) idxOf.set(bones[i], i);
+  for (let i = 0; i < bones.length; i++) {
+    const b = bones[i];
+    if (!b) continue;
+    const p = (b.parent && idxOf.has(b.parent)) ? idxOf.get(b.parent) : -1;
+    const e = b.rotation; // THREE.Euler (radians)
+    out.push({
+      index: i,
+      parent: p,
+      position: [b.position.x, b.position.y, b.position.z],
+      rotation_bams: [_radToBams(e.x), _radToBams(e.y), _radToBams(e.z)],
+      scale: [b.scale.x, b.scale.y, b.scale.z],
+      eval_flags: 0,
+    });
+  }
+  return out;
+}
+
+// fix/tooltabs — build per-submesh "view" meshes for the UV/Edit/Subdivide
+// inspectors from the single psov2 SkinnedMesh. That mesh has ONE
+// (non-indexed) BufferGeometry partitioned by geometry.groups[] (one group
+// per material, {start,count,materialIndex}). Each panel reads
+// e.mesh.geometry.getAttribute("uv") and expects ONE submesh's UVs — so we
+// slice the shared position+uv arrays per group into a small standalone
+// BufferGeometry wrapped in a non-scene THREE.Mesh. These view meshes are
+// inspector-only (never added to the scene, never rendered); they carry
+// userData.materialId so the UV panel labels them and tooling that filters
+// by material works. Returns the state.debugMeshes entry array.
+function _psov2BuildDebugMeshes(mesh) {
+  const out = [];
+  if (!mesh || !mesh.geometry) return out;
+  const geo = mesh.geometry;
+  const posAttr = geo.getAttribute("position");
+  const uvAttr = geo.getAttribute("uv");
+  if (!posAttr) return out;
+  const groups = (geo.groups && geo.groups.length)
+    ? geo.groups
+    : [{ start: 0, count: posAttr.count, materialIndex: 0 }];
+  const matGroups = (mesh.userData && mesh.userData.materialGroups) || [];
+  for (let gi = 0; gi < groups.length; gi++) {
+    const g = groups[gi];
+    const start = g.start | 0;            // first VERTEX (non-indexed geometry)
+    const count = g.count | 0;            // vertex count in this group
+    if (count <= 0) continue;
+    const mg = matGroups[g.materialIndex | 0];
+    const materialId = mg ? (mg.materialId | 0) : (g.materialIndex | 0);
+    // Slice position + uv for just this group's vertices into a fresh
+    // (small) geometry. Non-indexed, so the slice is a contiguous range.
+    const subGeo = new THREE.BufferGeometry();
+    const posSlice = new Float32Array(count * 3);
+    for (let v = 0; v < count; v++) {
+      const sv = start + v;
+      posSlice[v * 3] = posAttr.getX(sv);
+      posSlice[v * 3 + 1] = posAttr.getY(sv);
+      posSlice[v * 3 + 2] = posAttr.getZ(sv);
+    }
+    subGeo.setAttribute("position", new THREE.BufferAttribute(posSlice, 3));
+    if (uvAttr) {
+      const uvSlice = new Float32Array(count * 2);
+      for (let v = 0; v < count; v++) {
+        const sv = start + v;
+        uvSlice[v * 2] = uvAttr.getX(sv);
+        uvSlice[v * 2 + 1] = uvAttr.getY(sv);
+      }
+      subGeo.setAttribute("uv", new THREE.BufferAttribute(uvSlice, 2));
+    }
+    const viewMesh = new THREE.Mesh(subGeo);
+    viewMesh.userData.materialId = materialId;
+    viewMesh.userData.psov2View = true;
+    viewMesh.matrixAutoUpdate = false;
+    out.push({
+      idx: out.length,
+      mesh: viewMesh,
+      material_id: materialId,
+      vertex_count: count,
+      triangle_count: (count / 3) | 0,
+      world_position: [0, 0, 0],
+      world_rotation_euler: [0, 0, 0],
+      world_scale: [1, 1, 1],
+      aabb: null,
+    });
+  }
+  return out;
+}
+
 async function tryLoadPsov2NinjaModel(modelPath, hint) {
   // Only `.nj` (bare or `<bml>#<inner>.nj`). The trailing `.nj` test
   // covers both forms.
@@ -4967,6 +5095,28 @@ async function tryLoadPsov2NinjaModel(modelPath, hint) {
     return false;
   }
 
+  // fix/tooltabs — tag the single multi-material SkinnedMesh with material
+  // identity so the paint binder (psoSetMaterialTexture) and the paint
+  // hit-filter (paint_panel handlePaintAt via hit.face.materialIndex) can
+  // resolve which material slot a click landed on. The psov2 mesh is ONE
+  // SkinnedMesh with geometry.groups[] partitioned by materialIndex and a
+  // parallel mesh.material[] array; loader.matList[i].texId === material_id
+  // on the NJ path. We publish:
+  //   userData.materialGroups : [{materialIndex, materialId}] (slot -> mid)
+  //   userData.materialId     : the sole mid when there's exactly one mat
+  //                             (lets the single-material fast paths still hit)
+  {
+    const ml = loader.matList || [];
+    const groups = [];
+    for (let i = 0; i < ml.length; i++) {
+      groups.push({ materialIndex: i, materialId: (ml[i].texId | 0) });
+    }
+    mesh.userData.materialGroups = groups;
+    if (groups.length === 1) {
+      mesh.userData.materialId = groups[0].materialId;
+    }
+  }
+
   // Commit to the scene.
   ensureRenderer();
   disposeMesh();
@@ -4992,7 +5142,14 @@ async function tryLoadPsov2NinjaModel(modelPath, hint) {
   state.realMesh = true;
   state.realMeshArchive = modelPath;
   state.scene.add(group);
-  state.debugMeshes = [];
+  // fix/tooltabs — surface per-submesh debug meshes for the UV/Edit/
+  // Subdivide inspectors. The psov2 mesh is ONE SkinnedMesh whose geometry
+  // is partitioned by geometry.groups[] (one group per material). Build a
+  // lightweight per-group VIEW mesh (sliced position+uv, NOT added to the
+  // scene) so panels that read e.mesh.geometry.getAttribute("uv") see each
+  // submesh's own UV island. Without this the UV/Edit tabs report "no
+  // submesh" on every psov2 model.
+  state.debugMeshes = _psov2BuildDebugMeshes(mesh);
   state.debugActiveIdx = -1;
   rebuildDebugSidebar();
 
@@ -5006,7 +5163,16 @@ async function tryLoadPsov2NinjaModel(modelPath, hint) {
   // simply renders the static bind pose.
   state.anim.skinned = false;
   state.anim.modelPath = modelPath;
-  state.anim.bones = [];
+  // fix/tooltabs — mirror the live THREE.Skeleton into state.anim.bones so
+  // psoGetSkeleton() (and the Skeleton tab) sees the 88-bone tree the psov2
+  // SkinnedMesh actually carries. The bones are kept in the panel's
+  // {index,parent,position,rotation_bams,scale,eval_flags} shape, adapted
+  // from the THREE.Bone tree (Euler radians -> BAMS). state.anim.skinned
+  // stays false (the GPU mixer, not the CPU bake, drives this path), so the
+  // rig CPU-bake/world-pos accessors still guard correctly — these bones are
+  // a read-only mirror for the Skeleton inspector.
+  state.anim.bones = _psov2AdaptSkeletonBones(mesh);
+  state.anim.psov2Mesh = mesh;
   state.anim.skinSubmeshes = [];
   state.anim.motions = [];
   state.anim.currentMotion = null;
@@ -6580,10 +6746,37 @@ window.psoSetMaterialTexture = function (materialId, tex) {
       // In composite mode, every mesh has a compositeKey. Skip the bare-
       // matId walk to avoid cross-binding inner-A and inner-B's mat0.
       if (c.userData && c.userData.compositeKey) return;
+      // fix/tooltabs — multi-material psov2 SkinnedMesh. ONE mesh carries
+      // material[] + geometry.groups[]; userData.materialGroups maps each
+      // slot's materialIndex -> material_id. Bind the CanvasTexture onto
+      // EVERY slot whose material_id matches `mid` (a tile can span more
+      // than one group). This is the case the bare-`c.material.map` branch
+      // below could never reach (c.material is an Array here, so `.map`
+      // would be undefined-on-array and silently no-op).
+      const groups = c.userData && c.userData.materialGroups;
+      if (Array.isArray(groups) && Array.isArray(c.material)) {
+        let bound = false;
+        for (const g of groups) {
+          if ((g.materialId | 0) !== mid) continue;
+          const slot = g.materialIndex | 0;
+          const m = c.material[slot];
+          if (m) {
+            m.map = tex || null;
+            m.needsUpdate = true;
+            bound = true;
+          }
+        }
+        if (bound) return;
+        // fall through only if no group matched (e.g. single-material mesh
+        // tagged with a bare materialId) — handled by the check below.
+      }
       const cmid = c.userData && c.userData.materialId;
       if ((cmid | 0) !== mid) return;
     }
     if (c.material) {
+      // Single-material case. (Array materials are handled in the
+      // materialGroups branch above and returned before reaching here.)
+      if (Array.isArray(c.material)) return;
       c.material.map = tex || null;
       c.material.needsUpdate = true;
     }
