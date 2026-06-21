@@ -117,6 +117,25 @@ class CompositePart:
         Name of another inner in the same BML whose pose this part
         rides on (e.g. De Rol Le's helm follows the body). When
         ``None`` the part is world-absolute.
+    parent_bone:
+        DFS node index into the PARENT inner's NJCM skeleton. When set,
+        the fragment is attached as a CHILD of that bone and rides the
+        bone's animated world matrix — the in-game behaviour for an
+        appendage hung off a specific body joint. The index is the same
+        pre-order-DFS node number the engine's ``DerolleGetModelNode``
+        uses (verified: studio ``xj.parse_skeleton`` node index == engine
+        node index, 1:1). ``local_offset`` is then applied in the bone's
+        local frame. ``None`` means no bone attachment (the part uses the
+        plain ``pos`` / ``rot_euler`` / ``scale`` TRS under
+        ``parent_inner`` instead). Requires ``parent_inner`` to name the
+        inner whose skeleton owns the bone.
+    local_offset:
+        ``(x, y, z)`` offset in the parent BONE's local frame, applied
+        on top of the bone's animated world matrix. Only meaningful when
+        ``parent_bone`` is set. ``(0, 0, 0)`` = sit exactly at the bone
+        (the faithful default — the bone matrix already carries the
+        in-game attach position so no hand-curated magic offset is
+        needed).
     notes:
         Free-form provenance / caveat string. Use ``"placement
         unknown — TODO"`` for parts we couldn't resolve so the
@@ -127,6 +146,8 @@ class CompositePart:
     rot_euler: Tuple[float, float, float] = (0.0, 0.0, 0.0)
     scale: Tuple[float, float, float] = (1.0, 1.0, 1.0)
     parent_inner: Optional[str] = None
+    parent_bone: Optional[int] = None
+    local_offset: Tuple[float, float, float] = (0.0, 0.0, 0.0)
     notes: str = ""
 
 
@@ -179,64 +200,119 @@ class CompositeAssembly:
 #                                cluster 0x00A4xxxx).
 
 
-# De Rol Le placement notes (hand-curated, 2026-04-30)
-# -----------------------------------------------------
-# The wiki/screenshot ground truth says De Rol Le is a sea-snake with:
-#   - body              the long worm/spine torso (centerpiece)
-#   - helm (skull)      attaches on top of the head end of the body;
-#                       the "helm_break" inner replaces it after the
-#                       player destroys the helm in phase 1.
-#   - shell             segmented armor on the body's back (replaced by
-#                       "shell_break" damage state)
-#   - fin_a / fin_b     side fins along the body
-#   - sting             rear stinger
-#   - tentacle          articulated tail tentacle
+# De Rol Le placement notes (RE-derived, 2026-06-21)
+# ---------------------------------------------------
+# Ground truth from the decompiled psobb.exe (Psobb.exe-05112026.c) AND a
+# direct skeleton parse of bm_boss2_de_rol_le.bml (both cross-checked):
 #
-# Without exact game-engine constants, these offsets are best-effort
-# estimates. They're tuned so the parts don't visually overlap when
-# the frontend stacks them, NOT to game-correct positions. The
-# notes field on each part explicitly flags this.
+#   THE POINTY SKULL IS INTRINSIC TO THE BODY MODEL.
+#   boss2_b_derorure_body.nj (model_files[2], 176 bones) already contains
+#   the complete crest the owner wants: skull base = DFS node 0x4d (=77),
+#   chain 77 -> 84 -> 85 -> 86 -> 87 -> 88 rising to the highest point
+#   Y=+12.7 at bone 88. The engine renders the alive/resting boss from
+#   this ONE inner via a single NJ-tree draw (g_RenderNJ_1). The "goofy
+#   mesh on its head" bug was hand-placing helm_break (broken-armor
+#   DEBRIS, 80 sub-meshes) onto the head — the exact thing to NOT do.
 #
-# TODO(static-analysis): the constructor that allocates De Rol Le
-# sub-entities lives near 0x00A43CE0 (derolle_global, Ghidra label).
-# Walk Ghidra-decompiled init code to recover the literal floats.
+# So the FAITHFUL rest pose = the body alone (skull included), and the
+# other inners are attack / damage states that attach to SPECIFIC BODY
+# BONES (not a world offset). We restore the four ATTACK appendages via
+# the parent_bone mechanism so they ride the body skeleton in-game-faithful
+# positions; placement = sit exactly at the bone (local_offset 0,0,0), the
+# bone matrix carries the in-game attach point (no hand-curated magic).
+#
+# Bone indices below are the verified DFS node indices (engine ==
+# studio, 1:1):
+#   * head / face crown : bones 33, 34 (parent of skull node 77)
+#   * tail base         : bone 104 (Z=-124, deep tail)
+#
+# helm_break / shell_break are DAMAGE STATES (broken armor spawned as
+# physics debris only after the player breaks it). They have NO static
+# rest-pose bone in the source (they spawn via SetDerollePositionAndHp /
+# DerolleInitializeSpawn, not body-bone parenting), so they are NOT in
+# the default intact-boss assembly. Placing them would re-introduce the
+# "goofy mesh on its head" bug. See the RE notes for the spawn path.
 _DE_ROL_LE_PARTS: List[CompositePart] = [
-    # Body — the worm; the whole recognizable De Rol Le serpent is this
-    # single .nj (its own NJCM skeleton drives the curve). World-absolute
-    # at origin so the engine's parent transform can slide the composite
-    # into world position later (animation root).
+    # Body — the worm; the whole recognizable De Rol Le serpent INCLUDING
+    # the pointy skull is this single .nj (its own 176-bone NJCM skeleton
+    # drives the curve + crest). World-absolute at origin; animation root.
+    # Every appendage below rides this skeleton's bones.
     CompositePart(
         inner_nj="boss2_b_derorure_body.nj",
         pos=(0.0, 0.0, 0.0),
         rot_euler=(0.0, 0.0, 0.0),
         scale=(1.0, 1.0, 1.0),
         parent_inner=None,
-        notes="body — composite root (animation drives child poses)",
+        notes=(
+            "body — composite root + the pointy skull (crest = bones "
+            "77/84-88, intrinsic to this inner). Drives all child poses."
+        ),
     ),
-    # NOTE (2026-06-21): the body alone is De Rol Le's recognizable form.
-    # The other six inners were dropped from the default assembly because a
-    # STATIC TRS cannot place them on a CURVED/animated body — they float
-    # off detached ("De Rol Le still fucked up", owner). Two are damage
-    # states that should never show on the intact boss:
-    #   * boss2_b_helm_break.nj   — broken helm (visible only after the
-    #                               player breaks it in phase 1)
-    #   * boss2_b_shell_break.nj  — broken shell armor (same)
-    # The four appendages attach to SPECIFIC BODY BONES in-game (offsets
-    # live in PSOBB.exe entity-init, not the asset files), so they need
-    # bone-relative attachment, not a world offset:
-    #   * boss2_b_derorure_fin_a.nj / fin_b.nj  — lateral fins
-    #   * boss2_b_derorure_sting.nj             — tail stinger
-    #   * boss2_b_derorure_tentacle.nj          — articulated tail (its own
-    #                                             tracked entity in-game)
-    # FOLLOW-UP: re-add them via per-part parent_bone attachment once the
-    # body's fin/tail bone indices are recovered (then they ride the curve
-    # instead of floating).
+    # Bite-attack jaw fins — hung off the head/face bones (33/34). In-game
+    # these flicker during the bite attack (DerolleInitializeAttackParams);
+    # at rest they sit flush at the jaw. Bone matrix carries placement.
+    CompositePart(
+        inner_nj="boss2_b_derorure_fin_a.nj",
+        parent_inner="boss2_b_derorure_body.nj",
+        parent_bone=33,
+        local_offset=(0.0, 0.0, 0.0),
+        notes=(
+            "bite-attack jaw fin (a) — attached to head bone 33; rides "
+            "the body skull. Attack-state visual (RE: model_files attack "
+            "params)."
+        ),
+    ),
+    CompositePart(
+        inner_nj="boss2_b_derorure_fin_b.nj",
+        parent_inner="boss2_b_derorure_body.nj",
+        parent_bone=34,
+        local_offset=(0.0, 0.0, 0.0),
+        notes=(
+            "bite-attack jaw fin (b) — attached to head-crown bone 34; "
+            "rides the body skull. Attack-state visual."
+        ),
+    ),
+    # Tail appendages — sting + tentacle hang off the tail base (bone 104,
+    # Z=-124). In-game spawned during specific attacks; the tentacle is
+    # self-animated (own tloop NJM) but for the static asset preview it
+    # rides bone 104 of the body so it sits at the correct tail position.
+    CompositePart(
+        inner_nj="boss2_b_derorure_sting.nj",
+        parent_inner="boss2_b_derorure_body.nj",
+        parent_bone=104,
+        local_offset=(0.0, 0.0, 0.0),
+        notes=(
+            "tail stinger — attached to tail-base bone 104 (Z=-124). "
+            "Attack-state appendage."
+        ),
+    ),
+    CompositePart(
+        inner_nj="boss2_b_derorure_tentacle.nj",
+        parent_inner="boss2_b_derorure_body.nj",
+        parent_bone=104,
+        local_offset=(0.0, 0.0, 0.0),
+        notes=(
+            "articulated tail tentacle — attached to tail-base bone 104. "
+            "Self-animated in-game (tloop_boss2_b_tentacle.njm); preview "
+            "shows it riding the body tail."
+        ),
+    ),
+    # helm_break / shell_break are intentionally OMITTED — they are the
+    # broken-armor damage states (debris), NOT the intact boss's skull
+    # (which lives in the body inner above). Adding them is the "goofy
+    # mesh on its head" bug. They have no static rest-pose body bone in
+    # the RE; they spawn as separate physics objects when armor breaks.
 ]
 
 
-# Challenge-mode De Rol Le variant. Smaller inner set (only body +
-# tentacle + the two damage-state inners + a Challenge-only
-# extra-tentacle). Same caveats as the main De Rol Le.
+# Challenge-mode De Rol Le variant (bm_boss7_de_rol_le_c.bml). Same body
+# skeleton (boss2_b_derorure_body.nj — pointy skull intrinsic), so the same
+# RE-derived bone attachment applies. Inner set: body + tentacle + a
+# Challenge-only hige (whisker) tentacle + the two damage-state inners.
+# The tentacles attach to the tail base (bone 104, same as the main
+# variant). The damage states (helm_break/shell_break) are OMITTED for the
+# same reason as the main variant — they are broken-armor debris, not the
+# intact boss, and have no static rest-pose body bone in the RE.
 _DE_ROL_LE_C_PARTS: List[CompositePart] = [
     CompositePart(
         inner_nj="boss2_b_derorure_body.nj",
@@ -244,43 +320,32 @@ _DE_ROL_LE_C_PARTS: List[CompositePart] = [
         rot_euler=(0.0, 0.0, 0.0),
         scale=(1.0, 1.0, 1.0),
         parent_inner=None,
-        notes="body — Challenge mode. Identity root.",
-    ),
-    CompositePart(
-        inner_nj="boss2_b_derorure_tentacle.nj",
-        pos=(0.0, 0.0, -100.0),
-        rot_euler=(0.0, 0.0, 0.0),
-        scale=(1.0, 1.0, 1.0),
-        parent_inner="boss2_b_derorure_body.nj",
-        notes="tentacle — best-effort tail attach. TODO: engine constants.",
-    ),
-    CompositePart(
-        inner_nj="hige_at01_tentacle.nj",
-        pos=(0.0, 0.0, -110.0),
-        rot_euler=(0.0, 0.0, 0.0),
-        scale=(1.0, 1.0, 1.0),
-        parent_inner="boss2_b_derorure_body.nj",
         notes=(
-            "hige (whisker) tentacle — Challenge-mode-only extra "
-            "appendage. TODO: engine constants."
+            "body — Challenge mode; composite root + intrinsic pointy "
+            "skull (same skeleton as the main variant)."
         ),
     ),
     CompositePart(
-        inner_nj="boss2_b_helm_break.nj",
-        pos=(0.0, 30.0, 60.0),
-        rot_euler=(0.0, 0.0, 0.0),
-        scale=(1.0, 1.0, 1.0),
+        inner_nj="boss2_b_derorure_tentacle.nj",
         parent_inner="boss2_b_derorure_body.nj",
-        notes="helm-break damage state. TODO: engine constants.",
+        parent_bone=104,
+        local_offset=(0.0, 0.0, 0.0),
+        notes="tentacle — attached to tail-base bone 104 (rides the body tail).",
     ),
     CompositePart(
-        inner_nj="boss2_b_shell_break.nj",
-        pos=(0.0, 20.0, 0.0),
-        rot_euler=(0.0, 0.0, 0.0),
-        scale=(1.0, 1.0, 1.0),
+        inner_nj="hige_at01_tentacle.nj",
         parent_inner="boss2_b_derorure_body.nj",
-        notes="shell-break damage state. TODO: engine constants.",
+        parent_bone=104,
+        local_offset=(0.0, 0.0, 0.0),
+        notes=(
+            "hige (whisker) tentacle — Challenge-mode-only extra appendage. "
+            "Attached to the tail base (bone 104); the RE did not pin a "
+            "distinct bone for this Challenge-only piece, so it shares the "
+            "tail-base attach (UNRESOLVED: exact hige bone)."
+        ),
     ),
+    # helm_break / shell_break OMITTED — damage-state debris, not the
+    # intact boss (see the main-variant note above).
 ]
 
 
@@ -635,11 +700,13 @@ COMPOSITE_TABLE: Dict[str, CompositeAssembly] = {
     "bm_boss2_de_rol_le.bml": CompositeAssembly(
         bml_path="bm_boss2_de_rol_le.bml",
         parts=_DE_ROL_LE_PARTS,
-        # exclusive: render ONLY the curated body. De Rol Le's fins/sting/
-        # tentacle need bone attachment (can't be statically placed on the
-        # curved body) so they must NOT fall through to an origin render as
-        # floating debris. (Vol Opt etc. stay plain "hand-curated" = union.)
-        source="hand-curated-exclusive",
+        # Normal multi-part assembly: body (with the intrinsic pointy
+        # skull) as the animation root + four ATTACK appendages bone-
+        # attached to the body skeleton (fins on the head, sting/tentacle
+        # on the tail). The skull is in the body inner itself — NOT a
+        # separate part — so the faithful render shows the crest. The
+        # helm/shell damage states are deliberately not in the parts list.
+        source="re-derived-bone-attach",
     ),
     # The "_a" variant ships with byte-identical inner names (probed
     # 2026-04-30). Reuse the same parts list — frozen dataclass so
@@ -647,7 +714,7 @@ COMPOSITE_TABLE: Dict[str, CompositeAssembly] = {
     "bm_boss2_de_rol_le_a.bml": CompositeAssembly(
         bml_path="bm_boss2_de_rol_le_a.bml",
         parts=_DE_ROL_LE_PARTS,
-        source="hand-curated-exclusive",
+        source="re-derived-bone-attach",
     ),
     "bm_boss7_de_rol_le_c.bml": CompositeAssembly(
         bml_path="bm_boss7_de_rol_le_c.bml",
