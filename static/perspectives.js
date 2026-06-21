@@ -265,55 +265,14 @@
     wireBus();
     rebuildTabStrip();
 
-    // "Classic UI" toggle: header button flips body.unified-viewport-mode.
-    const toggleBtn = document.getElementById("btnClassicUiToggle");
-    if (toggleBtn) {
-      const apply = function () {
-        const on = document.body.classList.contains("unified-viewport-mode");
-        toggleBtn.textContent = on ? "classic UI" : "unified UI";
-        toggleBtn.title = on
-          ? "switch back to the legacy modal-stack UI"
-          : "switch to the unified viewport (default)";
-        toggleBtn.setAttribute("aria-pressed", on ? "true" : "false");
-      };
-      apply();
-      toggleBtn.addEventListener("click", function () {
-        const turningOff = document.body.classList.contains("unified-viewport-mode");
-        if (turningOff) {
-          // Going classic -> unmount any active perspective so legacy DOM
-          // (#fileWorkspace, modal sub-elements) goes back home.
-          if (activeName) {
-            const spec = registry.get(activeName);
-            if (spec) {
-              try { spec.unmount(stageEl(), inspectorEl()); }
-              catch (_e) {}
-            }
-            activeName = null;
-            // Don't lose the context — user can come back to unified mode.
-          }
-          document.body.classList.remove("unified-viewport-mode");
-        } else {
-          document.body.classList.add("unified-viewport-mode");
-          // Going classic -> unified: re-route the active context if any.
-          // If there's a current open file but no asset.opened ctx yet,
-          // synthesize one from psoEditor.state.
-          if (!activeCtx) {
-            const editorState = window.psoEditor && window.psoEditor.state;
-            const cur = editorState && editorState.currentFile;
-            if (cur && cur.name) {
-              activeCtx = {
-                path: cur.name,
-                entry: { category: "container", format: cur.name.toLowerCase().endsWith(".prs") ? "PRS" : "XVM" },
-                fileName: cur.name,
-              };
-            }
-          }
-          if (activeCtx) refresh(activeCtx);
-          else rebuildTabStrip();
-        }
-        apply();
-      });
-    }
+    // 2026-06-20 (dedup-ui): the "classic UI" toggle was removed. The
+    // unified viewport is the only UI now — body.unified-viewport-mode is
+    // set in the static markup and never cleared, so there is a single
+    // code path for users. The legacy modal/#fileWorkspace DOM is still
+    // present in index.html because the unified perspectives RE-PARENT
+    // those live nodes into vp-stage; it is host scaffolding, not a
+    // second user-facing UI. (window.psoUseLegacyModal remains as an
+    // undocumented debug escape hatch; it is not surfaced in the UI.)
   }
 
   // ---- public API ---------------------------------------------------

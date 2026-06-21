@@ -665,6 +665,14 @@
     mount: async function (stage, insp, ctx) {
       stage.innerHTML =
         '<div class="bp-perspective">' +
+        '<div class="panel-purpose-banner" role="note">' +
+        '<strong>Raw BattleParamEntry editor.</strong> ' +
+        'Every field of the selected mob slot, by name/offset ' +
+        '(stats, attacks, resists, movement). This is the byte-accurate ' +
+        'view of <code>BattleParamEntry*.dat</code>. ' +
+        'Want grouped, friendly fields with presets instead? Use ' +
+        '<strong>Mob AI</strong> — it compiles down to this same file.' +
+        '</div>' +
         '<div id="bpToolbar"></div>' +
         '<div id="bpEditor" class="bp-editor"></div>' +
         '</div>';
@@ -725,8 +733,10 @@
     btn.id = "btnBattleParams";
     btn.type = "button";
     btn.className = "ghost";
-    btn.title = "edit BattleParamEntry*.dat (mob stats / attacks / resists / movement)";
-    btn.textContent = "Battle Params";
+    btn.title = "RAW BattleParamEntry*.dat editor — every numeric field by "
+      + "offset (stats/attacks/resists/movement). For friendly named tuning "
+      + "use \"Mob AI\" instead; both write the same .dat.";
+    btn.textContent = "Battle Params (raw)";
     header.insertBefore(btn, status);
     btn.addEventListener("click", openPerspective);
   }

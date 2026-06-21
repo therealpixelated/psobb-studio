@@ -3174,25 +3174,8 @@ body.unified-viewport-mode pso-viewport-canvas:not(.vp-as-stage-content) {
   display: none !important;
 }
 
-/* Header toggle button — show as pressed/active when unified mode is on. */
-#btnClassicUiToggle {
-  background: transparent;
-  border: 1px solid var(--tk-line, rgba(0,255,255,0.3));
-  color: var(--tk-blue, #00ffff);
-  border-radius: var(--tk-rad-1, 4px);
-  padding: 4px 10px;
-  font-size: 12px;
-  cursor: pointer;
-  transition: background-color 0.18s, color 0.18s, box-shadow 0.18s;
-}
-#btnClassicUiToggle:hover {
-  background: rgba(0, 255, 255, 0.08);
-  box-shadow: 0 0 6px rgba(0, 255, 255, 0.3);
-}
-body.unified-viewport-mode #btnClassicUiToggle {
-  background: var(--tk-blue, #00ffff);
-  color: #000;
-}
+/* (2026-06-20 dedup-ui) #btnClassicUiToggle styles removed — the classic
+   UI toggle no longer exists; the unified viewport is the only UI. */
 
 /* Inspector resize: keep sensible widths on small screens. */
 @media (max-width: 1100px) {
@@ -3289,6 +3272,28 @@ body.unified-viewport-mode #btnClassicUiToggle {
   padding: 12px;
   height: 100%;
   overflow: auto;
+}
+
+/* (2026-06-20 dedup-ui) Purpose banner shared by the two mob-editing
+   perspectives (Battle Params raw + Mob AI friendly) so it's obvious at a
+   glance which tool you're in and how they relate (both write the same
+   BattleParamEntry .dat). */
+.panel-purpose-banner {
+  flex: 0 0 auto;
+  border: 1px solid var(--tk-line, rgba(0, 255, 255, 0.3));
+  border-left: 3px solid var(--tk-blue, #00ffff);
+  border-radius: var(--tk-rad-1, 4px);
+  background: rgba(0, 255, 255, 0.05);
+  color: var(--tk-text, #cfeffd);
+  padding: 8px 12px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.panel-purpose-banner strong { color: var(--tk-blue, #00ffff); }
+.panel-purpose-banner code {
+  background: rgba(0, 0, 0, 0.35);
+  padding: 0 4px;
+  border-radius: 3px;
 }
 
 .bp-toolbar {
@@ -4874,6 +4879,45 @@ header button.imp-header-btn { margin-right: 4px; }
   background: #1a1d22;
   border: 1px dashed #2a313a;
   border-radius: 6px;
+}
+/* (2026-06-20 dedup-ui) actionable empty state — turns the dead-end
+   "nothing here" message into a one-click path to populate the library. */
+.anim-lib-empty-cta {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  max-width: 460px;
+  margin: 0 auto;
+  padding: 34px 24px;
+  line-height: 1.55;
+}
+.anim-lib-empty-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--tk-blue, #00ffff);
+}
+.anim-lib-empty-body { color: #aeb8c4; }
+.anim-lib-empty-btn {
+  margin-top: 4px;
+  padding: 8px 16px;
+  font-size: 13px;
+  border: 1px solid var(--tk-blue, #00ffff);
+  background: rgba(0, 255, 255, 0.08);
+  color: var(--tk-blue, #00ffff);
+  border-radius: var(--tk-rad-1, 4px);
+  cursor: pointer;
+  transition: background-color 0.18s, box-shadow 0.18s;
+}
+.anim-lib-empty-btn:hover {
+  background: rgba(0, 255, 255, 0.16);
+  box-shadow: 0 0 8px rgba(0, 255, 255, 0.35);
+}
+.anim-lib-empty-hint { font-size: 11px; }
+.anim-lib-empty-cta code {
+  background: rgba(0, 0, 0, 0.35);
+  padding: 0 4px;
+  border-radius: 3px;
 }
 .anim-lib-card {
   display: flex;

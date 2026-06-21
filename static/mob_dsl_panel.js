@@ -673,6 +673,14 @@
       stage.innerHTML =
         '<div class="mdsl-perspective">' +
         renderPanelHeader() +
+        '<div class="panel-purpose-banner" role="note">' +
+        '<strong>Mob AI tuning (friendly layer).</strong> ' +
+        'Edit named fields grouped by Movement / Combat / AI Behavior / ' +
+        'Resists / Stats, apply presets, then <em>compile</em> to ' +
+        '<code>BattleParamEntry*.dat</code>. ' +
+        'Need a raw, every-offset view of the same file? Use ' +
+        '<strong>Battle Params (raw)</strong>.' +
+        '</div>' +
         '<div id="mdslToolbar"></div>' +
         '<div id="mdslEditor" class="mdsl-editor"></div>' +
         '</div>';
@@ -730,7 +738,10 @@
     btn.id = "btnMobAi";
     btn.type = "button";
     btn.className = "ghost";
-    btn.title = "edit mob AI tuning (named fields over BattleParamEntry)";
+    btn.title = "Friendly mob tuning — named fields (Movement / Combat / AI "
+      + "Behavior / Resists / Stats) + presets, compiled down to "
+      + "BattleParamEntry. For raw per-offset editing use \"Battle Params "
+      + "(raw)\"; both write the same .dat.";
     btn.textContent = "Mob AI";
     header.insertBefore(btn, status);
     btn.addEventListener("click", openPerspective);

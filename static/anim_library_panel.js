@@ -6,6 +6,13 @@
 // strips in the Motions tab; this gives the user a single view of
 // every retargeted .njm regardless of which BML it was authored against.
 //
+// 2026-06-20 (dedup-ui): kept (not cut) — it is a working, non-duplicate
+// feature (the per-model strips are per-model; the anim *editor* is a
+// keyframe editor; this is the only global retarget browser). It read as
+// "empty + useless" only because a fresh cache has nothing staged, so the
+// empty state is now an actionable call-to-action (renderGrid below) that
+// routes the user into the Import 3D retarget flow that POPULATES it.
+//
 // Layout:
 //   - Toolbar: search box, target-model filter, "select all", "select
 //     none", "Refresh from disk", subscriber count
@@ -298,10 +305,42 @@
     }
     if (!list) return;
     if (vis.length === 0) {
-      const reason = state.items.length === 0
-        ? "No animations staged yet. Drop a .glb on the Import 3D panel to retarget against a PSOBB skeleton, then come back here."
-        : "No animations match the current filter.";
-      list.innerHTML = `<div class="anim-lib-empty">${escapeHtml(reason)}</div>`;
+      if (state.items.length === 0) {
+        // Actionable empty state: this library is populated by RETARGETING
+        // external motions onto a PSOBB skeleton (Import 3D), which stages
+        // a .njm into cache/njm_export/. Give the user the button rather
+        // than a dead-end sentence (2026-06-20 dedup-ui).
+        list.innerHTML = `
+          <div class="anim-lib-empty anim-lib-empty-cta">
+            <div class="anim-lib-empty-title">No staged animations yet</div>
+            <div class="anim-lib-empty-body">
+              This library lists every motion you've retargeted onto a PSOBB
+              skeleton (one <code>.njm</code> per card, across all target
+              models). To add the first one, import an external 3D model and
+              retarget its animation.
+            </div>
+            <button type="button" data-act="goto-import" class="anim-lib-empty-btn">
+              Import &amp; retarget a 3D model →
+            </button>
+            <div class="anim-lib-empty-hint dim">
+              After retargeting, the new <code>.njm</code> shows up here
+              automatically.
+            </div>
+          </div>`;
+        const goBtn = list.querySelector('[data-act="goto-import"]');
+        if (goBtn) {
+          goBtn.addEventListener("click", () => {
+            // The Import 3D header button (import_panel.js) opens the file
+            // picker / retarget flow. Click it if present; otherwise fall
+            // back to a hint.
+            const impBtn = document.querySelector(".imp-header-btn");
+            if (impBtn) impBtn.click();
+            else toast("Open the \"Import 3D\" button in the header to retarget a model.", "warn");
+          });
+        }
+      } else {
+        list.innerHTML = `<div class="anim-lib-empty">No animations match the current filter.</div>`;
+      }
       return;
     }
     list.innerHTML = vis.map((it) => {

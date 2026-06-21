@@ -33,7 +33,6 @@
         <div class="hdr-tools-sep"></div>
         <div class="hdr-tools-label">Modes</div>
         <button id="btnEditMode" type="button" class="ghost" title="toggle Blender-style edit-mode on the 3D viewport (Tab) — vertex selection + transform gizmo" aria-pressed="false">Edit Mode</button>
-        <button id="btnClassicUiToggle" type="button" class="ghost" title="switch back to the legacy modal-stack UI" aria-pressed="false">classic UI</button>
       </div>
     </div>
     <input type="file" id="sessionImportInput" accept="application/json,.json" hidden />
@@ -69,14 +68,14 @@
     </aside>
 
     <section id="workArea">
-      <!-- 2026-04-24: unified-viewport layout. vp-tabs / vp-stage /
-           vp-inspector are the three regions of the persistent
+      <!-- 2026-04-24: unified-viewport layout (the only UI). vp-tabs /
+           vp-stage / vp-inspector are the three regions of the persistent
            workspace; perspectives.js mounts content into vp-stage and
            vp-inspector based on the active asset. The legacy
-           #fileWorkspace block lives below; the "tile-grid"
-           perspective relocates it into vp-stage on mount. In classic
-           UI mode (body without .unified-viewport-mode) the new tabs
-           hide and the legacy layout shows in place. -->
+           #fileWorkspace block lives below as RE-PARENT scaffolding: the
+           "tile-grid" perspective relocates it into vp-stage on mount and
+           restores it on unmount. body.unified-viewport-mode is always set
+           (2026-06-20 dedup-ui removed the classic-UI toggle). -->
       <nav class="vp-tabs" id="vpTabs" aria-label="active perspective"></nav>
       <div class="vp-body">
         <main class="vp-stage" id="vpStage" aria-label="active perspective content">
@@ -113,10 +112,11 @@
         </aside>
       </div>
 
-      <!-- Legacy layout: kept inline for classic UI mode (body without
-           .unified-viewport-mode). The "tile-grid" perspective in
-           perspectives.js detaches #fileWorkspace into the new vp-stage
-           on mount and restores it on unmount. -->
+      <!-- Re-parent host: #fileWorkspace lives here but is hidden in the
+           unified UI (body.unified-viewport-mode). The "tile-grid"
+           perspective in perspectives.js detaches #fileWorkspace into the
+           vp-stage on mount and restores it here on unmount. Not a separate
+           UI — just the home position for the borrowed nodes. -->
       <div class="placeholder dim" id="placeholder">
         <div class="walkthrough">
           <div class="wt-title">PSOBB Studio</div>
@@ -286,15 +286,14 @@
     </section>
   </main>
 
-  <!-- DEPRECATED: use perspectives instead.
-       The unified-viewport build (default) routes openModal() into the
-       "tile-detail" perspective in static/perspectives.js, which yanks
-       the children of #modal into vp-stage so the user never leaves
-       the persistent viewport. This wrapper is kept for the
-       classic-UI fallback (header "classic UI" toggle) and as a host
-       for the modal sub-elements in unified mode (they're re-parented
-       at runtime). Set `window.psoUseLegacyModal = true` to force the
-       modal to open visibly even in unified mode (debug only). -->
+  <!-- Re-parent host for the tile A/B viewer (not a visible modal).
+       openModal() routes into the "tile-detail" perspective in
+       static/perspectives.js, which yanks the children of #modal into
+       vp-stage so the user never leaves the persistent viewport. This
+       #modal wrapper exists only to hold those sub-elements at startup;
+       it is hidden by body.unified-viewport-mode CSS and re-parented at
+       runtime. Set `window.psoUseLegacyModal = true` to force the modal
+       to open visibly (debug only — no UI surfaces this). -->
   <div id="modal" hidden role="dialog" aria-modal="true" aria-labelledby="modalTitle">
     <div class="modal-card">
       <header>
@@ -804,9 +803,9 @@
        perspectives (tile-grid / 3d-view / viewport-paint / aigen /
        atlas-composite / audio / hex / json / asset-info / deploy-diff)
        without modal popups. Each perspective relocates the relevant
-       legacy DOM (e.g. the model viewer's canvas) into vp-stage and
+       host DOM (e.g. the model viewer's canvas) into vp-stage and
        restores it on unmount, so existing wiring keeps working.
-       Toggle off via header "classic UI" button. -->
+       This is the only UI (the classic-UI toggle was removed 2026-06-20). -->
   <script src="/static/perspectives.js"></script>
 
   <!-- Audio suite perspective (2026-06-20).

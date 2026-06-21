@@ -730,12 +730,12 @@
     hideViewAsModelBanner();
     hideEditEntriesBanner();
 
-    // 2026-04-24: when unified-viewport mode is on, perspectives.js
-    // owns asset routing and renders into the persistent vp-stage. The
-    // legacy modal openers below still work in classic mode (toggled
-    // off via header "classic UI" button). For unified mode we still
-    // surface the BML-inner "view as model" hint since it's a useful
-    // affordance regardless of UI mode.
+    // 2026-04-24: perspectives.js owns asset routing and renders into the
+    // persistent vp-stage (body.unified-viewport-mode is always on; the
+    // classic-UI toggle was removed 2026-06-20). The legacy modal openers
+    // below remain only as a debug fallback (window.psoUseLegacyModal). We
+    // still surface the BML-inner "view as model" hint here since it's a
+    // useful affordance.
     if (document.body.classList.contains("unified-viewport-mode")) {
       // .prs UI atlases are texture-editable too (PRS-compressed XVMH).
       if (cat === "texture" || cat === "container"

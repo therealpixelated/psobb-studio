@@ -1433,10 +1433,9 @@ async function doRepackBuildOnly() {
 // re-routing openModal() to switch to the "tile-detail" perspective
 // (registered in perspectives.js), which yanks the same DOM pieces
 // (#modalUpscaleBar, .ab-stage, .modal-anim-bar) into vp-stage and
-// calls openModal() with the bypass flag set. The legacy modal stays
-// reachable via the "classic UI" header toggle (which removes the
-// body.unified-viewport-mode class) or by setting
-// window.psoUseLegacyModal = true.
+// calls openModal() with the bypass flag set. The legacy fullscreen
+// modal is now debug-only, reachable solely by setting
+// window.psoUseLegacyModal = true (the classic-UI toggle was removed).
 // =====================================================================
 function openModal(idx) {
   if (!state.currentFile) return;
@@ -4100,11 +4099,11 @@ window.psoEditor.state = state;
 window.openModal = openModal;
 window.closeModal = closeModal;
 window.showDeployDiff = showDeployDiff;
-// Legacy-modal feature flag (2026-04-25, regression-fix-modal-vs-viewport).
+// Debug-only legacy-modal flag (2026-04-25, regression-fix-modal-vs-viewport).
 // Default false: openModal() redirects through the "tile-detail"
-// perspective when body.unified-viewport-mode is set (the default).
-// Setting this true forces the legacy fullscreen #modal — useful for
-// debugging or for users who toggled "classic UI" on intentionally.
+// perspective (body.unified-viewport-mode is always set). Setting this
+// true forces the legacy fullscreen #modal — purely a debug escape hatch;
+// no UI surfaces it (the classic-UI toggle was removed 2026-06-20).
 if (typeof window.psoUseLegacyModal === "undefined") {
   window.psoUseLegacyModal = false;
 }
