@@ -918,6 +918,16 @@
       if (arcHeader) {
         const archive = arcHeader.parentElement;
         const arcPath = archive.dataset.arc;
+        // Clicking the row OPENS the archive's composite (all inners) in ONE
+        // click; only the twist (chevron) toggles expand to pick individual
+        // parts. ("click the top level and just open all inners" — owner.)
+        const onTwist = ev.target.closest(".arc-twist");
+        if (!onTwist) {
+          const entry = this._findEntry(arcPath) || { path: arcPath };
+          this._setActive(arcPath);
+          if (window.bus) window.bus.emit("asset.opened", { path: arcPath, entry });
+          return;
+        }
         const open = archive.classList.toggle("open");
         this._expanded["arc:" + arcPath] = open;
         arcHeader.setAttribute("aria-expanded", open ? "true" : "false");
@@ -1315,9 +1325,16 @@
           for (const node of stream) {
             if (node.kind === "leaf") {
               parts.push(this._leafHtml(node.e, ctx, { inner: false }));
+            } else if (node.arc.children.length === 1) {
+              // Single-inner archive (the common case): render the lone inner
+              // as ONE clickable row (clean inner name, opens on click)
+              // instead of a redundant parent+child that forced
+              // expand-then-click-inner. ("shit ux" — owner, 2026-06-20.)
+              parts.push(this._leafHtml(node.arc.children[0], ctx, { inner: true }));
             } else {
-              // During an active search, force the archive open so matched
-              // inners are visible without an extra click.
+              // Multi-inner: keep the collapsible parent, but its row OPENS
+              // the composite on click (the twist toggles expand) — see
+              // _onBodyClick. During search, force open so matches show.
               parts.push(this._archiveHtml(node.arc, ctx, { forceOpen: !!q }));
             }
           }
