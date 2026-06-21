@@ -4084,6 +4084,13 @@ async function init() {
 
 window.addEventListener("DOMContentLoaded", () => {
   $("#abDst").style.clipPath = "inset(0 0 0 50%)";
+  // Reveal the empty-state "Asset Workshop" welcome only AFTER the app has
+  // settled — it's hardcoded in index.html so it paints before JS and FLASHES
+  // on every refresh before perspectives.js decides what to render. CSS hides
+  // .vp-stage-empty until body.app-ready (set here after two frames).
+  requestAnimationFrame(() =>
+    requestAnimationFrame(() => document.body.classList.add("app-ready")),
+  );
 });
 
 // V4 quality: expose the build-only entry point so the UX agent (or any

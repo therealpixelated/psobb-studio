@@ -489,6 +489,12 @@ body {
 
 [hidden] { display: none !important; }
 
+/* 2026-06-20: no welcome-panel flash on refresh. The "Asset Workshop" empty
+   state is hardcoded in index.html so it paints before JS runs; hide it until
+   app.js sets body.app-ready (after the first frames) so a plain refresh no
+   longer flickers the walkthrough screen. */
+body:not(.app-ready) .vp-stage-empty { display: none !important; }
+
 /* ─────────────────────────────────────────────────────────────────
  * Global keyboard focus ring (2026-06-19, anti-slop pass)
  *

@@ -2542,6 +2542,21 @@ app = FastAPI(title="PSOBB Studio", version=VERSION, lifespan=lifespan)
 app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=1)
 
 
+# Force revalidation of /static/* (2026-06-20). StaticFiles ships an ETag but
+# NO Cache-Control, so browsers heuristic-cache the JS/CSS for hours and keep
+# running PRE-FIX code even though index.html (no-store) already points at the
+# fresh ?v=<hash> URLs — the editor owner kept seeing stale renders/UI that
+# were already fixed on the server. `no-cache` makes the browser revalidate
+# every load: 304 when the hash is unchanged (cheap), fresh bytes the moment a
+# file changes. So the live editor always runs the latest code on a plain F5.
+@app.middleware("http")
+async def _static_no_cache(request, call_next):
+    resp = await call_next(request)
+    if request.url.path.startswith("/static/"):
+        resp.headers["Cache-Control"] = "no-cache"
+    return resp
+
+
 # ---------------------------------------------------------------------------- API
 def _manifest_health_summary() -> dict:
     """Summarize the cached manifest for /api/health.
