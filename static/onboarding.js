@@ -356,7 +356,10 @@
     var eb = $("#btnEmptyBrowse");
     if (eb) eb.addEventListener("click", function () {
       markSeen();
-      // Nudge focus toward the tree so keyboard users land somewhere useful.
+      // Visibly dismiss the big walkthrough card (it previously only focused
+      // the tree, so the button looked dead). body.welcome-dismissed collapses
+      // the blurb to a one-line hint via CSS; the asset tree stays on the left.
+      document.body.classList.add("welcome-dismissed");
       var tree = document.querySelector("pso-asset-tree");
       if (tree && typeof tree.focus === "function") {
         try { tree.focus(); } catch (_e) {}

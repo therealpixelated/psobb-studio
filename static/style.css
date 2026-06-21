@@ -495,6 +495,14 @@ body {
    longer flickers the walkthrough screen. */
 body:not(.app-ready) .vp-stage-empty { display: none !important; }
 
+/* "Browse assets" collapses the welcome blurb to a one-line hint (the button
+   used to only focus the tree, so it looked dead). */
+body.welcome-dismissed .vp-stage-empty .walkthrough { display: none; }
+body.welcome-dismissed .vp-stage-empty::after {
+  content: "Pick an asset from the list on the left to preview it.";
+  color: var(--dim, #8a93a6); font-size: 13px; opacity: .8;
+}
+
 /* ─────────────────────────────────────────────────────────────────
  * Global keyboard focus ring (2026-06-19, anti-slop pass)
  *
