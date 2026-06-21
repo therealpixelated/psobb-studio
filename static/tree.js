@@ -493,6 +493,7 @@
       this._expanded = loadExpandedState();
       this._filter = loadFilterState();      // active tab key from TAB_FILTERS
       this._pollTimer = null;
+      this._searchDebounce = null;   // setTimeout handle for search input
       this._mounted = false;
       // Multi-select anchor (2026-04-25): the path most-recently
       // single-clicked WITHOUT a modifier. Shift+click extends the
@@ -528,6 +529,10 @@
       if (this._pollTimer) {
         clearInterval(this._pollTimer);
         this._pollTimer = null;
+      }
+      if (this._searchDebounce) {
+        clearTimeout(this._searchDebounce);
+        this._searchDebounce = null;
       }
       if (window.bus && typeof window.bus.off === "function") {
         window.bus.off("selection.changed", this._onSelectionChanged);
@@ -706,8 +711,24 @@
     }
 
     _onSearchInput(e) {
+      // Debounce (2026-06-20 perf): _renderTree re-buckets + re-sorts the
+      // full ~10.5k-entry manifest and rebuilds the DOM. Doing that on
+      // every keystroke makes fast typing janky in a long tree. Coalesce
+      // bursts into a single render ~120 ms after the user stops typing;
+      // an empty query renders immediately so clearing the box feels snappy.
       this._search = (e.target.value || "").toLowerCase();
-      this._renderTree();
+      if (this._searchDebounce) {
+        clearTimeout(this._searchDebounce);
+        this._searchDebounce = null;
+      }
+      if (!this._search) {
+        this._renderTree();
+        return;
+      }
+      this._searchDebounce = setTimeout(() => {
+        this._searchDebounce = null;
+        if (this._mounted) this._renderTree();
+      }, 120);
     }
 
     async _onRefreshClick() {

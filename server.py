@@ -13944,7 +13944,7 @@ def api_model_bundle(path: str, inner: Optional[str] = None,
 # to identity placement of every primary inner so the endpoint is
 # usable for non-composite assets too — caller decides how to render.
 @app.get("/api/composite_bundle/{path:path}")
-def api_composite_bundle(path: str):
+def api_composite_bundle(path: str, meta_only: int = 0):
     """Return the composite multi-inner assembly for a BML.
 
     Wire shape::
@@ -13980,6 +13980,17 @@ def api_composite_bundle(path: str):
     The endpoint reuses ``api_model_skinned`` for each part so the
     per-inner mesh / bone / binding logic stays in one place. Only
     the assembly metadata is new.
+
+    Perf (2026-06-20): ``meta_only=1`` returns ONLY the placement table
+    (inner / pos / rot_euler / scale / parent_inner / notes) and SKIPS
+    the per-inner ``api_model_skinned`` parse entirely. The model viewer
+    consumes composite_bundle purely for the TRS placement metadata — it
+    re-fetches the actual geometry per inner via /api/model_skinned /
+    /api/model_mesh in parallel — so the inline skinned payloads were
+    pure waste. For a multi-inner boss (De Rol Le, Vol Opt) the full
+    sequential per-part skinned parse cost 13-60+ s and blocked the open;
+    meta_only collapses that to a few ms (placement table only). The full
+    shape is still available without the flag for any other consumer.
     """
     base, hash_inner = _split_inner_path(path)
     if hash_inner:
@@ -14041,6 +14052,7 @@ def api_composite_bundle(path: str):
 
     parts_payload: list[dict] = []
     errors: dict[str, str] = {}
+    want_skinned = not bool(meta_only)
     for part in assembly.parts:
         entry: dict = {
             "inner":        part.inner_nj,
@@ -14052,23 +14064,29 @@ def api_composite_bundle(path: str):
             "skinned":      None,
             "binding":      None,
         }
-        try:
-            skinned = api_model_skinned(base, inner=part.inner_nj)
-            entry["skinned"] = skinned
-            # Hoist the binding so a frontend that only consumes
-            # composite_bundle doesn't need to re-walk the skinned
-            # payload to find textures.
-            if isinstance(skinned, dict):
-                entry["binding"] = skinned.get("binding_data")
-        except HTTPException as e:
-            detail = e.detail if hasattr(e, "detail") else str(e)
-            errors[part.inner_nj] = str(detail)
-        except Exception as e:  # pragma: no cover — defensive
-            log.exception(
-                "composite_bundle: skinned sub-call failed for %s#%s",
-                base, part.inner_nj,
-            )
-            errors[part.inner_nj] = f"internal: {e}"
+        # Perf: meta_only callers (the model viewer) want ONLY the TRS
+        # placement table above — they re-fetch geometry per inner in
+        # parallel. Skipping the per-part skinned parse here is the whole
+        # point; it's what turns a 13-60 s multi-inner boss open into a
+        # sub-second one.
+        if want_skinned:
+            try:
+                skinned = api_model_skinned(base, inner=part.inner_nj)
+                entry["skinned"] = skinned
+                # Hoist the binding so a frontend that only consumes
+                # composite_bundle doesn't need to re-walk the skinned
+                # payload to find textures.
+                if isinstance(skinned, dict):
+                    entry["binding"] = skinned.get("binding_data")
+            except HTTPException as e:
+                detail = e.detail if hasattr(e, "detail") else str(e)
+                errors[part.inner_nj] = str(detail)
+            except Exception as e:  # pragma: no cover — defensive
+                log.exception(
+                    "composite_bundle: skinned sub-call failed for %s#%s",
+                    base, part.inner_nj,
+                )
+                errors[part.inner_nj] = f"internal: {e}"
         parts_payload.append(entry)
 
     response: dict = {

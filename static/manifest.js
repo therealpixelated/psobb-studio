@@ -66,7 +66,15 @@
       res = await fetch(url, {
         method: "GET",
         headers: { Accept: "application/json" },
-        cache: "no-store",
+        // no-cache (NOT no-store): the browser keeps the body in its HTTP
+        // cache and ALWAYS revalidates with the server (sends If-None-Match
+        // from the stored ETag). When the manifest is unchanged the server
+        // answers 304 with an empty body, so a page reload reuses the
+        // ~1.4 MB manifest_lite from disk instead of re-downloading it. We
+        // never serve stale — every request still round-trips for
+        // validation — and the explicit refresh() path uses ?force=1 to
+        // bust the server-side memo. (2026-06-20 perf.)
+        cache: "no-cache",
       });
     } catch (e) {
       lastErr = e;

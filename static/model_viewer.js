@@ -2416,7 +2416,13 @@ async function loadInnerSelection(info) {
 // pure enhancement: if the endpoint is gone, the legacy origin-stack
 // composite still renders.
 async function _fetchCompositeAssembly(bmlPath) {
-  const url = `/api/composite_bundle/${encodeURIComponent(bmlPath)}`;
+  // meta_only=1: we consume ONLY the per-part placement table (inner /
+  // pos / rot_euler / scale / parent_inner) below — the geometry is
+  // re-fetched per inner in parallel via /api/model_skinned + model_mesh.
+  // Without this flag the server parsed every inner's skinned mesh inline
+  // (13-60+ s on a multi-inner boss) only for us to throw it away, which
+  // blocked the whole composite open. (2026-06-20 perf.)
+  const url = `/api/composite_bundle/${encodeURIComponent(bmlPath)}?meta_only=1`;
   try {
     const r = await _lifecycleFetch(url);
     if (!r.ok) return null;
