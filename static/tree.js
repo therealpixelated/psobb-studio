@@ -424,6 +424,22 @@
       flex: 1;
       overflow-y: auto;
       padding: var(--tk-sp-1, 0.25rem) 0;
+      /* Themed scrollbar that blends with the dark UI (was the clunky
+         default browser bar). Thin, cyan-tinted thumb, transparent track. */
+      scrollbar-width: thin;
+      scrollbar-color: rgba(0, 255, 255, 0.22) transparent;
+    }
+    .body::-webkit-scrollbar { width: 10px; }
+    .body::-webkit-scrollbar-track { background: transparent; }
+    .body::-webkit-scrollbar-thumb {
+      background: rgba(0, 255, 255, 0.18);
+      border-radius: 7px;
+      border: 2px solid transparent;
+      background-clip: padding-box;
+    }
+    .body::-webkit-scrollbar-thumb:hover {
+      background: rgba(0, 255, 255, 0.40);
+      background-clip: padding-box;
     }
 
     .placeholder {
@@ -544,7 +560,7 @@
       display: flex;
       align-items: center;
       gap: var(--tk-sp-2, 0.5rem);
-      padding: 3px var(--tk-sp-3, 0.75rem) 3px var(--tk-sp-5, 1.5rem);
+      padding: 3px var(--tk-sp-3, 0.75rem) 3px var(--tk-sp-6, 2rem);
       cursor: pointer;
       user-select: none;
       color: var(--tk-text, #e0f0ff);
@@ -565,8 +581,24 @@
     }
     .archive.open > .arc-header .arc-twist { transform: rotate(90deg); }
     .archive > .arc-header .arc-name { flex: 1; min-width: 0; }
-    .archive > .arc-header .arc-name .friendly { color: var(--tk-text, #e0f0ff); }
-    .archive > .arc-header .arc-name .raw { color: var(--tk-text-dim, rgba(224,240,255,0.5)); }
+    .archive > .arc-header .arc-name .friendly {
+      display: block;
+      color: var(--tk-text, #e0f0ff);
+      line-height: 1.25;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .archive > .arc-header .arc-name .raw {
+      display: block;
+      color: var(--tk-text-dim, rgba(224,240,255,0.5));
+      font-size: 10px;
+      margin-top: 1px;
+      font-family: var(--tk-font-mono, monospace);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
     .archive > .arc-header .arc-count {
       flex: none;
       color: var(--tk-text-mute, rgba(224,240,255,0.7));
@@ -1219,37 +1251,25 @@
       else parentFriendly = friendlyName({ path: arc.archivePath });
       const showRawArc = archBase && archBase.toLowerCase() !== parentFriendly.toLowerCase();
 
-      // Persisted open/closed state keyed by archive path. Single-inner
-      // archives default OPEN so the obvious inner is visible at a glance;
-      // multi-inner archives default to the user's saved state (collapsed).
-      const single = arc.children.length === 1;
-      const arcKey = "arc:" + arc.archivePath;
-      const isOpen = opts.forceOpen
-        ? true
-        : (arcKey in this._expanded) ? !!this._expanded[arcKey] : single;
-
+      // A multi-inner archive is ONE click-to-LOAD row (no tree dropdown).
+      // Clicking it loads the composite; the inner PARTS are then browsed in
+      // the editor panel's part picker — NOT by expanding a tree node and
+      // clicking into it. (Owner anti-slop: "just clicking on the boss and it
+      // showing this inner stuff inside the editor panel.") Single-inner
+      // archives never reach here — _renderTree renders their lone inner as a
+      // plain leaf. The "N parts" count signals it's a multi-part model.
       const n = arc.children.length;
-      const out = [];
-      out.push(
-        `    <li class="archive${isOpen ? " open" : ""}" data-arc="${esc(arc.archivePath)}" role="treeitem">`,
-        `      <div class="arc-header" role="button" aria-expanded="${isOpen}" tabindex="-1" title="${esc(arc.archivePath)}">`,
-        `        <span class="arc-twist">▶</span>`,
+      return [
+        `    <li class="archive" data-arc="${esc(arc.archivePath)}" role="treeitem">`,
+        `      <div class="arc-header" role="button" tabindex="-1" title="${esc(arc.archivePath)}">`,
         `        <span class="arc-name">` +
           `<span class="friendly">${esc(parentFriendly)}</span>` +
           (showRawArc ? `<span class="raw">${esc(archBase)}</span>` : "") +
         `</span>`,
-        `        <span class="arc-count">${n} inner${n === 1 ? "" : "s"}</span>`,
+        `        <span class="arc-count">${n} part${n === 1 ? "" : "s"}</span>`,
         `      </div>`,
-        `      <ul class="arc-children" role="group">`,
-      );
-      // Build child leaves only when open (perf parity with group lazy-build).
-      if (isOpen) {
-        for (const child of arc.children) {
-          out.push(this._leafHtml(child, ctx, { inner: true }));
-        }
-      }
-      out.push(`      </ul>`, `    </li>`);
-      return out.join("\n");
+        `    </li>`,
+      ].join("\n");
     }
 
     _renderTree() {
