@@ -762,6 +762,9 @@
        independently of load order (bus is sticky). -->
   <script src="/static/live_reload.js"></script>
   <script src="/static/manifest.js"></script>
+  <!-- Friendly asset-name resolver (PSOAssetNames). MUST load before
+       tree.js, which calls it to label rows with human-readable names. -->
+  <script src="/static/asset_names.js"></script>
   <script src="/static/tree.js"></script>
   <script src="/static/app.js"></script>
   <!-- First-run onboarding + re-openable walkthrough (2026-06-19).
