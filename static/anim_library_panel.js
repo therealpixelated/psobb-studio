@@ -457,9 +457,13 @@
   // Operations
   // ------------------------------------------------------------------
   function previewItem(name) {
-    // Find the entry; route to /api/anim_preview/data through the
-    // existing motion-picker flow if a target model is known. This
-    // re-uses model_viewer.js infrastructure rather than duplicating it.
+    // Find the entry; open the target model then play the retargeted
+    // motion. The motion is a PREVIEW-ONLY import (cache/njm_export/), so
+    // it has NO entry in state.anim.motions and no /api/animation_data
+    // row — passing its bare name to psoLoadMotion would silently miss.
+    // Instead we fetch the OBJECT form from /api/anim_preview/data and
+    // hand that to psoLoadMotion's object-mode branch (the same path
+    // texture_panel.js::playImportedAnim uses).
     const item = state.items.find((it) => it.name === name);
     if (!item) return;
     const target = item.target_model_path;
@@ -476,13 +480,26 @@
     } else if (typeof window.psoOpenModelByPath === "function") {
       try { window.psoOpenModelByPath(target, {}); } catch (_e) {}
     }
-    // Try to play this motion after a short delay so the model resolves.
-    setTimeout(() => {
-      if (typeof window.psoLoadMotion === "function") {
-        try { window.psoLoadMotion(item.display_name || name); }
-        catch (_e) {}
+    // Fetch the parsed keyframes, then play after a short delay so the
+    // model has time to resolve + build its skeleton.
+    setTimeout(async () => {
+      if (typeof window.psoLoadMotion !== "function") return;
+      try {
+        const r = await fetch(
+          `/api/anim_preview/data?njm_path=${encodeURIComponent(name)}`,
+        );
+        if (!r.ok) {
+          let detail = `http ${r.status}`;
+          try { const eb = await r.json(); if (eb && eb.detail) detail = eb.detail; } catch (_) {}
+          toast(`preview failed: ${detail}`, "warn");
+          return;
+        }
+        const data = await r.json();
+        await window.psoLoadMotion(data);
+      } catch (e) {
+        toast(`preview error: ${e && e.message ? e.message : e}`, "warn");
       }
-    }, 500);
+    }, 600);
   }
 
   async function deleteOne(name) {

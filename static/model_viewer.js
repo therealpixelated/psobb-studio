@@ -172,6 +172,17 @@ const state = {
     playing: false,
     loop: true,
     lastTimestamp: 0,
+    // psov2 native-motion playback (parallel to the server-payload CPU
+    // bake above). When a model loads via tryLoadPsov2NinjaModel and has
+    // native .njm motions, psov2_ninja builds real THREE.AnimationClips on
+    // mesh.geometry.animations; we drive them with a THREE.AnimationMixer
+    // (GPU skinning re-poses the SkinnedMesh) ticked in the render loop.
+    // These fields are INERT for the server-payload skinned path.
+    psov2: false,        // true when the psov2 mixer is the active driver
+    psov2Mixer: null,    // THREE.AnimationMixer bound to the SkinnedMesh
+    psov2Clips: null,    // Map<motionName, THREE.AnimationClip>
+    psov2Action: null,   // currently-playing THREE.AnimationAction (or null)
+    psov2Clock: 0,       // last render-loop timestamp (ms) for mixer dt
   },
 };
 
@@ -320,6 +331,7 @@ function disposeMesh() {
   // Animation state cleanup (2026-04-24). The Float32Array snapshots of
   // bone-local positions held by anim.skinSubmeshes are released along
   // with the disposed BufferGeometry; we just clear our references.
+  _tearDownPsov2Mixer();
   state.anim.skinned = false;
   state.anim.modelPath = null;
   state.anim.bones = [];
@@ -330,6 +342,26 @@ function disposeMesh() {
   state.anim.time = 0.0;
   state.anim.playing = false;
   state.anim.lastTimestamp = 0;
+}
+
+// Release the psov2 AnimationMixer + clip references on a model swap.
+// The mixer holds no GPU resources itself (the SkinnedMesh geometry it
+// drives is disposed by disposeMesh above); we just stop the action and
+// drop references so the next model starts clean.
+function _tearDownPsov2Mixer() {
+  const a = state.anim;
+  if (a.psov2Action) {
+    try { a.psov2Action.stop(); } catch {}
+  }
+  if (a.psov2Mixer) {
+    try { a.psov2Mixer.stopAllAction(); } catch {}
+    try { a.psov2Mixer.uncacheRoot(a.psov2Mixer.getRoot()); } catch {}
+  }
+  a.psov2 = false;
+  a.psov2Mixer = null;
+  a.psov2Clips = null;
+  a.psov2Action = null;
+  a.psov2Clock = 0;
 }
 
 function buildGeometry(shape) {
@@ -408,6 +440,7 @@ function rebuildMesh() {
 //   - an active orbit drag (smooth per-frame paint during the gesture)
 function shouldAnimateContinuously() {
   const a = state.anim;
+  if (a && a.psov2 && a.playing && a.psov2Action) { state.loopReason = "anim-psov2"; return true; }
   if (a && a.skinned && a.playing && a.currentData) { state.loopReason = "anim"; return true; }
   if (state.autoRotate && state.mesh && !state.sceneRoot) { state.loopReason = "autorotate"; return true; }
   if (state.drag && state.drag.active) { state.loopReason = "drag"; return true; }
@@ -4331,11 +4364,46 @@ async function tryLoadPsov2NinjaModel(modelPath, hint) {
     }
   }
 
+  // Fetch the model's NATIVE .njm motions (list + raw NMDM bytes) so the
+  // re-parse below can build real THREE.AnimationClips via psov2_ninja's
+  // readAnim port. This is the native-animation pipeline: the bind-pose
+  // mesh is sized by this.bones (built by the model parse), and each
+  // motion's per-bone table is keyed by the SAME bone DFS order, so the
+  // clips bind 1:1 to the SkinnedMesh skeleton. A failure here is
+  // non-fatal — the static bind pose still loads.
+  let nativeMotions = null;   // { list:[{name,...}], default:string|null, buffers:Map<name,ArrayBuffer> }
+  try {
+    nativeMotions = await _fetchNativeMotions(modelPath);
+  } catch (e) {
+    if (_isAbortError(e)) return false;
+    console.warn(`model_viewer: native motion fetch failed for ${modelPath}:`, e);
+  }
+  const motionBuffers = [];
+  const motionNames = [];
+  if (nativeMotions && nativeMotions.list.length) {
+    for (const m of nativeMotions.list) {
+      const buf2 = nativeMotions.buffers.get(m.name);
+      if (buf2 && buf2.byteLength > 8) {
+        motionBuffers.push(buf2);
+        // psov2 names the clip from the BitStream name minus ".njm"; pass
+        // the bare motion name so clip.name === m.name (the dropdown key).
+        motionNames.push(`${m.name}.njm`);
+      }
+    }
+  }
+
   // Re-parse with the real texList so getModel() wires mat.map. (We
   // discard the probe mesh; it was geometry-identical but un-textured.)
+  // Pass the native motions so getModel()'s mesh.geometry.animations holds
+  // the playable clips.
   let mesh;
   try {
-    mesh = parseNinjaModel(buf, { name: modelPath, texList });
+    mesh = parseNinjaModel(buf, {
+      name: modelPath,
+      texList,
+      motions: motionBuffers,
+      motionNames,
+    });
   } catch (e) {
     _setMeshFailure(`psov2 re-parse error: ${e?.message || e}`);
     for (const t of fetchedTextures) { try { t.dispose(); } catch {} }
@@ -4406,9 +4474,12 @@ async function tryLoadPsov2NinjaModel(modelPath, hint) {
 
   // The psov2 loader produces a real Skeleton-bound SkinnedMesh whose
   // geometry.animations hold any motions. We do NOT drive the harness'
-  // bone re-bake pipeline (that's the server-payload path); THREE's own
-  // SkinnedMesh + Skeleton auto-skins from skinIndex/skinWeight on the
-  // GPU. Static bind pose is the priority per spec.
+  // server-payload CPU bone-bake pipeline (state.anim.skinned stays
+  // false); instead, native .njm motions ride mesh.geometry.animations as
+  // real THREE.AnimationClips and we play them with a THREE.AnimationMixer
+  // (THREE's SkinnedMesh + Skeleton auto-skin from skinIndex/skinWeight on
+  // the GPU as the mixer re-poses the bones). A model with NO motions
+  // simply renders the static bind pose.
   state.anim.skinned = false;
   state.anim.modelPath = modelPath;
   state.anim.bones = [];
@@ -4417,11 +4488,11 @@ async function tryLoadPsov2NinjaModel(modelPath, hint) {
   state.anim.currentMotion = null;
   state.anim.currentData = null;
 
-  // Hide the (server-payload) animation bar; the psov2 path's animations,
-  // if any, ride mesh.geometry.animations and would need a THREE
-  // AnimationMixer to play (static bind pose is the shipped behaviour).
-  const animBar = $("#modelAnimBar");
-  if (animBar) animBar.hidden = true;
+  // Wire the psov2 native-motion mixer. _installPsov2Motions builds the
+  // name->clip map, populates state.anim.motions + the dropdown, creates
+  // the mixer, and auto-plays the default motion. It hides the anim bar
+  // gracefully when there are no clips.
+  _installPsov2Motions(mesh, nativeMotions);
 
   kick();
 
@@ -4439,6 +4510,334 @@ async function tryLoadPsov2NinjaModel(modelPath, hint) {
   setStatus(`ninja model ${modelPath} loaded (psov2 path)`);
   _setMeshFailure(null);
   return true;
+}
+
+// Build the /api endpoint URL base for a model path, handling the
+// `<bml>#<inner>.nj` form (same convention as populateAnimationPanel /
+// loadMotion). Returns { base, innerQuery } where innerQuery is an
+// `&inner=...`-ready string ("" when there's no inner).
+function _modelApiUrlParts(modelPath) {
+  const hashIdx = modelPath.indexOf("#");
+  if (hashIdx > 0) {
+    const base = modelPath.slice(0, hashIdx);
+    let inner = modelPath.slice(hashIdx + 1);
+    if (inner.toLowerCase().endsWith(".xvm")) inner = inner.slice(0, -4);
+    return {
+      base: encodeURIComponent(base),
+      innerQuery: `inner=${encodeURIComponent(inner)}`,
+    };
+  }
+  return { base: encodeURIComponent(modelPath), innerQuery: "" };
+}
+
+/**
+ * Fetch a model's NATIVE .njm motions for the psov2 path: the listing
+ * (/api/animations) plus each motion's RAW NMDM bytes
+ * (/api/animation_njm), which psov2_ninja's readAnim turns into real
+ * THREE.AnimationClips.
+ *
+ * Returns null when the model has no motions. On success returns
+ *   { list: [{name, frame_count, fps, ...}], default: <name|null>,
+ *     buffers: Map<name, ArrayBuffer> }.
+ * Motions whose raw fetch fails are dropped (but never sink the others).
+ */
+async function _fetchNativeMotions(modelPath) {
+  const { base, innerQuery } = _modelApiUrlParts(modelPath);
+  const q = innerQuery ? `?${innerQuery}` : "";
+
+  // Prefer the bundle's animations sub-payload if it's already prefetched
+  // (saves a redundant /api/animations round-trip). Bundle never carries
+  // raw NMDM bytes, so we still fetch those per-motion below.
+  let listData = null;
+  try {
+    const bundle = await prefetchModelBundle(modelPath);
+    if (bundle && bundle.animations) listData = bundle.animations;
+  } catch (_e) { /* fall through to direct fetch */ }
+
+  if (!listData) {
+    const r = await _lifecycleFetch(`/api/animations/${base}${q}`);
+    if (!r.ok) return null;
+    listData = await r.json();
+  }
+  if (!listData || !Array.isArray(listData.motions) || listData.motions.length === 0) {
+    return null;
+  }
+
+  // Fetch raw NMDM bytes for every motion in parallel (bounded by the
+  // motion count, typically < 12). Each uses the SAME ?motion= resolver
+  // as the listing, so names line up 1:1.
+  const buffers = new Map();
+  await Promise.all(listData.motions.map(async (m) => {
+    const url = `/api/animation_njm/${base}?${innerQuery ? innerQuery + "&" : ""}motion=${encodeURIComponent(m.name)}`;
+    try {
+      const rr = await _lifecycleFetch(url);
+      if (!rr.ok) return;
+      const ab = await rr.arrayBuffer();
+      if (ab && ab.byteLength > 8) buffers.set(m.name, ab);
+    } catch (e) {
+      if (!_isAbortError(e)) {
+        console.warn(`model_viewer: njm raw fetch failed for ${m.name}:`, e);
+      }
+    }
+  }));
+
+  if (buffers.size === 0) return null;
+
+  // Default motion name (walk/idle/etc. per the backend resolver).
+  let defaultName = null;
+  if (listData.default_index != null && listData.default_index >= 0 &&
+      listData.default_index < listData.motions.length) {
+    const d = listData.motions[listData.default_index];
+    if (d && buffers.has(d.name)) defaultName = d.name;
+  }
+  // Fall back to the first motion that actually decoded.
+  if (!defaultName) {
+    for (const m of listData.motions) {
+      if (buffers.has(m.name)) { defaultName = m.name; break; }
+    }
+  }
+
+  return { list: listData.motions, default: defaultName, buffers };
+}
+
+/**
+ * Install the native-motion mixer onto the just-loaded psov2 SkinnedMesh.
+ *
+ * - Maps each clip on mesh.geometry.animations by name (== motion name).
+ * - Populates state.anim.motions (descriptors) + the Motions dropdown.
+ * - Creates a THREE.AnimationMixer bound to the mesh.
+ * - Applies the autoload rule (1 motion -> play it; >1 -> play the
+ *   backend-resolved default = walk/idle).
+ *
+ * No-op (hides the anim bar) when there are no clips.
+ */
+function _installPsov2Motions(mesh, nativeMotions) {
+  const a = state.anim;
+  const animBar = $("#modelAnimBar");
+
+  const clips = (mesh.geometry && mesh.geometry.animations) || [];
+  if (!nativeMotions || !clips.length) {
+    if (animBar) animBar.hidden = true;
+    return;
+  }
+
+  // Index clips by name. psov2 names each clip from the .njm filename
+  // minus ".njm", which equals the motion name from /api/animations.
+  const clipMap = new Map();
+  for (const c of clips) {
+    if (c && c.name) clipMap.set(c.name, c);
+  }
+  // Keep only motion descriptors that have a real clip (dropped/failed
+  // motions never reach the dropdown).
+  const motionDescs = nativeMotions.list.filter((m) => clipMap.has(m.name));
+  if (motionDescs.length === 0) {
+    if (animBar) animBar.hidden = true;
+    return;
+  }
+
+  a.psov2 = true;
+  a.psov2Clips = clipMap;
+  a.psov2Mixer = new THREE.AnimationMixer(mesh);
+  a.psov2Action = null;
+  a.psov2Clock = 0;
+  a.motions = motionDescs;
+  a.loop = true;
+
+  // Populate the Motions dropdown (#modelAnimSel). Mirrors
+  // populateAnimationPanel's option layout so the existing change handler
+  // (wired in wireAnimationPanel) routes picks through loadMotion ->
+  // psov2 branch.
+  const sel = $("#modelAnimSel");
+  if (sel) {
+    sel.innerHTML = "";
+    const blank = document.createElement("option");
+    blank.value = "";
+    blank.textContent = "(bind pose)";
+    sel.appendChild(blank);
+    for (const m of motionDescs) {
+      const opt = document.createElement("option");
+      opt.value = m.name;
+      opt.textContent = `${m.name}  (${m.frame_count}f @ ${m.fps}fps)`;
+      sel.appendChild(opt);
+    }
+  }
+  if (animBar) animBar.hidden = false;
+
+  // Autoload rule: 1 motion -> play it; >1 -> play the resolved default
+  // (walk/idle per the backend tier ranker). nativeMotions.default is
+  // already the right pick; fall back to the sole motion when there's
+  // exactly one.
+  let autoName = nativeMotions.default;
+  if (!autoName && motionDescs.length === 1) autoName = motionDescs[0].name;
+  if (autoName && clipMap.has(autoName)) {
+    if (sel) sel.value = autoName;
+    _psov2PlayMotion(autoName);
+  } else {
+    updateAnimationUi();
+  }
+}
+
+/**
+ * Start (or restart) playback of a named native motion on the psov2
+ * mixer. Stops any current action, fades the new clip in, and flips the
+ * render-loop animation flags so shouldAnimateContinuously() keeps the
+ * loop running. Returns the motion descriptor (or null).
+ */
+function _psov2PlayMotion(motionName) {
+  const a = state.anim;
+  if (!a.psov2 || !a.psov2Mixer || !a.psov2Clips) return null;
+
+  if (!motionName) {
+    // Reset to bind pose: stop the action, leave the skeleton at rest.
+    if (a.psov2Action) { try { a.psov2Action.stop(); } catch {} }
+    a.psov2Action = null;
+    a.currentMotion = null;
+    a.currentData = null;
+    a.playing = false;
+    a.psov2Mixer.update(0);        // settle bones back toward bind pose
+    updateAnimationUi();
+    kick();
+    return null;
+  }
+
+  const clip = a.psov2Clips.get(motionName);
+  if (!clip) {
+    setAnimStatus(`unknown motion: ${motionName}`);
+    return null;
+  }
+  const desc = a.motions.find((m) => m.name === motionName) || { name: motionName };
+
+  if (a.psov2Action) { try { a.psov2Action.stop(); } catch {} }
+  const action = a.psov2Mixer.clipAction(clip);
+  action.reset();
+  action.setLoop(a.loop ? THREE.LoopRepeat : THREE.LoopOnce, Infinity);
+  action.clampWhenFinished = !a.loop;
+  action.timeScale = 1.0;
+  action.play();
+
+  a.psov2Action = action;
+  a.currentMotion = desc;
+  // currentData mirrors a minimal descriptor so updateAnimationUi() /
+  // psoGetCurrentMotion() / the scrub label read sensible values. The
+  // psov2 path is time-driven by the mixer, not by currentData.bones.
+  a.currentData = { frame_count: desc.frame_count || Math.max(1, Math.round((clip.duration || 0) * 30)) + 1 };
+  a.fps = desc.fps || 30.0;
+  a.time = 0.0;
+  a.playing = true;
+  a.psov2Clock = 0;
+
+  const scrub = $("#modelAnimScrub");
+  if (scrub) {
+    scrub.max = String(Math.max(1, (a.currentData.frame_count || 1) - 1));
+    scrub.value = "0";
+  }
+  setAnimStatus(`playing ${motionName}`);
+  updateAnimationUi();
+  kick();
+  return desc;
+}
+
+/**
+ * Build a THREE.AnimationClip from the JSON keyframe payload returned by
+ * /api/animation_data or /api/anim_preview/data (shape:
+ *   { frame_count, fps, bones:[{idx, present, kf:[{t,tx,ty,tz,rx,ry,rz,
+ *     sx,sy,sz, (qw,qx,qy,qz)?}]}] }).
+ *
+ * Tracks are named `.bones[bone_<i>].{position|quaternion|scale}` so they
+ * bind by name against the psov2 SkinnedMesh skeleton (whose bones are
+ * `bone_<DFS-index>`). For bones/channels with no keyframes we fall back
+ * to the bound bone's BIND-POSE TRS (so a rotation-only motion doesn't
+ * yank untracked bones to the origin) — mirroring the server's per-bone
+ * `present` contract and psov2's first/last-frame rest fill.
+ *
+ * Rotation is BAMS Euler XYZ (rx/ry/rz are signed BAMS units; radians =
+ * unit * _BAMS_TO_RAD), applied X then Y then Z via Euler order "XYZ" —
+ * the same composition _computeAnimatedBoneMatrices uses. The optional
+ * quaternion channel (qw,qx,qy,qz) overrides the Euler rotation.
+ *
+ * Returns null when the payload has no usable bone tracks.
+ */
+function _buildClipFromAnimData(data, clipName) {
+  if (!data || !Array.isArray(data.bones) || data.bones.length === 0) return null;
+  const mesh = state.mesh;
+  if (!mesh) return null;
+
+  // Resolve the skeleton's bones by name so we can read bind-pose TRS.
+  const skelBones = new Map();
+  mesh.traverse((o) => {
+    if (o.isBone && o.name) skelBones.set(o.name, o);
+  });
+
+  const fps = data.fps || 30.0;
+  const tracks = [];
+  const _q = new THREE.Quaternion();
+  const _e = new THREE.Euler();
+
+  for (let bi = 0; bi < data.bones.length; bi++) {
+    const boneEntry = data.bones[bi];
+    const boneName = `bone_${String(bi).padStart(3, "0")}`;
+    const bone = skelBones.get(boneName);
+    const kf = (boneEntry && Array.isArray(boneEntry.kf)) ? boneEntry.kf : [];
+    if (kf.length === 0) continue;  // untracked bone -> stays at bind pose
+
+    const present = (boneEntry && typeof boneEntry.present === "number")
+      ? boneEntry.present : 0xFFFF;  // legacy: assume all channels present
+    const hasPos  = !!(present & _NJM_PRESENT_POS);
+    const hasAng  = !!(present & _NJM_PRESENT_ANG);
+    const hasScl  = !!(present & _NJM_PRESENT_SCL);
+    const hasQuat = !!(present & _NJM_PRESENT_QUAT);
+
+    // Bind-pose TRS for channel fallback.
+    const bp = bone ? bone.position : { x: 0, y: 0, z: 0 };
+    const bq = bone ? bone.quaternion : { x: 0, y: 0, z: 0, w: 1 };
+    const bs = bone ? bone.scale : { x: 1, y: 1, z: 1 };
+
+    const times = new Float32Array(kf.length);
+    const posArr = new Float32Array(kf.length * 3);
+    const quatArr = new Float32Array(kf.length * 4);
+    const sclArr = new Float32Array(kf.length * 3);
+
+    for (let k = 0; k < kf.length; k++) {
+      const f = kf[k];
+      times[k] = (typeof f.t === "number" ? f.t : k) / fps;
+
+      // Position.
+      if (hasPos) {
+        posArr[k * 3 + 0] = f.tx; posArr[k * 3 + 1] = f.ty; posArr[k * 3 + 2] = f.tz;
+      } else {
+        posArr[k * 3 + 0] = bp.x; posArr[k * 3 + 1] = bp.y; posArr[k * 3 + 2] = bp.z;
+      }
+
+      // Rotation.
+      if (hasQuat && f.qw != null) {
+        quatArr[k * 4 + 0] = f.qx; quatArr[k * 4 + 1] = f.qy;
+        quatArr[k * 4 + 2] = f.qz; quatArr[k * 4 + 3] = f.qw;
+      } else if (hasAng) {
+        _e.set(f.rx * _BAMS_TO_RAD, f.ry * _BAMS_TO_RAD, f.rz * _BAMS_TO_RAD, "XYZ");
+        _q.setFromEuler(_e);
+        quatArr[k * 4 + 0] = _q.x; quatArr[k * 4 + 1] = _q.y;
+        quatArr[k * 4 + 2] = _q.z; quatArr[k * 4 + 3] = _q.w;
+      } else {
+        quatArr[k * 4 + 0] = bq.x; quatArr[k * 4 + 1] = bq.y;
+        quatArr[k * 4 + 2] = bq.z; quatArr[k * 4 + 3] = bq.w;
+      }
+
+      // Scale.
+      if (hasScl) {
+        sclArr[k * 3 + 0] = f.sx; sclArr[k * 3 + 1] = f.sy; sclArr[k * 3 + 2] = f.sz;
+      } else {
+        sclArr[k * 3 + 0] = bs.x; sclArr[k * 3 + 1] = bs.y; sclArr[k * 3 + 2] = bs.z;
+      }
+    }
+
+    tracks.push(new THREE.VectorKeyframeTrack(`.bones[${boneName}].position`, times, posArr));
+    tracks.push(new THREE.QuaternionKeyframeTrack(`.bones[${boneName}].quaternion`, times, quatArr));
+    tracks.push(new THREE.VectorKeyframeTrack(`.bones[${boneName}].scale`, times, sclArr));
+  }
+
+  if (tracks.length === 0) return null;
+  const dur = Math.max(0.0001, (data.frame_count || 1) / fps);
+  return new THREE.AnimationClip(clipName || "imported", dur, tracks);
 }
 
 /**
@@ -4675,6 +5074,15 @@ async function populateAnimationPanel(modelPath) {
  */
 async function loadMotion(motionName) {
   const a = state.anim;
+
+  // psov2 native-motion path: clips are already parsed + mounted on the
+  // mixer (no per-motion fetch). Route through the mixer player. The empty
+  // -name case (reset to bind pose) is handled inside _psov2PlayMotion.
+  if (a.psov2 && a.psov2Mixer) {
+    _psov2PlayMotion(motionName || "");
+    return;
+  }
+
   if (!motionName) {
     // Reset to bind pose.
     a.currentMotion = null;
@@ -4810,6 +5218,31 @@ function setAnimStatus(text) {
  */
 function tickAnimation(nowMs) {
   const a = state.anim;
+
+  // psov2 native-motion path: drive the THREE.AnimationMixer with real
+  // wall-clock dt. The mixer re-poses the bound Skeleton; GPU skinning
+  // re-deforms the SkinnedMesh automatically (no CPU vertex bake). This
+  // branch is independent of the server-payload skinned path below.
+  if (a.psov2 && a.psov2Mixer) {
+    let mdt = 0;
+    if (a.playing && a.psov2Clock > 0) {
+      mdt = (nowMs - a.psov2Clock) / 1000.0;
+      if (mdt > 0.25) mdt = 0.25;  // cap big gaps (tab inactive, etc.)
+    }
+    a.psov2Clock = nowMs;
+    if (a.playing) {
+      a.psov2Mixer.update(mdt);
+      // Keep the scrub/time readout roughly in sync with the action.
+      if (a.psov2Action) {
+        a.time = a.psov2Action.time;
+        updateAnimationUi();
+        // Non-looping clip that has run to the end -> stop driving.
+        if (!a.loop && a.psov2Action.paused) a.playing = false;
+      }
+    }
+    return;
+  }
+
   if (!a.skinned || a.bones.length === 0 || a.skinSubmeshes.length === 0) return;
 
   let dt = 0;
@@ -4856,6 +5289,12 @@ function wireAnimationPanel() {
       if (!a.currentData) return;
       a.playing = !a.playing;
       a.lastTimestamp = 0;
+      // psov2 path: reset the mixer dt clock so resuming doesn't jump by
+      // the whole pause duration, and pause/resume the action.
+      if (a.psov2) {
+        a.psov2Clock = 0;
+        if (a.psov2Action) a.psov2Action.paused = !a.playing;
+      }
       updateAnimationUi();
       // Play -> start the continuous loop; pause -> requestRender for the
       // paused frame (loop self-stops on its next tick).
@@ -4871,6 +5310,17 @@ function wireAnimationPanel() {
       a.time = frame / a.fps;
       a.playing = false;
       a.lastTimestamp = 0;
+      // psov2 path: seek the mixer to the scrubbed time and pose once.
+      if (a.psov2 && a.psov2Action && a.psov2Mixer) {
+        a.psov2Clock = 0;
+        a.psov2Action.paused = false;
+        a.psov2Action.time = a.time;
+        a.psov2Mixer.update(0);
+        a.psov2Action.paused = true;
+        updateAnimationUi();
+        requestRender();
+        return;
+      }
       // Force one tick to re-bake immediately, then paint it on-demand.
       tickAnimation(performance.now());
       requestRender();
@@ -4887,7 +5337,13 @@ function wireAnimationPanel() {
   const loopChk = $("#modelAnimLoop");
   if (loopChk) {
     loopChk.addEventListener("change", (e) => {
-      state.anim.loop = !!e.target.checked;
+      const a = state.anim;
+      a.loop = !!e.target.checked;
+      // psov2 path: re-apply loop mode to the live action.
+      if (a.psov2 && a.psov2Action) {
+        a.psov2Action.setLoop(a.loop ? THREE.LoopRepeat : THREE.LoopOnce, Infinity);
+        a.psov2Action.clampWhenFinished = !a.loop;
+      }
     });
   }
   const resetBtn = $("#modelAnimReset");
@@ -5319,7 +5775,34 @@ window.psoLoadMotion = async function (motionNameOrData) {
     a.time = 0.0;
     a.playing = true;
     a.lastTimestamp = 0;
+    // psov2 path: the CPU-bake tickAnimation doesn't run (no skinSubmeshes),
+    // so JSON-keyframe currentData alone won't move the mesh. Build a real
+    // THREE.AnimationClip from the keyframes and play it on the mixer so
+    // imported previews animate on psov2 models too.
+    if (a.psov2 && a.psov2Mixer && state.mesh) {
+      try {
+        const clip = _buildClipFromAnimData(data, name);
+        if (clip) {
+          if (!a.psov2Clips) a.psov2Clips = new Map();
+          a.psov2Clips.set(name, clip);
+          if (a.psov2Action) { try { a.psov2Action.stop(); } catch {} }
+          const action = a.psov2Mixer.clipAction(clip);
+          action.reset();
+          action.setLoop(a.loop ? THREE.LoopRepeat : THREE.LoopOnce, Infinity);
+          action.clampWhenFinished = !a.loop;
+          action.timeScale = 1.0;
+          action.play();
+          a.psov2Action = action;
+          a.psov2Clock = 0;
+          a.currentData = { frame_count: data.frame_count | 0 };
+          setAnimStatus(`playing ${name} (imported)`);
+        }
+      } catch (e) {
+        console.warn("model_viewer: imported-preview clip build failed:", e);
+      }
+    }
     if (typeof updateAnimationUi === "function") updateAnimationUi();
+    kick();
     return a.currentMotion;
   }
   if (typeof loadMotion === "function") {
@@ -5331,6 +5814,27 @@ window.psoLoadMotion = async function (motionNameOrData) {
 window.psoGetCurrentMotion = function () {
   const a = state.anim || {};
   return a.currentMotion ? a.currentMotion.name : null;
+};
+
+// Animation introspection hook (read-only). Surfaces the active playback
+// driver (psov2 mixer vs the server-payload CPU bake) and the live action
+// state so the headless self-verify (and manual debugging) can assert that
+// a native motion is actually running. No side effects.
+window.psoGetAnimDebug = function () {
+  const a = state.anim || {};
+  return {
+    psov2: !!a.psov2,
+    skinned: !!a.skinned,
+    hasMixer: !!a.psov2Mixer,
+    hasAction: !!a.psov2Action,
+    clipCount: a.psov2Clips ? a.psov2Clips.size : 0,
+    motions: a.motions ? a.motions.length : 0,
+    playing: !!a.playing,
+    current: a.currentMotion ? a.currentMotion.name : null,
+    modelPath: a.modelPath,
+    actionTime: a.psov2Action ? a.psov2Action.time : null,
+    actionRunning: a.psov2Action ? a.psov2Action.isRunning() : null,
+  };
 };
 
 window.psoGetAnimationPlaying = function () {
