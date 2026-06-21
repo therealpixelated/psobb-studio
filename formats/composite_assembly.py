@@ -201,9 +201,10 @@ class CompositeAssembly:
 # sub-entities lives near 0x00A43CE0 (derolle_global, Ghidra label).
 # Walk Ghidra-decompiled init code to recover the literal floats.
 _DE_ROL_LE_PARTS: List[CompositePart] = [
-    # Body — the worm; everything else hangs off this. World-absolute
-    # at origin so the engine's parent transform can slide the whole
-    # composite into world position later (animation root).
+    # Body — the worm; the whole recognizable De Rol Le serpent is this
+    # single .nj (its own NJCM skeleton drives the curve). World-absolute
+    # at origin so the engine's parent transform can slide the composite
+    # into world position later (animation root).
     CompositePart(
         inner_nj="boss2_b_derorure_body.nj",
         pos=(0.0, 0.0, 0.0),
@@ -212,84 +213,24 @@ _DE_ROL_LE_PARTS: List[CompositePart] = [
         parent_inner=None,
         notes="body — composite root (animation drives child poses)",
     ),
-    # Helm/skull — sits on top of the head end of the body. The body
-    # NJCM tree's head-bone is bone index 0 (the root); we don't have
-    # the exact bone-relative offset so we approximate the head end
-    # as +Z worm-length-half above and forward of the spine.
-    # TODO(static-analysis): recover the engine's exact head-bone
-    # attach offset; see derolle_global at 0x00A43CE0.
-    CompositePart(
-        inner_nj="boss2_b_helm_break.nj",
-        pos=(0.0, 30.0, 60.0),
-        rot_euler=(0.0, 0.0, 0.0),
-        scale=(1.0, 1.0, 1.0),
-        parent_inner="boss2_b_derorure_body.nj",
-        notes=(
-            "helm — best-effort attach to body head end; engine driven "
-            "in-game. Damage state: visible only after player breaks "
-            "the helm in phase 1. TODO: replace with engine constants "
-            "from derolle_global init."
-        ),
-    ),
-    # Shell-break — armor segment on the body's back. Same caveat
-    # as helm: this is a damage-state replacement of the intact
-    # shell, included so the asset preview shows it laid on the
-    # spine instead of clipping through the body.
-    CompositePart(
-        inner_nj="boss2_b_shell_break.nj",
-        pos=(0.0, 20.0, 0.0),
-        rot_euler=(0.0, 0.0, 0.0),
-        scale=(1.0, 1.0, 1.0),
-        parent_inner="boss2_b_derorure_body.nj",
-        notes=(
-            "shell — best-effort midspine attach. Damage-state asset; "
-            "TODO: replace with engine constants."
-        ),
-    ),
-    # Side fins. The two fins are mirrored on either side of the
-    # body. We approximate the lateral offset; the rotation flips
-    # fin_b around the body's vertical axis so the asymmetric mesh
-    # shows on the correct side.
-    CompositePart(
-        inner_nj="boss2_b_derorure_fin_a.nj",
-        pos=(40.0, 5.0, 0.0),
-        rot_euler=(0.0, 0.0, 0.0),
-        scale=(1.0, 1.0, 1.0),
-        parent_inner="boss2_b_derorure_body.nj",
-        notes="fin_a — best-effort right-side attach. TODO: engine constants.",
-    ),
-    CompositePart(
-        inner_nj="boss2_b_derorure_fin_b.nj",
-        pos=(-40.0, 5.0, 0.0),
-        rot_euler=(0.0, math.pi, 0.0),
-        scale=(1.0, 1.0, 1.0),
-        parent_inner="boss2_b_derorure_body.nj",
-        notes=(
-            "fin_b — best-effort left-side attach (Y-flipped). "
-            "TODO: engine constants."
-        ),
-    ),
-    # Rear stinger.
-    CompositePart(
-        inner_nj="boss2_b_derorure_sting.nj",
-        pos=(0.0, 0.0, -80.0),
-        rot_euler=(0.0, 0.0, 0.0),
-        scale=(1.0, 1.0, 1.0),
-        parent_inner="boss2_b_derorure_body.nj",
-        notes="sting — best-effort tail attach. TODO: engine constants.",
-    ),
-    # Tentacle — articulated tail. In the running game this is its
-    # own animated entity that tracks the body's tail bone. For the
-    # static asset preview we anchor it to the body's tail end so it
-    # at least lines up.
-    CompositePart(
-        inner_nj="boss2_b_derorure_tentacle.nj",
-        pos=(0.0, 0.0, -100.0),
-        rot_euler=(0.0, 0.0, 0.0),
-        scale=(1.0, 1.0, 1.0),
-        parent_inner="boss2_b_derorure_body.nj",
-        notes="tentacle — best-effort tail-tip attach. TODO: engine constants.",
-    ),
+    # NOTE (2026-06-21): the body alone is De Rol Le's recognizable form.
+    # The other six inners were dropped from the default assembly because a
+    # STATIC TRS cannot place them on a CURVED/animated body — they float
+    # off detached ("De Rol Le still fucked up", owner). Two are damage
+    # states that should never show on the intact boss:
+    #   * boss2_b_helm_break.nj   — broken helm (visible only after the
+    #                               player breaks it in phase 1)
+    #   * boss2_b_shell_break.nj  — broken shell armor (same)
+    # The four appendages attach to SPECIFIC BODY BONES in-game (offsets
+    # live in PSOBB.exe entity-init, not the asset files), so they need
+    # bone-relative attachment, not a world offset:
+    #   * boss2_b_derorure_fin_a.nj / fin_b.nj  — lateral fins
+    #   * boss2_b_derorure_sting.nj             — tail stinger
+    #   * boss2_b_derorure_tentacle.nj          — articulated tail (its own
+    #                                             tracked entity in-game)
+    # FOLLOW-UP: re-add them via per-part parent_bone attachment once the
+    # body's fin/tail bone indices are recovered (then they ride the curve
+    # instead of floating).
 ]
 
 
@@ -694,7 +635,11 @@ COMPOSITE_TABLE: Dict[str, CompositeAssembly] = {
     "bm_boss2_de_rol_le.bml": CompositeAssembly(
         bml_path="bm_boss2_de_rol_le.bml",
         parts=_DE_ROL_LE_PARTS,
-        source="hand-curated",
+        # exclusive: render ONLY the curated body. De Rol Le's fins/sting/
+        # tentacle need bone attachment (can't be statically placed on the
+        # curved body) so they must NOT fall through to an origin render as
+        # floating debris. (Vol Opt etc. stay plain "hand-curated" = union.)
+        source="hand-curated-exclusive",
     ),
     # The "_a" variant ships with byte-identical inner names (probed
     # 2026-04-30). Reuse the same parts list — frozen dataclass so
@@ -702,7 +647,7 @@ COMPOSITE_TABLE: Dict[str, CompositeAssembly] = {
     "bm_boss2_de_rol_le_a.bml": CompositeAssembly(
         bml_path="bm_boss2_de_rol_le_a.bml",
         parts=_DE_ROL_LE_PARTS,
-        source="hand-curated",
+        source="hand-curated-exclusive",
     ),
     "bm_boss7_de_rol_le_c.bml": CompositeAssembly(
         bml_path="bm_boss7_de_rol_le_c.bml",

@@ -2921,16 +2921,26 @@ async function tryLoadCompositeBmlMesh(bmlPath, innerNames) {
     assembly && assembly.source && assembly.source !== "identity-fallback"
       ? assembly
       : null;
+  const exclusive = !!(assembly && assembly.source === "hand-curated-exclusive");
   let effectiveInnerNames = innerNames;
-  if (curatedAssembly) {
-    // Filter to parts whose inner is in the requested set so a curator
-    // adding extra slots doesn't break a viewer that only knew about a
-    // subset (e.g. damage-state inners surfaced by the curated table
-    // but not in ``innerNames`` — render them).
-    const requested = new Set(innerNames.map((n) => n.toLowerCase()));
-    const curatedNames = curatedAssembly.parts.map((p) => p.inner);
-    // Union: every requested inner first (preserves discovery order
-    // for un-curated inners), then any curated extras.
+  if (exclusive && curatedAssembly) {
+    // EXCLUSIVE curated table (De Rol Le = body only): render ONLY the curated
+    // parts. Un-curated primary inners (its fins/sting/tentacle, which can't be
+    // statically placed on the curved body) are DROPPED, not origin-rendered as
+    // floating debris. (owner: "De Rol Le still fucked up".)
+    const seen = new Set();
+    effectiveInnerNames = [];
+    for (const p of curatedAssembly.parts) {
+      const k = (p.inner || "").toLowerCase();
+      if (!k || seen.has(k)) continue;
+      seen.add(k);
+      effectiveInnerNames.push(p.inner);
+    }
+    if (effectiveInnerNames.length === 0) effectiveInnerNames = innerNames;
+  } else if (curatedAssembly) {
+    // Plain hand-curated (e.g. Vol Opt — its table places only some of its 22
+    // inners): UNION of all discovered primaries + any curated extras, so the
+    // un-curated inners still render (at origin) instead of vanishing.
     const seen = new Set();
     effectiveInnerNames = [];
     for (const n of innerNames) {
@@ -2939,14 +2949,11 @@ async function tryLoadCompositeBmlMesh(bmlPath, innerNames) {
       seen.add(k);
       effectiveInnerNames.push(n);
     }
-    for (const cn of curatedNames) {
-      const k = cn.toLowerCase();
-      if (seen.has(k)) continue;
+    for (const p of curatedAssembly.parts) {
+      const k = (p.inner || "").toLowerCase();
+      if (!k || seen.has(k)) continue;
       seen.add(k);
-      // Only add curated extras if they weren't requested-but-missing
-      // (we still fetch them — caller may have under-discovered).
-      effectiveInnerNames.push(cn);
-      requested.add(k); // for future-proofing
+      effectiveInnerNames.push(p.inner);
     }
   }
 

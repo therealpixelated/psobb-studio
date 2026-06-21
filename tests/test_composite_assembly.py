@@ -57,20 +57,26 @@ def test_de_rol_le_is_in_the_table():
     )
 
 
-def test_de_rol_le_has_multiple_parts():
-    """De Rol Le must expose at least 2 parts (the bug we're fixing).
+def test_de_rol_le_is_body_only_no_floating_parts():
+    """De Rol Le renders body-ONLY by design (2026-06-21).
 
-    The BML ships 7 NJ inners; the curated table doesn't have to
-    cover every single one (some are damage-state replacements that
-    only appear after the player breaks them) but with fewer than 2
-    parts the composite is pointless.
+    The BML ships 7 NJ inners, but a STATIC TRS cannot place the six
+    non-body inners on the curved/animated body — they floated off
+    detached ("De Rol Le still fucked up", owner). Two are damage states
+    (helm_break / shell_break) that must never show on the intact boss;
+    the four appendages (fins, sting, tentacle) attach to specific body
+    BONES in-game (offsets live in PSOBB.exe, not the assets). So the
+    default assembly is the body serpent alone — its own recognizable
+    form — until per-bone attachment is recovered.
     """
     assembly = lookup_composite("bm_boss2_de_rol_le.bml")
     assert assembly is not None
-    assert len(assembly.parts) >= 2, (
-        f"De Rol Le has only {len(assembly.parts)} parts; need >= 2 "
-        f"to actually compose anything."
-    )
+    inners = [p.inner_nj.lower() for p in assembly.parts]
+    assert any("body" in i for i in inners), "lost the body part"
+    for bad in ("helm_break", "shell_break"):
+        assert not any(bad in i for i in inners), (
+            f"{bad} is a damage state and must not show on the intact boss"
+        )
 
 
 def test_de_rol_le_includes_the_body():
