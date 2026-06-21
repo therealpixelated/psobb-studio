@@ -75,9 +75,72 @@ can dereference them safely.
 from __future__ import annotations
 
 import logging
+import math
 import struct
 from dataclasses import dataclass, field
 from typing import Iterator, Optional
+
+# BAMS (Binary Angular Measurement System): PSOBB/Ninja stores rotations as
+# signed 16/32-bit angle units where a full turn == 0x10000.  psov2's
+# ``BitStream.readRot3`` converts with ``angle * (2*PI / 0xFFFF)`` — we mirror
+# that EXACT constant so chunk placement lines up byte-for-byte with psov2.
+_BAMS_TO_RAD = (2.0 * math.pi) / 0xFFFF
+
+
+def _chunk_world_matrix(
+    pos: tuple[float, float, float],
+    rot_bams: tuple[int, int, int],
+) -> tuple[float, ...]:
+    """Build a 3x4 row-major world matrix for one n.rel visibility chunk.
+
+    Mirrors psov2 ``NinjaStage.prepare`` / ``NinjaRoom.prepare``: each section
+    (chunk) places its mesh tree with a Y rotation (and, defensively, X/Z) plus
+    a translation.  psov2 only multiplies ``makeRotationY(rot.y)`` then sets the
+    bone position, but PSOBB chunks can in principle carry X/Z rotation too, so
+    we compose the full ZYX-Euler rotation (the same order the per-bone walker
+    uses) before translating.  Returns a flat 12-tuple
+    ``(m00,m01,m02, m10,m11,m12, m20,m21,m22, tx,ty,tz)`` so callers can apply
+    ``out = M . v`` cheaply without pulling in numpy.
+    """
+    rx = rot_bams[0] * _BAMS_TO_RAD
+    ry = rot_bams[1] * _BAMS_TO_RAD
+    rz = rot_bams[2] * _BAMS_TO_RAD
+    cx, sx = math.cos(rx), math.sin(rx)
+    cy, sy = math.cos(ry), math.sin(ry)
+    cz, sz = math.cos(rz), math.sin(rz)
+    # R = Rz * Ry * Rx  (apply X first, then Y, then Z — matches the
+    # NinjaModel/NinjaStage readBone order: makeRotationX, then Y, then Z,
+    # each left-multiplied via applyMatrix → effective ZYX composition).
+    m00 = cy * cz
+    m01 = sx * sy * cz - cx * sz
+    m02 = cx * sy * cz + sx * sz
+    m10 = cy * sz
+    m11 = sx * sy * sz + cx * cz
+    m12 = cx * sy * sz - sx * cz
+    m20 = -sy
+    m21 = sx * cy
+    m22 = cx * cy
+    return (m00, m01, m02, m10, m11, m12, m20, m21, m22,
+            pos[0], pos[1], pos[2])
+
+
+def _apply_matrix(
+    m: tuple[float, ...], x: float, y: float, z: float,
+    translate: bool = True,
+) -> tuple[float, float, float]:
+    """Apply the 3x4 matrix from :func:`_chunk_world_matrix` to (x, y, z).
+
+    ``translate=False`` skips the translation column — used for normals
+    (direction vectors), which rotate with the chunk but must not shift.
+    """
+    ox = m[0] * x + m[1] * y + m[2] * z
+    oy = m[3] * x + m[4] * y + m[5] * z
+    oz = m[6] * x + m[7] * y + m[8] * z
+    if translate:
+        ox += m[9]
+        oy += m[10]
+        oz += m[11]
+    return ox, oy, oz
 
 log = logging.getLogger(__name__)
 
@@ -778,9 +841,19 @@ def extract_nrel_meshes(rel: RelFile):
     seen_root: set[int] = set()
 
     for chunk, tree, root_off in iter_nrel_mesh_root_offsets(rel):
-        # Each chunk's coordinate frame (we treat chunk pose as a
-        # translation; rotations are observed to be 0 across PSOBB.IO).
-        chunk_origin = (chunk.x, chunk.y, chunk.z)
+        # Each chunk's coordinate frame.  CRITICAL: chunks carry a real
+        # rotation (forest aancient01: ~half the 215 chunks have
+        # rot_y == 16383 ≈ 90° BAMS), not just a translation.  The old code
+        # applied ONLY the translation, so every rotated chunk landed
+        # un-rotated — the floor folded into a thin degenerate slab and the
+        # camera auto-fit could never frame it (the "empty plane / only the
+        # sky shell shows" bug).  Build the full chunk world matrix (psov2
+        # NinjaStage section bone: Y-rotation + position) and transform every
+        # vertex through it.
+        chunk_matrix = _chunk_world_matrix(
+            (chunk.x, chunk.y, chunk.z),
+            (chunk.rot_x, chunk.rot_y, chunk.rot_z),
+        )
 
         # The MeshTreeNode at root_off is 52 bytes; the actual mesh
         # struct lives at its mesh_ptr field (offset 0x04).
@@ -821,7 +894,7 @@ def extract_nrel_meshes(rel: RelFile):
             except struct.error:
                 break
             verts = _decode_vertex_array(rel, vfmt, vptr, vsize, vcount,
-                                         chunk_origin)
+                                         chunk_matrix)
             vbufs.append(verts)
 
         # Decode every IndexBufferContainer.
@@ -871,14 +944,15 @@ def extract_nrel_meshes(rel: RelFile):
 
 def _decode_vertex_array(
     rel: RelFile, vertex_format: int, vptr: int, vsize: int, vcount: int,
-    chunk_origin: tuple[float, float, float],
+    chunk_matrix: tuple[float, ...],
 ) -> list:
     """Decode ``vcount`` vertices into a list of ``XjVertex`` records.
 
-    Vertex positions are translated by ``chunk_origin`` so the assembled
-    scene appears at world coordinates.  Format mapping defaults to
-    "pos only at offset 0" when the format id is unknown — better to
-    show a flat mesh than nothing.
+    Vertex positions are transformed by ``chunk_matrix`` (the chunk's full
+    rotation + translation; see :func:`_chunk_world_matrix`) so the assembled
+    scene appears at world coordinates with each visibility chunk correctly
+    rotated.  Format mapping defaults to "pos only at offset 0" when the format
+    id is unknown — better to show a flat mesh than nothing.
     """
     from formats.xj import XjVertex  # type: ignore
 
@@ -892,7 +966,6 @@ def _decode_vertex_array(
         layout = (vsize, False, None, None)
     stride, has_normal, uv_off, _color_off = layout
 
-    cx, cy, cz = chunk_origin
     for i in range(vcount):
         off = vptr + i * vsize
         if off + stride > rel.data_size:
@@ -901,10 +974,13 @@ def _decode_vertex_array(
             x, y, z = struct.unpack_from("<fff", rel.data, off)
         except struct.error:
             break
-        wx, wy, wz = x + cx, y + cy, z + cz
+        wx, wy, wz = _apply_matrix(chunk_matrix, x, y, z, translate=True)
         if has_normal:
             try:
                 nx, ny, nz = struct.unpack_from("<fff", rel.data, off + 12)
+                # Rotate the normal with the chunk (no translation).
+                nx, ny, nz = _apply_matrix(
+                    chunk_matrix, nx, ny, nz, translate=False)
             except struct.error:
                 nx, ny, nz = 0.0, 1.0, 0.0
         else:

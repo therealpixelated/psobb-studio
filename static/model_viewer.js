@@ -5836,6 +5836,53 @@ function _psoSceneAutoFit() {
   state.camera.lookAt(center);
 }
 
+// Flag + hide low-poly "sky shell / distant scenery" parts so they don't
+// occlude the walkable terrain. ``loaded`` is the list of {path, group}
+// records assembled in psoSceneLoadMap. A part is treated as a shell when
+// its world bbox diagonal is huge but its vertex density (verts / diagonal)
+// is far below the densest terrain part — a real floor mesh is always far
+// denser. We only hide a shell when at least one denser terrain part exists,
+// so a backdrop-only scene still renders. The scene-tree checkbox re-shows
+// any hidden part on demand.
+function _psoSceneHideSkyShells(loaded) {
+  if (!loaded || loaded.length < 2) return;
+  const THREE = window.THREE;
+  const stats = [];
+  for (const l of loaded) {
+    if (!l.group) continue;
+    l.group.updateWorldMatrix(true, false);
+    const box = new THREE.Box3().setFromObject(l.group);
+    if (!isFinite(box.min.x) || !isFinite(box.max.x)) continue;
+    const size = new THREE.Vector3();
+    box.getSize(size);
+    const diag = size.length();
+    let verts = 0;
+    l.group.traverse(function (m) {
+      if (m.isMesh && m.geometry) {
+        const p = m.geometry.getAttribute("position");
+        if (p) verts += p.count;
+      }
+    });
+    if (diag <= 0 || verts <= 0) continue;
+    // density = verts per 1000 world units of diagonal.
+    stats.push({ group: l.group, diag: diag, verts: verts,
+                 density: (verts / diag) * 1000 });
+  }
+  if (stats.length < 2) return;
+  // The densest part is definitely terrain; use it as the reference.
+  const maxDensity = stats.reduce(function (a, s) {
+    return Math.max(a, s.density); }, 0);
+  for (const s of stats) {
+    // A shell: huge extent (>3000 units) AND <8% the density of the
+    // densest terrain part. Forest s.nj: ~218 verts over ~14000-diag =
+    // density ~15, vs terrain ~3800+. 15 / 3800 ≈ 0.4% — well under 8%.
+    if (s.diag > 3000 && s.density < maxDensity * 0.08) {
+      s.group.visible = false;
+      s.group.userData.skyShellHidden = true;
+    }
+  }
+}
+
 // Public: load every renderable in `bundle.renderable` in parallel and
 // build the scene group. `bundle` is the JSON returned by /api/map/<id>.
 window.psoSceneLoadMap = async function (bundle) {
@@ -5914,6 +5961,20 @@ window.psoSceneLoadMap = async function (bundle) {
       failures.push({ path: t.path, error: String(e && e.message || e) });
     }
   }));
+
+  // Hide "sky shell / distant scenery" parts by default so they don't
+  // occlude the walkable terrain (the "only a big green/brown plane shows"
+  // symptom). PSOBB ships a low-poly backdrop dome as a SEPARATE part
+  // (e.g. ``map_aancient01_00s.nj`` — 218 verts spanning ±5200). psov2's
+  // stage renderer doesn't draw it as terrain for these maps, so we load
+  // it (the scene-tree checkbox can re-show it) but start it hidden. The
+  // discriminator: a part whose world-space bbox diagonal is large AND
+  // whose vertex density (verts per unit of diagonal) is tiny — a dense
+  // terrain mesh never qualifies. We only ever hide when there's ALSO a
+  // denser terrain part present, so a sky-only scene still shows something.
+  try {
+    _psoSceneHideSkyShells(loaded);
+  } catch (_e) { /* non-fatal — worst case the shell just stays visible */ }
 
   _psoSceneInstallNav();
   _psoSceneAutoFit();
