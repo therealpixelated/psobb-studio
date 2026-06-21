@@ -246,10 +246,21 @@ async function loadBmlTop(parseNinjaModel, bmlPath) {
     return { ok: false, reason: `bml list: ${e?.message || e}`, route: "cube" };
   }
   const inners = [];
+  let motionCount = 0;
   for (const e of list.entries || []) {
     if (/\.(nj|xj)$/i.test(e.name)) inners.push({ name: e.name, kind: classifyInner(e.name) });
+    else if (/\.njm$/i.test(e.name)) motionCount++;
   }
-  if (inners.length === 0) return { ok: false, reason: "bml has no .nj/.xj inner", route: "cube" };
+  if (inners.length === 0) {
+    // Motion-only archive (only .njm animation chunks, no mesh inner —
+    // e.g. NpcApcMot.bml). Mirrors model_viewer.js: NOT a cube/load
+    // failure; there is simply no geometry. The viewer shows a dedicated
+    // "motion-only archive" banner, so the harness scores it non-cube.
+    if (motionCount > 0) {
+      return { ok: true, verts: 0, route: "motion_only", motionOnly: true };
+    }
+    return { ok: false, reason: "bml has no .nj/.xj inner", route: "cube" };
+  }
   const primaries = inners.filter((x) => x.kind === "primary").map((x) => x.name);
 
   if (primaries.length >= 2) {
@@ -397,7 +408,10 @@ function pct(sorted, p) {
       verdict: r.ok ? "ok" : "cube",
       route: r.route,
       verts: r.verts | 0,
-      empty: !!r.empty && (r.verts | 0) === 0,
+      // motion-only archives carry no geometry but are NOT invisible
+      // stubs — exclude them from the "empty" (0-vertex) bucket.
+      empty: !r.motionOnly && !!r.empty && (r.verts | 0) === 0,
+      motionOnly: !!r.motionOnly,
       error: r.ok ? null : (r.reason || "unknown"),
       loadMs,
     };
