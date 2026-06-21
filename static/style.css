@@ -3436,6 +3436,48 @@ body.unified-viewport-mode #btnClassicUiToggle {
    ===================================================================== */
 .ipmt-perspective { display: flex; flex-direction: column; gap: 10px; }
 
+/* "What is this?" explainer header (Item PMT) */
+.ipmt-about {
+  background: #131a2a;
+  border: 1px solid #28324a;
+  border-left: 3px solid var(--tk-blue, #00ffff);
+  border-radius: 4px;
+  padding: 8px 12px;
+  font-size: 12px;
+  line-height: 1.55;
+  color: #c8ced9;
+}
+.ipmt-about-title {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--tk-blue, #00ffff);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 11px;
+  list-style: revert;
+}
+.ipmt-about-body { margin-top: 8px; }
+.ipmt-about-body p { margin: 6px 0; }
+.ipmt-about code {
+  background: #0e1116;
+  border: 1px solid #2a313a;
+  border-radius: 3px;
+  padding: 0 4px;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 11px;
+  color: #c8b06b;
+}
+.ipmt-about-flow .ipmt-step {
+  display: inline-block;
+  margin: 3px 8px 3px 0;
+  padding: 2px 8px;
+  background: #1a2233;
+  border: 1px solid #2a3550;
+  border-radius: 10px;
+  font-size: 11px;
+}
+.ipmt-about-tip { font-size: 11px; }
+
 .ipmt-toolbar {
   display: flex;
   flex-wrap: wrap;
@@ -3599,6 +3641,48 @@ body.unified-viewport-mode #btnClassicUiToggle {
   height: 100%;
   overflow: auto;
 }
+
+/* "What is this?" explainer header (Mob AI) */
+.mdsl-about {
+  background: #131a2a;
+  border: 1px solid #28324a;
+  border-left: 3px solid var(--tk-blue, #00ffff);
+  border-radius: 4px;
+  padding: 8px 12px;
+  font-size: 12px;
+  line-height: 1.55;
+  color: #c8ced9;
+}
+.mdsl-about-title {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--tk-blue, #00ffff);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 11px;
+  list-style: revert;
+}
+.mdsl-about-body { margin-top: 8px; }
+.mdsl-about-body p { margin: 6px 0; }
+.mdsl-about code {
+  background: #0e1116;
+  border: 1px solid #2a313a;
+  border-radius: 3px;
+  padding: 0 4px;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 11px;
+  color: #c8b06b;
+}
+.mdsl-about-flow .mdsl-step {
+  display: inline-block;
+  margin: 3px 8px 3px 0;
+  padding: 2px 8px;
+  background: #1a2233;
+  border: 1px solid #2a3550;
+  border-radius: 10px;
+  font-size: 11px;
+}
+.mdsl-about-tip { font-size: 11px; }
 
 .mdsl-toolbar {
   display: flex;

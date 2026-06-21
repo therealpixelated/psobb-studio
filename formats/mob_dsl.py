@@ -215,42 +215,124 @@ class MobSchema:
 # universal set once and prepend it to every schema.
 
 def _universal_stats_fields() -> List[FieldSpec]:
-    """Stats fields exposed by every AI-tunable mob."""
+    """Stats fields exposed by every AI-tunable mob.
+
+    These map to ``BattleParamEntry.stats`` (the 0x24-byte ``BPStatsEntry``
+    struct). They are the mob's raw combat numbers — what the engine plugs
+    into the damage / hit / evade formulas every time it fights a player.
+    """
     return [
-        FieldSpec("atp", "atp",       "Stats", "int", "stats", (-32768, 32767), tooltip="base attack power"),
-        FieldSpec("mst", "mst",       "Stats", "int", "stats", (-32768, 32767), tooltip="mind / tech power"),
-        FieldSpec("evp", "evp",       "Stats", "int", "stats", (-32768, 32767), tooltip="evasion"),
-        FieldSpec("hp",  "hp",        "Stats", "int", "stats", (-32768, 32767), tooltip="max HP (signed)"),
-        FieldSpec("dfp", "dfp",       "Stats", "int", "stats", (-32768, 32767), tooltip="defense"),
-        FieldSpec("ata", "ata",       "Stats", "int", "stats", (-32768, 32767), tooltip="accuracy"),
-        FieldSpec("lck", "lck",       "Stats", "int", "stats", (-32768, 32767), tooltip="luck"),
-        FieldSpec("xp",  "xp_drop",   "Stats", "int", "stats", (-32768, 32767), tooltip="exp dropped on kill"),
+        FieldSpec("atp", "atp",       "Stats", "int", "stats", (-32768, 32767),
+                  tooltip="Attack Power. The base of every melee/ranged hit the mob lands; "
+                          "higher ATP = more damage per swing. Ultimate-difficulty enemies "
+                          "carry far higher ATP than Normal. e.g. a basic Booma sits near 90; "
+                          "set 300+ to make it hit like a mini-boss."),
+        FieldSpec("mst", "mst",       "Stats", "int", "stats", (-32768, 32767),
+                  tooltip="Mind / Magic Power (MST). Scales the damage of techniques the mob "
+                          "casts (Foie/Barta/Zonde, etc.). Only matters for caster mobs; melee "
+                          "mobs can leave it low. e.g. 200 for a strong tech-caster."),
+        FieldSpec("evp", "evp",       "Stats", "int", "stats", (-32768, 32767),
+                  tooltip="Evasion (EVP). The mob's chance to dodge incoming attacks — higher "
+                          "EVP means players miss it more often. Bump it to make a mob feel "
+                          "slippery/annoying. e.g. 120 base, 400 to make it hard to hit."),
+        FieldSpec("hp",  "hp",        "Stats", "int", "stats", (-32768, 32767),
+                  tooltip="Max HP (signed 16-bit). How much damage the mob can soak before it "
+                          "dies — the single biggest lever on how long a fight lasts. e.g. a "
+                          "Booma ~210; set 2000 for a beefy elite. NOTE: bosses usually ignore "
+                          "this and read HP from their iparam phase fields instead."),
+        FieldSpec("dfp", "dfp",       "Stats", "int", "stats", (-32768, 32767),
+                  tooltip="Defense (DFP). Subtracted from incoming damage, so higher DFP makes "
+                          "every player hit chip less HP off the mob. e.g. 50 base; 300 makes a "
+                          "tanky enemy that shrugs off weak weapons."),
+        FieldSpec("ata", "ata",       "Stats", "int", "stats", (-32768, 32767),
+                  tooltip="Accuracy (ATA). The mob's chance to actually CONNECT with the player "
+                          "(vs being dodged). Low ATA = the mob whiffs a lot; high ATA = it "
+                          "reliably lands hits. e.g. 60 base; 200 makes attacks almost always "
+                          "connect."),
+        FieldSpec("lck", "lck",       "Stats", "int", "stats", (-32768, 32767),
+                  tooltip="Luck (LCK). Minor stat feeding the engine's critical-hit / variance "
+                          "rolls. Most stock mobs leave this at 0; small effect. e.g. 0–20."),
+        FieldSpec("xp",  "xp_drop",   "Stats", "int", "stats", (-32768, 32767),
+                  tooltip="Experience dropped when this mob is killed. Pure reward tuning — raise "
+                          "it to make a mob worth grinding, lower it to discourage farming. "
+                          "e.g. a Booma gives ~40; set 500 for a high-value target."),
     ]
 
 
 def _universal_combat_fields() -> List[FieldSpec]:
-    """Attack-data fields exposed by every AI-tunable mob."""
+    """Attack-data fields exposed by every AI-tunable mob.
+
+    These map to ``BattleParamEntry.attacks`` (newserv ``AttackData``).
+    They describe the mob's *attack swing* itself — how hard a rolled hit
+    lands and the physical reach/arc the engine checks for a connect.
+    """
     return [
-        FieldSpec("min_atp", "atp_min",      "Combat", "int",         "attacks", (0, 32767), tooltip="rolled-attack min ATP"),
-        FieldSpec("max_atp", "atp_max",      "Combat", "int",         "attacks", (0, 32767), tooltip="rolled-attack max ATP"),
-        FieldSpec("min_ata", "ata_min",      "Combat", "int",         "attacks", (0, 32767), tooltip="rolled-attack min ATA"),
-        FieldSpec("max_ata", "ata_max",      "Combat", "int",         "attacks", (0, 32767), tooltip="rolled-attack max ATA"),
-        FieldSpec("distance_x", "reach_x",   "Combat", "float",       "attacks", (0, 1000), tooltip="melee/attack reach in X (units)"),
-        FieldSpec("angle",   "swing_arc_deg", "Combat", "angle_bams", "attacks", (0, 360), tooltip="cone of attack in degrees (binary is BAMS, 0x10000 = 360 deg)"),
-        FieldSpec("distance_y", "reach_y",   "Combat", "float",       "attacks", (0, 1000), tooltip="attack reach in Y (units)"),
+        FieldSpec("min_atp", "atp_min",      "Combat", "int",         "attacks", (0, 32767),
+                  tooltip="Minimum attack power of a rolled swing. Each hit rolls a damage value "
+                          "between atp_min and atp_max, so this is the FLOOR of the mob's hit. "
+                          "Raising it removes the weak hits. e.g. 80."),
+        FieldSpec("max_atp", "atp_max",      "Combat", "int",         "attacks", (0, 32767),
+                  tooltip="Maximum attack power of a rolled swing — the CEILING of a hit's damage. "
+                          "Widen the gap from atp_min for swingy/unpredictable damage; set equal to "
+                          "atp_min for consistent hits. e.g. 175."),
+        FieldSpec("min_ata", "ata_min",      "Combat", "int",         "attacks", (0, 32767),
+                  tooltip="Minimum rolled accuracy of a swing — the floor of the to-hit roll for "
+                          "this specific attack (separate from the mob's base ATA stat). e.g. 50."),
+        FieldSpec("max_ata", "ata_max",      "Combat", "int",         "attacks", (0, 32767),
+                  tooltip="Maximum rolled accuracy of a swing — the ceiling of the to-hit roll. "
+                          "Higher = the attack lands more reliably. e.g. 110."),
+        FieldSpec("distance_x", "reach_x",   "Combat", "float",       "attacks", (0, 1000),
+                  tooltip="Horizontal reach of the attack, in world units. How far in FRONT of the "
+                          "mob the swing/hitbox extends — bigger reach lets it hit you from farther "
+                          "away (a melee enemy that can 'reach through' a step back). e.g. 30.0 for "
+                          "a normal swing, 120.0 for a long lunge."),
+        FieldSpec("angle",   "swing_arc_deg", "Combat", "angle_bams", "attacks", (0, 360),
+                  tooltip="Swing arc / cone width of the attack, in degrees. How WIDE the attack "
+                          "sweeps to the sides — a wide arc can clip players who aren't directly in "
+                          "front. e.g. 45 deg = a narrow thrust, 180 deg = a broad cleave. (Stored "
+                          "internally as BAMS where 0x10000 = 360 deg; the editor handles the "
+                          "conversion.)"),
+        FieldSpec("distance_y", "reach_y",   "Combat", "float",       "attacks", (0, 1000),
+                  tooltip="Vertical reach of the attack, in world units. How far UP/DOWN the hitbox "
+                          "extends — matters for tall mobs or flyers hitting grounded players (and "
+                          "vice-versa). e.g. 20.0."),
     ]
 
 
 def _universal_resist_fields() -> List[FieldSpec]:
-    """Resist fields exposed by every AI-tunable mob."""
+    """Resist fields exposed by every AI-tunable mob.
+
+    These map to ``BattleParamEntry.resists`` (newserv ``ResistData``).
+    Elemental resists are percentages: how much of an element's damage the
+    mob shrugs off. 0 = takes full elemental damage; 100 = immune.
+    """
     return [
-        FieldSpec("evp_bonus", "evp_bonus",  "Resists", "int",  "resists", (-32768, 32767), tooltip="bonus evasion (additive over base evp)"),
-        FieldSpec("efr",  "fire",            "Resists", "uint", "resists", (0, 65535), tooltip="fire resistance"),
-        FieldSpec("eic",  "ice",             "Resists", "uint", "resists", (0, 65535), tooltip="ice resistance"),
-        FieldSpec("eth",  "thunder",         "Resists", "uint", "resists", (0, 65535), tooltip="thunder resistance"),
-        FieldSpec("elt",  "light",           "Resists", "uint", "resists", (0, 65535), tooltip="light resistance"),
-        FieldSpec("edk",  "dark",            "Resists", "uint", "resists", (0, 65535), tooltip="dark resistance"),
-        FieldSpec("dfp_bonus", "dfp_bonus",  "Resists", "int",  "resists", (-32768, 32767), tooltip="bonus defense"),
+        FieldSpec("evp_bonus", "evp_bonus",  "Resists", "int",  "resists", (-32768, 32767),
+                  tooltip="Bonus evasion added ON TOP of the base EVP stat. Net effect is the same "
+                          "as raising EVP — the mob dodges more — but this is a separate additive "
+                          "lever (use it to buff dodge without touching the base stat). e.g. +50."),
+        FieldSpec("efr",  "fire",            "Resists", "uint", "resists", (0, 65535),
+                  tooltip="Fire resistance %. How much Foie / fire-element weapon damage the mob "
+                          "ignores. 0 = full fire damage, 100 = immune to fire. e.g. 30 = takes "
+                          "30% less fire damage; set 100 on a fire-based enemy."),
+        FieldSpec("eic",  "ice",             "Resists", "uint", "resists", (0, 65535),
+                  tooltip="Ice resistance %. How much Barta / ice-element damage the mob ignores. "
+                          "0 = full ice damage, 100 = immune. e.g. 30."),
+        FieldSpec("eth",  "thunder",         "Resists", "uint", "resists", (0, 65535),
+                  tooltip="Thunder resistance %. How much Zonde / lightning-element damage the mob "
+                          "ignores. 0 = full damage, 100 = immune. e.g. 30."),
+        FieldSpec("elt",  "light",           "Resists", "uint", "resists", (0, 65535),
+                  tooltip="Light resistance %. How much Grants / light-element damage the mob "
+                          "ignores. Dark enemies (Dark Falz line) are usually weak to light, so "
+                          "keep this LOW on them. 0 = full damage, 100 = immune."),
+        FieldSpec("edk",  "dark",            "Resists", "uint", "resists", (0, 65535),
+                  tooltip="Dark resistance %. How much Megid / dark-element damage the mob ignores. "
+                          "0 = full damage, 100 = immune. Note Megid can also instant-kill via a "
+                          "separate roll. e.g. 30."),
+        FieldSpec("dfp_bonus", "dfp_bonus",  "Resists", "int",  "resists", (-32768, 32767),
+                  tooltip="Bonus defense added ON TOP of the base DFP stat. Same effect as raising "
+                          "DFP — reduces all incoming physical damage — but as a separate additive "
+                          "lever. e.g. +100 for an armored variant."),
     ]
 
 
@@ -262,60 +344,151 @@ def _universal_resist_fields() -> List[FieldSpec]:
 # slot gets the generic fparam1..iparam6 fall-through.
 
 def _booma_animations() -> List[FieldSpec]:
+    # The Booma family stores movement + behaviour in the 12-slot
+    # ``animations`` (MovementData) array. Speeds are world-units/tick;
+    # ~1.0 is a stock walk, higher = faster. anim_speed is purely cosmetic
+    # (how fast the legs cycle) — decouple it from move speed for a
+    # comical moonwalk, or keep them matched so motion looks natural.
     return [
-        FieldSpec("fparam1", "idle_speed",        "Movement",    "float", "animations", (0, 10), tooltip="speed when wandering / returning to spawn"),
-        FieldSpec("fparam2", "idle_anim_speed",   "Movement",    "float", "animations", (0, 10), tooltip="walk-cycle anim playback rate during idle"),
-        FieldSpec("fparam3", "engaged_speed",     "Movement",    "float", "animations", (0, 10), tooltip="speed when chasing the player"),
-        FieldSpec("fparam4", "engaged_anim_speed","Movement",    "float", "animations", (0, 10), tooltip="walk-cycle anim playback rate when engaged"),
-        FieldSpec("fparam5", "poison_cloud_dmg",  "AI Behavior", "float", "animations", (0, 1000), tooltip="poison-cloud damage (Merillia variant only)"),
-        FieldSpec("fparam6", "flee_speed",        "Movement",    "float", "animations", (0, 10), tooltip="run-away speed"),
-        FieldSpec("iparam1", "low_hp_threshold",  "AI Behavior", "percent_int", "animations", (0, 100), tooltip="HP%% at which the mob switches to low-HP behaviour"),
+        FieldSpec("fparam1", "idle_speed",        "Movement",    "float", "animations", (0, 10),
+                  tooltip="How fast the mob moves while it has NOT noticed you — wandering near "
+                          "spawn or returning home. Low = it loiters; high = it patrols quickly. "
+                          "e.g. 0.5 stock, 1.5 for a restless patroller."),
+        FieldSpec("fparam2", "idle_anim_speed",   "Movement",    "float", "animations", (0, 10),
+                  tooltip="Playback rate of the walk ANIMATION while idle (cosmetic only — does "
+                          "not change actual move speed). Match it to idle_speed so the feet don't "
+                          "slide. e.g. 1.0."),
+        FieldSpec("fparam3", "engaged_speed",     "Movement",    "float", "animations", (0, 10),
+                  tooltip="How fast the mob CHASES once it has aggroed onto a player — the lever "
+                          "that decides whether you can out-run it. This is the main 'aggressive vs "
+                          "passive' knob. e.g. 1.0 stock; 2.5 makes a Booma that runs you down."),
+        FieldSpec("fparam4", "engaged_anim_speed","Movement",    "float", "animations", (0, 10),
+                  tooltip="Playback rate of the run ANIMATION while chasing (cosmetic). Match it to "
+                          "engaged_speed to avoid foot-sliding. e.g. 1.2."),
+        FieldSpec("fparam5", "poison_cloud_dmg",  "AI Behavior", "float", "animations", (0, 1000),
+                  tooltip="Damage per tick of the poison cloud the Merillia (Ep2 reskin of this "
+                          "slot) leaves behind. Only meaningful on the poison-cloud variant; 0 on a "
+                          "plain Booma. e.g. 25."),
+        FieldSpec("fparam6", "flee_speed",        "Movement",    "float", "animations", (0, 10),
+                  tooltip="How fast the mob RETREATS when it decides to back off (e.g. after taking "
+                          "damage, or below its low-HP threshold). High = it kites away from you. "
+                          "e.g. 1.8."),
+        FieldSpec("iparam1", "low_hp_threshold",  "AI Behavior", "percent_int", "animations", (0, 100),
+                  tooltip="HP percentage at which the mob switches into its 'low HP' behaviour "
+                          "(typically fleeing at flee_speed instead of pressing the attack). "
+                          "e.g. 25 = it starts running once it drops below 25% HP; 0 = never flee."),
     ]
 
 
 def _hildebear_animations() -> List[FieldSpec]:
+    # Hildebear/Hildeblue are melee-or-caster hybrids: they punch up close
+    # but can also lob a technique. These params expose that decision.
     return [
-        FieldSpec("fparam1", "punch_attack_speed", "AI Behavior", "float", "animations", (0, 10), tooltip="punch animation speed multiplier"),
-        FieldSpec("fparam2", "tech_range",         "AI Behavior", "float", "animations", (0, 1000), tooltip="tech-cast range (engagement distance)"),
-        FieldSpec("fparam3", "walk_speed",         "Movement",    "float", "animations", (0, 10), tooltip="movement speed (does NOT scale anim)"),
-        FieldSpec("fparam4", "walk_anim_speed",    "Movement",    "float", "animations", (0, 10), tooltip="walking animation playback rate"),
-        FieldSpec("fparam5", "tech_cast_chance_pct","AI Behavior","percent",  "animations", (0, 100), tooltip="probability of casting a tech instead of melee (0..100)"),
-        FieldSpec("fparam6", "tech_cooldown_seconds","AI Behavior","duration_seconds","animations", (0, 30), tooltip="cooldown between tech casts in seconds"),
-        FieldSpec("iparam1", "tech_select_seed",   "AI Behavior", "uint",  "animations", (0, 0xFFFFFFFF), tooltip="seed for tech selection (Foie/Barta/Zonde mix)"),
+        FieldSpec("fparam1", "punch_attack_speed", "AI Behavior", "float", "animations", (0, 10),
+                  tooltip="Speed multiplier on the melee punch animation/attack. Higher = it swings "
+                          "faster and more often, so DPS pressure goes up. e.g. 1.0 stock, 2.0 for a "
+                          "flurrying brawler."),
+        FieldSpec("fparam2", "tech_range",         "AI Behavior", "float", "animations", (0, 1000),
+                  tooltip="Distance (world units) at which the mob will choose to CAST a technique "
+                          "instead of closing for a punch. Big range = it zaps you from across the "
+                          "room; small range = it prefers to melee. e.g. 200.0."),
+        FieldSpec("fparam3", "walk_speed",         "Movement",    "float", "animations", (0, 10),
+                  tooltip="Movement speed when approaching/repositioning (does NOT scale the walk "
+                          "animation — that is walk_anim_speed). The main 'how fast does it come at "
+                          "you' lever for this family. e.g. 1.0 stock, 1.6 aggressive."),
+        FieldSpec("fparam4", "walk_anim_speed",    "Movement",    "float", "animations", (0, 10),
+                  tooltip="Playback rate of the walk animation (cosmetic). Match it to walk_speed so "
+                          "the legs don't slide. e.g. 1.0."),
+        FieldSpec("fparam5", "tech_cast_chance_pct","AI Behavior","percent",  "animations", (0, 100),
+                  tooltip="Probability (0–100%) that, when it could act, the mob casts a technique "
+                          "rather than melee-punching. 0 = pure brawler, 100 = pure caster. "
+                          "e.g. 12 = occasional spell; 65 = mostly a caster."),
+        FieldSpec("fparam6", "tech_cooldown_seconds","AI Behavior","duration_seconds","animations", (0, 30),
+                  tooltip="Minimum time between technique casts, in SECONDS (the editor converts to "
+                          "30 fps frames internally). Lower = it spams spells; higher = rare casts. "
+                          "e.g. 4.5 s stock, 1.5 s for a caster build."),
+        FieldSpec("iparam1", "tech_select_seed",   "AI Behavior", "uint",  "animations", (0, 0xFFFFFFFF),
+                  tooltip="Seed feeding the RNG that picks WHICH technique it casts (the Foie / "
+                          "Barta / Zonde mix). Changing it reshuffles the element pattern; most "
+                          "users can leave this alone. e.g. 0."),
     ]
 
 
 def _de_rol_le_animations() -> List[FieldSpec]:
+    # De Rol Le (Ep1 Mines boss) is multi-phase. Its iparam slots hold the
+    # HP gates that drive phase transitions — these OVERRIDE the plain
+    # stats.hp value for the boss.
     return [
-        FieldSpec("fparam1", "swipe_damage",          "Combat",      "float", "animations", (0, 1000), tooltip="damage of a phase-2 swipe attack"),
-        FieldSpec("fparam2", "unused2",               "AI Behavior", "float", "animations", tooltip="unused (TObjectV8047ec78)"),
-        FieldSpec("fparam3", "mine_damage",           "Combat",      "float", "animations", (0, 1000), tooltip="damage of an exploding mine (TBoss2Mine)"),
-        FieldSpec("fparam4", "x_position_jitter",     "AI Behavior", "float", "animations", (0, 1000), tooltip="X-position randomisation (gated by x_position_jitter_pct)"),
-        FieldSpec("fparam5", "x_position_jitter_pct", "AI Behavior", "percent","animations", (0, 100), tooltip="probability of x_position_jitter firing each tick"),
-        FieldSpec("fparam6", "mine_spawn_rate",       "AI Behavior", "duration_seconds", "animations", (0, 30), tooltip="seconds between mine spawns (lower = faster mines)"),
-        FieldSpec("iparam1", "total_hp",              "AI Behavior", "int",  "animations", (0, 0x7FFFFFFF), tooltip="total HP (overrides BattleParam stats.hp for this boss)"),
-        FieldSpec("iparam2", "armor_break_hp",        "AI Behavior", "int",  "animations", (0, 0x7FFFFFFF), tooltip="HP threshold for armor-break phase transition"),
-        FieldSpec("iparam3", "mask_off_hp",           "AI Behavior", "int",  "animations", (0, 0x7FFFFFFF), tooltip="HP threshold for mask-removal phase transition (skull becomes targetable)"),
-        FieldSpec("iparam4", "ult_constant_a",        "AI Behavior", "uint", "animations", (0, 0xFFFFFFFF), tooltip="Ultimate-difficulty constant A (default 180 elsewhere)"),
-        FieldSpec("iparam5", "ult_constant_b",        "AI Behavior", "uint", "animations", (0, 0xFFFFFFFF), tooltip="Ultimate-difficulty constant B (default 120 elsewhere)"),
+        FieldSpec("fparam1", "swipe_damage",          "Combat",      "float", "animations", (0, 1000),
+                  tooltip="Damage of the boss's phase-2 swipe attack. Raise to make the swipe a "
+                          "real threat. e.g. 150."),
+        FieldSpec("fparam2", "unused2",               "AI Behavior", "float", "animations",
+                  tooltip="Unused slot for this boss (no observed in-game effect). Leave at stock."),
+        FieldSpec("fparam3", "mine_damage",           "Combat",      "float", "animations", (0, 1000),
+                  tooltip="Damage of an exploding mine the boss spawns. Pairs with mine_spawn_rate "
+                          "to set how dangerous the mine field is. e.g. 120."),
+        FieldSpec("fparam4", "x_position_jitter",     "AI Behavior", "float", "animations", (0, 1000),
+                  tooltip="How far the boss randomly shifts along the X axis when it repositions "
+                          "(gated by x_position_jitter_pct). Bigger = more erratic side-to-side "
+                          "movement. e.g. 50.0."),
+        FieldSpec("fparam5", "x_position_jitter_pct", "AI Behavior", "percent","animations", (0, 100),
+                  tooltip="Chance per tick (0–100%) that the X-jitter above actually fires. Higher "
+                          "= the boss juke-slides more often. e.g. 20."),
+        FieldSpec("fparam6", "mine_spawn_rate",       "AI Behavior", "duration_seconds", "animations", (0, 30),
+                  tooltip="Seconds between mine spawns (editor converts to frames). LOWER = mines "
+                          "appear faster and the arena gets busier. e.g. 6.0 s stock, 2.0 s for a "
+                          "punishing mine field."),
+        FieldSpec("iparam1", "total_hp",              "AI Behavior", "int",  "animations", (0, 0x7FFFFFFF),
+                  tooltip="The boss's TOTAL HP. This OVERRIDES the generic stats.hp for De Rol Le "
+                          "(bosses read their HP from here). The biggest lever on fight length. "
+                          "e.g. 12000."),
+        FieldSpec("iparam2", "armor_break_hp",        "AI Behavior", "int",  "animations", (0, 0x7FFFFFFF),
+                  tooltip="HP value at which the boss transitions into its armor-break phase. Set it "
+                          "relative to total_hp (e.g. ~60% of total) to control when the fight "
+                          "escalates. e.g. 8000."),
+        FieldSpec("iparam3", "mask_off_hp",           "AI Behavior", "int",  "animations", (0, 0x7FFFFFFF),
+                  tooltip="HP value at which the boss's mask comes off and the skull becomes "
+                          "targetable (the real damage window opens). e.g. 3000."),
+        FieldSpec("iparam4", "ult_constant_a",        "AI Behavior", "uint", "animations", (0, 0xFFFFFFFF),
+                  tooltip="Ultimate-difficulty tuning constant A (timing/behaviour magic number; "
+                          "default 180 on other slots). Advanced — leave at stock unless you know "
+                          "the boss's frame timings."),
+        FieldSpec("iparam5", "ult_constant_b",        "AI Behavior", "uint", "animations", (0, 0xFFFFFFFF),
+                  tooltip="Ultimate-difficulty tuning constant B (default 120 elsewhere). Advanced — "
+                          "leave at stock unless you are tuning the boss's frame timings."),
     ]
 
 
 def _generic_animations() -> List[FieldSpec]:
-    """Fallback set: just expose the raw fparam/iparam fields."""
+    """Fallback set: just expose the raw fparam/iparam fields.
+
+    Used for slots whose 12 ``animations``/MovementData params have no
+    confirmed meaning yet. The values are real and DO affect the mob —
+    we just can't put a friendly name on each one. By convention across
+    documented slots: the low fparams tend to be movement/anim speeds and
+    the iparams tend to be HP thresholds or RNG seeds, but treat that as a
+    hint, not a guarantee. Edit one at a time and watch the mob in-game.
+    """
+    generic_f = ("Raw MovementData float for this slot (semantics not yet "
+                 "reverse-engineered). On most mobs the early floats are move/"
+                 "animation speeds — change ONE and observe the mob in-game to "
+                 "learn what it does. See notes/movement-data.txt.")
+    generic_i = ("Raw MovementData integer for this slot (semantics not yet "
+                 "reverse-engineered). On documented mobs these are usually HP "
+                 "phase thresholds or RNG seeds. Change ONE and observe in-game.")
     return [
-        FieldSpec("fparam1", "fparam1", "AI Behavior", "float", "animations", tooltip="see notes/movement-data.txt for slot-specific semantics"),
-        FieldSpec("fparam2", "fparam2", "AI Behavior", "float", "animations"),
-        FieldSpec("fparam3", "fparam3", "AI Behavior", "float", "animations"),
-        FieldSpec("fparam4", "fparam4", "AI Behavior", "float", "animations"),
-        FieldSpec("fparam5", "fparam5", "AI Behavior", "float", "animations"),
-        FieldSpec("fparam6", "fparam6", "AI Behavior", "float", "animations"),
-        FieldSpec("iparam1", "iparam1", "AI Behavior", "uint",  "animations"),
-        FieldSpec("iparam2", "iparam2", "AI Behavior", "uint",  "animations"),
-        FieldSpec("iparam3", "iparam3", "AI Behavior", "uint",  "animations"),
-        FieldSpec("iparam4", "iparam4", "AI Behavior", "uint",  "animations"),
-        FieldSpec("iparam5", "iparam5", "AI Behavior", "uint",  "animations"),
-        FieldSpec("iparam6", "iparam6", "AI Behavior", "uint",  "animations"),
+        FieldSpec("fparam1", "fparam1", "AI Behavior", "float", "animations", tooltip=generic_f),
+        FieldSpec("fparam2", "fparam2", "AI Behavior", "float", "animations", tooltip=generic_f),
+        FieldSpec("fparam3", "fparam3", "AI Behavior", "float", "animations", tooltip=generic_f),
+        FieldSpec("fparam4", "fparam4", "AI Behavior", "float", "animations", tooltip=generic_f),
+        FieldSpec("fparam5", "fparam5", "AI Behavior", "float", "animations", tooltip=generic_f),
+        FieldSpec("fparam6", "fparam6", "AI Behavior", "float", "animations", tooltip=generic_f),
+        FieldSpec("iparam1", "iparam1", "AI Behavior", "uint",  "animations", tooltip=generic_i),
+        FieldSpec("iparam2", "iparam2", "AI Behavior", "uint",  "animations", tooltip=generic_i),
+        FieldSpec("iparam3", "iparam3", "AI Behavior", "uint",  "animations", tooltip=generic_i),
+        FieldSpec("iparam4", "iparam4", "AI Behavior", "uint",  "animations", tooltip=generic_i),
+        FieldSpec("iparam5", "iparam5", "AI Behavior", "uint",  "animations", tooltip=generic_i),
+        FieldSpec("iparam6", "iparam6", "AI Behavior", "uint",  "animations", tooltip=generic_i),
     ]
 
 
@@ -328,9 +501,18 @@ def _generic_boss_animations() -> List[FieldSpec]:
     Shambertin, Kondrieu) follow the same pattern.
     """
     fields = _generic_animations()
-    fields[6] = FieldSpec("iparam1", "phase_hp_total", "AI Behavior", "int",  "animations", (0, 0x7FFFFFFF), tooltip="total HP (boss-phase cap; overrides BattleParam stats.hp)")
-    fields[7] = FieldSpec("iparam2", "phase_2_hp",     "AI Behavior", "int",  "animations", (0, 0x7FFFFFFF), tooltip="HP threshold for phase 2 transition")
-    fields[8] = FieldSpec("iparam3", "phase_3_hp",     "AI Behavior", "int",  "animations", (0, 0x7FFFFFFF), tooltip="HP threshold for phase 3 transition (or kill check)")
+    fields[6] = FieldSpec("iparam1", "phase_hp_total", "AI Behavior", "int",  "animations", (0, 0x7FFFFFFF),
+                          tooltip="The boss's TOTAL HP pool. OVERRIDES the generic stats.hp for "
+                                  "this boss — this is the real lever on how long the fight lasts. "
+                                  "e.g. 10000.")
+    fields[7] = FieldSpec("iparam2", "phase_2_hp",     "AI Behavior", "int",  "animations", (0, 0x7FFFFFFF),
+                          tooltip="HP value at which the boss flips into PHASE 2 (new attacks / "
+                                  "weak point opens). Set it as a fraction of phase_hp_total to "
+                                  "control pacing — e.g. ~66% of total.")
+    fields[8] = FieldSpec("iparam3", "phase_3_hp",     "AI Behavior", "int",  "animations", (0, 0x7FFFFFFF),
+                          tooltip="HP value at which the boss flips into PHASE 3 (final/enrage "
+                                  "phase, or the kill check). Set below phase_2_hp — e.g. ~33% of "
+                                  "phase_hp_total.")
     return fields
 
 
@@ -416,9 +598,17 @@ def _build_schema(slot: int, name: str) -> MobSchema:
             3: "phase_3_hp",
         }
 
-    notes = ""
-    if not _has_named_animation_fields(slot):
-        notes = "Animation fields are unsemantic for this slot — using raw fparam/iparam labels. See notes/movement-data.txt for documentation."
+    if _has_named_animation_fields(slot):
+        notes = ("Stats/Combat/Resists below are universal; the Movement & AI "
+                 "Behavior fields are named specifically for this mob. Hover any "
+                 "field for what it does + an example value. Blank = keep the "
+                 "stock value.")
+    else:
+        notes = ("Stats/Combat/Resists below are universal and fully documented. "
+                 "This slot's Movement/AI animation params have NOT been "
+                 "reverse-engineered, so they appear as raw fparam/iparam labels "
+                 "— they still affect the mob; edit one at a time and watch it "
+                 "in-game. See notes/movement-data.txt.")
 
     return MobSchema(
         slot=slot, name=name, fields=fields,

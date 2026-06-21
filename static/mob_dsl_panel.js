@@ -167,6 +167,36 @@
   // ------------------------------------------------------------------
   // UI rendering
   // ------------------------------------------------------------------
+  // Static explainer shown at the top of the panel. Answers "what is this
+  // tool and how do I use it" so a non-coder can sit down and tune a mob.
+  function renderPanelHeader() {
+    return (
+      '<details class="mdsl-about" open>' +
+      '<summary class="mdsl-about-title">Mob AI Authoring — what is this?</summary>' +
+      '<div class="mdsl-about-body">' +
+      '<p>This panel tunes how the game\'s <strong>monsters</strong> behave and ' +
+      'fight. Every field you edit here writes into a slot of ' +
+      '<code>BattleParamEntry</code> — the binary table the server reads to ' +
+      'give each mob its stats, attack reach, elemental resists, and AI ' +
+      'movement/behaviour. Editing it rebalances the game <em>without</em> ' +
+      'touching the client install.</p>' +
+      '<p class="mdsl-about-flow"><strong>Workflow:</strong> ' +
+      '<span class="mdsl-step">1. pick a <em>mob</em> + <em>difficulty</em></span>' +
+      '<span class="mdsl-step">2. edit named fields (leave blank to keep stock)</span>' +
+      '<span class="mdsl-step">3. <em>compile</em> bakes your edits onto the stock file</span>' +
+      '<span class="mdsl-step">4. <em>deploy</em> / <em>Live Test</em> pushes it to newserv (a timestamped backup is made)</span>' +
+      '</p>' +
+      '<p class="mdsl-about-tip dim">Fields are grouped: ' +
+      '<strong>Stats</strong> (raw HP/ATP/DFP/…), ' +
+      '<strong>Combat</strong> (a single swing\'s damage, reach &amp; arc), ' +
+      '<strong>Resists</strong> (elemental damage % ignored), and ' +
+      '<strong>Movement / AI Behavior</strong> (chase speed, flee threshold, ' +
+      'tech-cast chance, boss phase HP, …). ' +
+      '<em>Hover any field label</em> for exactly what it does and an example value.</p>' +
+      '</div></details>'
+    );
+  }
+
   function renderToolbar(hostEl) {
     const variants = ["on", "off", "lab_on", "lab_off", "ep4_on", "ep4_off"];
     const variantOpts = variants.map(function (v) {
@@ -462,9 +492,12 @@
     const payload = buildPatchPayload();
     let html = '<div class="vp-insp-title">Mob AI Authoring</div>';
     html += '<div class="vp-insp-help dim">' +
-            'Pick a mob + difficulty, edit named fields. Each field maps ' +
-            'back to a BattleParamEntry slot. Click "compile + deploy" to ' +
-            'apply your patches to the chosen variant and push to newserv.' +
+            'Tunes monster behaviour by editing <code>BattleParamEntry</code> ' +
+            'slots. Pick a mob + difficulty, edit named fields (hover a label ' +
+            'for what it does + an example; blank = keep stock). ' +
+            '"compile + deploy" bakes only the changed fields onto the chosen ' +
+            'variant and pushes it to newserv with a backup. Only edited fields ' +
+            'are written — everything else stays at the stock value.' +
             '</div>';
     html += '<div class="vp-insp-section mdsl-source">';
     html += '<dl class="mdsl-meta">';
@@ -639,6 +672,7 @@
     mount: async function (stage, insp, ctx) {
       stage.innerHTML =
         '<div class="mdsl-perspective">' +
+        renderPanelHeader() +
         '<div id="mdslToolbar"></div>' +
         '<div id="mdslEditor" class="mdsl-editor"></div>' +
         '</div>';

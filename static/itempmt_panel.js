@@ -43,98 +43,101 @@
   // ---- Field metadata (mirrors battle_param style) -------------------
   // Each section has a list of fields with {key, label, type, help}.
   // type: "int" | "uint" | "float" | "hex"
+  // The `help` text is the hover tooltip. It explains what the field
+  // controls in-game; semantics are sourced from formats/itempmt.py's
+  // schema comments (newserv ItemParameterTable.hh struct layouts).
   const FIELD_META = {
     item_base: [
-      { key: "id",          label: "id (item code)", type: "hex" },
-      { key: "type",        label: "type",  type: "uint", help: "model index (per-class table)" },
-      { key: "skin",        label: "skin",  type: "uint", help: "texture variant" },
-      { key: "team_points", label: "team points", type: "uint" },
+      { key: "id",          label: "id (item code)", type: "hex", help: "The item's unique code (ItemBaseV4.id) — what identifies this item in inventory/drops. Usually leave as-is; changing it re-points the slot to a different item." },
+      { key: "type",        label: "type",  type: "uint", help: "Model index into the class's model table — picks WHICH 3D model the client draws for this item." },
+      { key: "skin",        label: "skin",  type: "uint", help: "Texture/colour variant index applied to the model. Same model, different look." },
+      { key: "team_points", label: "team points", type: "uint", help: "Team-point cost/value (ItemBaseV4.team_points). Niche; most items leave it 0." },
     ],
     weapons: [
-      { key: "class_flags",  label: "class flags", type: "hex", help: "u16 bitfield (HUmar/HUnewearl/...)" },
-      { key: "atp_min",      label: "ATP min",     type: "int" },
-      { key: "atp_max",      label: "ATP max",     type: "int" },
-      { key: "atp_required", label: "ATP req",     type: "int" },
-      { key: "mst_required", label: "MST req",     type: "int" },
-      { key: "ata_required", label: "ATA req",     type: "int" },
-      { key: "mst",          label: "MST",         type: "int" },
-      { key: "max_grind",    label: "max grind",   type: "uint" },
-      { key: "photon",       label: "photon",      type: "uint" },
-      { key: "special",      label: "special",     type: "int", help: "-1 = none" },
-      { key: "ata",          label: "ATA",         type: "uint" },
-      { key: "stat_boost_entry_index", label: "stat boost #", type: "uint" },
-      { key: "projectile",   label: "projectile",  type: "uint" },
-      { key: "trail1_x",     label: "trail1 x",    type: "int" },
-      { key: "trail1_y",     label: "trail1 y",    type: "int" },
-      { key: "trail2_x",     label: "trail2 x",    type: "int" },
-      { key: "trail2_y",     label: "trail2 y",    type: "int" },
-      { key: "color",        label: "color",       type: "uint" },
-      { key: "tech_boost",   label: "tech boost",  type: "uint" },
-      { key: "behavior_flags", label: "behavior flags", type: "hex" },
-      { key: "unknown_a4",   label: "reserved a4",  type: "uint", advanced: true },
-      { key: "unknown_a5",   label: "reserved a5",  type: "uint", advanced: true },
+      { key: "class_flags",  label: "class flags", type: "hex", help: "u16 bitfield of which classes can equip this weapon (HUmar / HUnewearl / FOmar / …). Each bit = one class; 0 = nobody can equip it." },
+      { key: "atp_min",      label: "ATP min",     type: "int", help: "Minimum Attack Power the weapon grants. Each hit rolls damage between ATP min and ATP max, so this is the weapon's damage FLOOR." },
+      { key: "atp_max",      label: "ATP max",     type: "int", help: "Maximum Attack Power the weapon grants — the damage CEILING. Widen the min↔max gap for swingy damage; set equal for consistent hits." },
+      { key: "atp_required", label: "ATP req",     type: "int", help: "ATP stat the player must have to equip this weapon. Gate strong weapons behind higher ATP." },
+      { key: "mst_required", label: "MST req",     type: "int", help: "MST (mind) stat required to equip. Used to gate caster weapons." },
+      { key: "ata_required", label: "ATA req",     type: "int", help: "ATA (accuracy) stat required to equip." },
+      { key: "mst",          label: "MST",         type: "int", help: "Bonus MST (mind/tech power) the weapon grants while equipped — boosts technique damage." },
+      { key: "max_grind",    label: "max grind",   type: "uint", help: "Highest grind (+N) this weapon can be upgraded to at the shop. e.g. 0 = ungrindable, 35 = +35." },
+      { key: "photon",       label: "photon",      type: "uint", help: "Photon/element colour index — the weapon's elemental tint and which elemental attribute table it uses." },
+      { key: "special",      label: "special",     type: "int", help: "Index into the Specials table (Hell/Charge/Spirit/…). -1 = no special ability." },
+      { key: "ata",          label: "ATA",         type: "uint", help: "Bonus ATA (accuracy) the weapon grants — how reliably its hits connect." },
+      { key: "stat_boost_entry_index", label: "stat boost #", type: "uint", help: "Index into the Stat Boosts table — applies a passive stat bonus (e.g. +HP/+ATP) while equipped." },
+      { key: "projectile",   label: "projectile",  type: "uint", help: "Projectile/effect id used by ranged weapons for the shot visual." },
+      { key: "trail1_x",     label: "trail1 x",    type: "int", help: "Swing-trail effect anchor (X). Cosmetic — shapes the glowing arc drawn behind a melee swing." },
+      { key: "trail1_y",     label: "trail1 y",    type: "int", help: "Swing-trail effect anchor (Y). Cosmetic." },
+      { key: "trail2_x",     label: "trail2 x",    type: "int", help: "Second swing-trail anchor (X). Cosmetic." },
+      { key: "trail2_y",     label: "trail2 y",    type: "int", help: "Second swing-trail anchor (Y). Cosmetic." },
+      { key: "color",        label: "color",       type: "uint", help: "Base colour index for the weapon model." },
+      { key: "tech_boost",   label: "tech boost",  type: "uint", help: "Index into the technique-boost table — raises the power of a specific tech while this weapon is equipped (caster weapons)." },
+      { key: "behavior_flags", label: "behavior flags", type: "hex", help: "u8 bitfield of misc weapon behaviour flags (combo/special-handling bits)." },
+      { key: "unknown_a4",   label: "reserved a4",  type: "uint", advanced: true, help: "Reserved/undocumented byte — preserved for byte-exact round-trip. Don't change unless you know what it does." },
+      { key: "unknown_a5",   label: "reserved a5",  type: "uint", advanced: true, help: "Reserved/undocumented byte — preserved for round-trip. Leave at stock." },
     ],
     armors: [
-      { key: "dfp",                    label: "DFP base",      type: "uint" },
-      { key: "evp",                    label: "EVP base",      type: "uint" },
-      { key: "block_particle",         label: "block particle", type: "uint" },
-      { key: "block_effect",           label: "block effect",  type: "uint" },
-      { key: "class_flags",            label: "class flags",   type: "hex" },
-      { key: "required_level",         label: "required level", type: "uint" },
-      { key: "efr",                    label: "EFR (fire)",     type: "uint" },
-      { key: "eth",                    label: "ETH (thunder)",  type: "uint" },
-      { key: "eic",                    label: "EIC (ice)",      type: "uint" },
-      { key: "edk",                    label: "EDK (dark)",     type: "uint" },
-      { key: "elt",                    label: "ELT (light)",    type: "uint" },
-      { key: "dfp_range",              label: "DFP range",     type: "uint" },
-      { key: "evp_range",              label: "EVP range",     type: "uint" },
-      { key: "stat_boost_entry_index", label: "stat boost #",  type: "uint" },
-      { key: "tech_boost",             label: "tech boost",    type: "uint" },
-      { key: "flags_type",             label: "flags type",    type: "uint", help: "0=armor, 1/2/3=variant" },
-      { key: "unknown_a4",             label: "reserved a4",   type: "uint", advanced: true },
+      { key: "dfp",                    label: "DFP base",      type: "uint", help: "Base Defense the frame/armor grants — flat damage reduction while worn." },
+      { key: "evp",                    label: "EVP base",      type: "uint", help: "Base Evasion the frame grants — raises the wearer's dodge chance." },
+      { key: "block_particle",         label: "block particle", type: "uint", help: "Particle-effect id shown when the armor blocks a hit. Cosmetic." },
+      { key: "block_effect",           label: "block effect",  type: "uint", help: "Block-effect id (the flash/sound on a successful block). Cosmetic." },
+      { key: "class_flags",            label: "class flags",   type: "hex", help: "u16 bitfield of which classes can equip this armor. Each bit = one class." },
+      { key: "required_level",         label: "required level", type: "uint", help: "Character level needed to equip. Gate strong armor behind level." },
+      { key: "efr",                    label: "EFR (fire)",     type: "uint", help: "Fire resistance the armor adds (% of fire damage ignored)." },
+      { key: "eth",                    label: "ETH (thunder)",  type: "uint", help: "Thunder resistance the armor adds (% of lightning damage ignored)." },
+      { key: "eic",                    label: "EIC (ice)",      type: "uint", help: "Ice resistance the armor adds (% of ice damage ignored)." },
+      { key: "edk",                    label: "EDK (dark)",     type: "uint", help: "Dark resistance the armor adds (% of dark/Megid damage ignored)." },
+      { key: "elt",                    label: "ELT (light)",    type: "uint", help: "Light resistance the armor adds (% of light/Grants damage ignored)." },
+      { key: "dfp_range",              label: "DFP range",     type: "uint", help: "Random DFP variance: the item rolls 0..this much EXTRA defense on top of DFP base when it drops. 0 = always exactly DFP base." },
+      { key: "evp_range",              label: "EVP range",     type: "uint", help: "Random EVP variance rolled on drop, on top of EVP base. 0 = no variance." },
+      { key: "stat_boost_entry_index", label: "stat boost #",  type: "uint", help: "Index into the Stat Boosts table — passive stat bonus applied while worn." },
+      { key: "tech_boost",             label: "tech boost",    type: "uint", help: "Index into the technique-boost table — boosts a tech while worn." },
+      { key: "flags_type",             label: "flags type",    type: "uint", help: "Armor variant flag. 0 = standard armor; 1/2/3 = special variants (handled differently by the client)." },
+      { key: "unknown_a4",             label: "reserved a4",   type: "uint", advanced: true, help: "Reserved/undocumented byte — preserved for round-trip. Leave at stock." },
     ],
     shields: [], // same as armors below
     units: [
-      { key: "stat",            label: "stat",            type: "uint" },
-      { key: "stat_amount",     label: "stat amount",     type: "uint" },
-      { key: "modifier_amount", label: "modifier amount", type: "int" },
+      { key: "stat",            label: "stat",            type: "uint", help: "Which stat this unit boosts (HP/ATP/DFP/MST/EVP/ATA/LCK/…), as a stat id." },
+      { key: "stat_amount",     label: "stat amount",     type: "uint", help: "How much of `stat` the unit grants while equipped (the magnitude of the boost)." },
+      { key: "modifier_amount", label: "modifier amount", type: "int", help: "Secondary signed modifier (can be negative — a downside) applied alongside the boost." },
     ],
     mags: [
-      { key: "feed_table",   label: "feed table",   type: "uint" },
-      { key: "photon_blast", label: "photon blast", type: "uint" },
-      { key: "activation",   label: "activation",   type: "uint" },
-      { key: "class_flags",  label: "class flags",  type: "hex" },
+      { key: "feed_table",   label: "feed table",   type: "uint", help: "Index into the Mag Feed tables — picks which stat-gain pattern this mag uses when you feed it items. (Edit the actual gains under the Mag Feed section.)" },
+      { key: "photon_blast", label: "photon blast", type: "uint", help: "Default Photon Blast assigned to this mag (Farlla/Estlla/Golla/…)." },
+      { key: "activation",   label: "activation",   type: "uint", help: "Mag activation/trigger behaviour id (when its photon blast / abilities fire)." },
+      { key: "class_flags",  label: "class flags",  type: "hex", help: "u16 bitfield of which classes can equip this mag." },
     ],
     tools: [
-      { key: "amount",     label: "amount",     type: "uint" },
-      { key: "tech",       label: "tech",       type: "uint" },
-      { key: "cost",       label: "cost (sale)", type: "int" },
-      { key: "item_flags", label: "item flags", type: "hex" },
+      { key: "amount",     label: "amount",     type: "uint", help: "Stack count / potency for this tool (e.g. how many a stack holds, or the heal amount tier)." },
+      { key: "tech",       label: "tech",       type: "uint", help: "For technique disks: which technique this disk teaches (Foie/Resta/…) as a tech id." },
+      { key: "cost",       label: "cost (sale)", type: "int", help: "Base meseta sale value of the tool at the shop." },
+      { key: "item_flags", label: "item flags", type: "hex", help: "u32 bitfield of tool behaviour flags (stackable / usable / quest-only, etc.)." },
     ],
     specials: [
-      { key: "type",   label: "type",   type: "uint", help: "0xFFFF = none" },
-      { key: "amount", label: "amount", type: "uint" },
+      { key: "type",   label: "type",   type: "uint", help: "Special-ability type id this weapon-special applies (e.g. Hell, Charge, Berserk). 0xFFFF = none." },
+      { key: "amount", label: "amount", type: "uint", help: "Magnitude/strength of the special effect (e.g. drain %, proc chance tier)." },
     ],
     stat_boosts: [
-      { key: "stats",   label: "stat ids", type: "uint", arrayLen: 2 },
-      { key: "amounts", label: "amounts",  type: "uint", arrayLen: 2 },
+      { key: "stats",   label: "stat ids", type: "uint", arrayLen: 2, help: "Two stat ids this boost entry affects (a weapon/armor pointing at this entry gains both)." },
+      { key: "amounts", label: "amounts",  type: "uint", arrayLen: 2, help: "The amount granted for each of the two stat ids above." },
     ],
     mag_feeds: [
-      { key: "def",     label: "DEF",     type: "int" },
-      { key: "pow",     label: "POW",     type: "int" },
-      { key: "dex",     label: "DEX",     type: "int" },
-      { key: "mind",    label: "MIND",    type: "int" },
-      { key: "iq",      label: "IQ",      type: "int" },
-      { key: "synchro", label: "synchro", type: "int" },
+      { key: "def",     label: "DEF",     type: "int", help: "DEF (defense) stat the mag gains from one feed of this item — can be negative to drain it." },
+      { key: "pow",     label: "POW",     type: "int", help: "POW (power) stat gained per feed of this item." },
+      { key: "dex",     label: "DEX",     type: "int", help: "DEX (dexterity) stat gained per feed." },
+      { key: "mind",    label: "MIND",    type: "int", help: "MIND stat gained per feed." },
+      { key: "iq",      label: "IQ",      type: "int", help: "IQ gained per feed (affects mag intelligence/PB triggers)." },
+      { key: "synchro", label: "synchro", type: "int", help: "Synchro % gained per feed (higher synchro = better mag bonuses)." },
     ],
     combinations: [
-      { key: "used_item",     label: "used item (3 bytes)",     type: "uint", arrayLen: 3 },
-      { key: "equipped_item", label: "equipped item (3 bytes)", type: "uint", arrayLen: 3 },
-      { key: "result_item",   label: "result item (3 bytes)",   type: "uint", arrayLen: 3 },
-      { key: "mag_level",     label: "mag level",     type: "uint" },
-      { key: "grind",         label: "grind",         type: "uint" },
-      { key: "level",         label: "level",         type: "uint" },
-      { key: "char_class",    label: "char class",    type: "uint" },
+      { key: "used_item",     label: "used item (3 bytes)",     type: "uint", arrayLen: 3, help: "Item-code (3 bytes) of the CONSUMED item in this combination recipe (e.g. a cell used on a mag)." },
+      { key: "equipped_item", label: "equipped item (3 bytes)", type: "uint", arrayLen: 3, help: "Item-code (3 bytes) of the item that must be EQUIPPED/targeted for the combination to apply." },
+      { key: "result_item",   label: "result item (3 bytes)",   type: "uint", arrayLen: 3, help: "Item-code (3 bytes) of what the combination PRODUCES (the evolved/result item)." },
+      { key: "mag_level",     label: "mag level",     type: "uint", help: "Mag level requirement for this combination to trigger (mag evolutions)." },
+      { key: "grind",         label: "grind",         type: "uint", help: "Grind requirement on the equipped item for the combination." },
+      { key: "level",         label: "level",         type: "uint", help: "Character level requirement for the combination." },
+      { key: "char_class",    label: "char class",    type: "uint", help: "Class requirement for the combination (some mag evolutions are class-specific)." },
     ],
   };
   FIELD_META.shields = FIELD_META.armors; // same struct
@@ -173,6 +176,36 @@
   }
 
   function deepClone(o) { return JSON.parse(JSON.stringify(o)); }
+
+  // Static explainer shown at the top of the panel. Answers the owner's
+  // question — "what the hell is ItemPMT supposed to be doing?" — for any
+  // non-coder who opens the tool cold.
+  function renderPanelHeader() {
+    return (
+      '<details class="ipmt-about" open>' +
+      '<summary class="ipmt-about-title">Item PMT — what is this?</summary>' +
+      '<div class="ipmt-about-body">' +
+      '<p><strong>ItemPMT is the master item parameter table.</strong> It is the ' +
+      'binary file (<code>ItemPMT-bb-v4.prs</code> on newserv, ' +
+      '<code>ItemPMT.prs</code> on Booma) that defines the <em>stats and ' +
+      'rules</em> for every weapon, armor (frame), shield (barrier), unit, mag ' +
+      'and tool in the game — ATP ranges, required level/stats, elemental ' +
+      'resists, grind caps, sale price, mag feed gains, item-combination ' +
+      'recipes, and more. The server reads it on launch, so editing it ' +
+      'rebalances items <em>without</em> patching the client.</p>' +
+      '<p class="ipmt-about-flow"><strong>How to use it:</strong> ' +
+      '<span class="ipmt-step">1. pick a <em>section</em> (Weapons, Armors, Mags, …) and an <em>entry</em></span>' +
+      '<span class="ipmt-step">2. edit its fields (hover a label for what it does)</span>' +
+      '<span class="ipmt-step">3. <em>export to staging</em> re-serializes + PRS-compresses the file</span>' +
+      '<span class="ipmt-step">4. <em>deploy to newserv</em> / <em>Live Test</em> copies it over (with a timestamped backup)</span>' +
+      '</p>' +
+      '<p class="ipmt-about-tip dim">Only fields you change are touched; every ' +
+      'other byte (including tables this editor doesn\'t parse) is preserved ' +
+      'exactly, so a no-edit export round-trips byte-for-byte. The inspector on ' +
+      'the right lists exactly which fields you changed.</p>' +
+      '</div></details>'
+    );
+  }
 
   // ------------------------------------------------------------------
   // API helpers
@@ -638,9 +671,12 @@
     const changes = computeChanges();
     let html = '<div class="vp-insp-title">Item PMT</div>';
     html += '<div class="vp-insp-help dim">' +
-            'Edit weapon / armor / mag / tool stats. "export to staging" ' +
-            'serializes + PRS-compresses to cache/itempmt_export/. ' +
-            '"deploy to newserv" copies the staged file with a timestamped backup.' +
+            'The master item parameter table: stats &amp; rules for every ' +
+            'weapon / armor / shield / unit / mag / tool. Edit a section\'s ' +
+            'fields (hover a label for what it does), then "export to staging" ' +
+            'serializes + PRS-compresses to cache/itempmt_export/, and ' +
+            '"deploy to newserv" copies the staged file over with a timestamped ' +
+            'backup. Unedited bytes are preserved exactly.' +
             '</div>';
     html += '<div class="vp-insp-section ipmt-source">';
     html += '<dl class="ipmt-meta">';
@@ -892,6 +928,7 @@
     mount: async function (stage, insp, ctx) {
       stage.innerHTML =
         '<div class="ipmt-perspective">' +
+        renderPanelHeader() +
         '<div id="ipmtToolbar"></div>' +
         '<div id="ipmtEditor" class="ipmt-editor"></div>' +
         '</div>';
