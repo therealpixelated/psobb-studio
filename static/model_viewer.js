@@ -1915,11 +1915,16 @@ function setDebugActiveMesh(idx) {
       cur.material.color.set(0xffffff);
     }
   }
-  // Mirror in sidebar
+  // Mirror in sidebar: active class + ARIA selected + roving tabindex so
+  // focus and AT announcement track the active sub-mesh.
   const list = $("#modelDebugList");
   if (list) {
     list.querySelectorAll(".model-debug-row").forEach((row) => {
-      row.classList.toggle("active", row.dataset.idx === String(idx));
+      const on = row.dataset.idx === String(idx);
+      row.classList.toggle("active", on);
+      row.setAttribute("aria-selected", on ? "true" : "false");
+      // Keep exactly one row tabbable when there's an active selection.
+      if (idx >= 0) row.setAttribute("tabindex", on ? "0" : "-1");
     });
     if (idx >= 0) {
       const target = list.querySelector(`.model-debug-row[data-idx="${idx}"]`);
@@ -1942,12 +1947,27 @@ function rebuildDebugSidebar() {
   list.innerHTML = "";
   const n = state.debugMeshes.length;
   if (countLabel) countLabel.textContent = `${n}`;
+  // a11y (2026-06-20): the sub-mesh list is a single-select widget. Mark
+  // it role=listbox so AT announces it, and give each row role=option +
+  // a roving tabindex so Tab reaches the list and Arrow keys move within.
+  list.setAttribute("role", "listbox");
+  list.setAttribute("aria-label", "sub-meshes");
   // Build rows in document fragment to avoid layout thrash on big models
   const frag = document.createDocumentFragment();
+  let rovingSet = false;
   for (const entry of state.debugMeshes) {
     const row = document.createElement("div");
     row.className = "model-debug-row";
     row.dataset.idx = String(entry.idx);
+    const isActive = entry.idx === state.debugActiveIdx;
+    if (isActive) row.classList.add("active");
+    row.setAttribute("role", "option");
+    row.setAttribute("aria-selected", isActive ? "true" : "false");
+    // Roving tabindex: the active row is tabbable; otherwise the first
+    // row, so keyboard users can always enter the list with Tab.
+    const tab = isActive || (!rovingSet && state.debugActiveIdx < 0);
+    row.setAttribute("tabindex", tab ? "0" : "-1");
+    if (tab) rovingSet = true;
     const swatch = document.createElement("span");
     swatch.className = "model-debug-swatch";
     const hue = _debugHueForIndex(entry.idx);
@@ -1963,10 +1983,48 @@ function rebuildDebugSidebar() {
     row.appendChild(text);
     row.appendChild(stats);
     row.addEventListener("click", () => setDebugActiveMesh(entry.idx));
+    row.addEventListener("keydown", (ev) => onDebugRowKeydown(ev, row));
     frag.appendChild(row);
   }
+  // If a row is tabbable was never set (active idx beyond the list), make
+  // the first visible row tabbable as a fallback.
   list.appendChild(frag);
+  if (!rovingSet) {
+    const firstRow = list.querySelector(".model-debug-row");
+    if (firstRow) firstRow.setAttribute("tabindex", "0");
+  }
   applyDebugFilter(state.debugFilter || "");
+}
+
+// Roving-tabindex keyboard nav for the sub-mesh list. Arrow Up/Down move
+// the active mesh (skipping filtered-out rows); Home/End jump to the
+// first/last visible row; Enter/Space (re)confirm. setDebugActiveMesh
+// already mirrors the highlight into the 3D view + scrolls the row in.
+function onDebugRowKeydown(ev, row) {
+  const list = $("#modelDebugList");
+  if (!list) return;
+  // Only walk rows that are actually visible (the filter hides some).
+  const rows = Array.from(list.querySelectorAll(".model-debug-row"))
+    .filter((r) => !r.classList.contains("hidden-row"));
+  if (!rows.length) return;
+  const idx = rows.indexOf(row);
+  let target = null;
+  switch (ev.key) {
+    case "ArrowDown": target = rows[Math.min(rows.length - 1, idx + 1)]; break;
+    case "ArrowUp":   target = rows[Math.max(0, idx - 1)]; break;
+    case "Home":      target = rows[0]; break;
+    case "End":       target = rows[rows.length - 1]; break;
+    case "Enter":
+    case " ":
+      ev.preventDefault();
+      setDebugActiveMesh(row.dataset.idx | 0);
+      return;
+    default: return;
+  }
+  if (!target) return;
+  ev.preventDefault();
+  setDebugActiveMesh(target.dataset.idx | 0);
+  target.focus();
 }
 
 function applyDebugFilter(query) {

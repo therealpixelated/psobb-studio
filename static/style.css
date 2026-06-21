@@ -2603,10 +2603,21 @@ button.ghost:disabled { color: #4a5260; border-color: #1c2129; background: trans
   border-left: 3px solid transparent;
   white-space: nowrap;
 }
-.model-debug-row:hover { background: rgba(74, 144, 226, 0.12); }
+.model-debug-row:hover {
+  background: rgba(74, 144, 226, 0.12);
+  border-left-color: rgba(74, 144, 226, 0.6);
+}
 .model-debug-row.active {
   background: rgba(74, 144, 226, 0.25);
   border-left-color: #4a90e2;
+  color: #fff;
+}
+.model-debug-row.active:hover { background: rgba(74, 144, 226, 0.32); }
+/* Keyboard focus ring for roving-tabindex nav (a11y 2026-06-20). */
+.model-debug-row:focus { outline: none; }
+.model-debug-row:focus-visible {
+  outline: 2px solid #4da3ff;
+  outline-offset: -2px;
 }
 .model-debug-row.hidden-row { display: none; }
 .model-debug-swatch {
@@ -4382,10 +4393,36 @@ body.unified-viewport-mode #btnClassicUiToggle {
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 2px 0;
+  padding: 2px 6px;
   font-size: 11px;
   border-bottom: 1px solid #1c2027;
+  border-left: 3px solid transparent;
+  transition: background-color 0.12s ease, border-color 0.12s ease;
 }
+/* Clickable rows (floor list etc.) get clear hover + selected + focus
+   states. a11y 2026-06-20: previously a `.selected` class was toggled
+   but had no rule, so there was no visible indication of what was
+   active. */
+.map-tree-item[role="option"] { cursor: pointer; }
+.map-tree-item[role="option"]:hover {
+  background: rgba(74, 144, 226, 0.12);
+  border-left-color: rgba(74, 144, 226, 0.6);
+}
+.map-tree-item.selected {
+  background: rgba(74, 144, 226, 0.25);
+  border-left-color: #4a90e2;
+  color: var(--tk-text-strong, #fff);
+}
+.map-tree-item.selected:hover {
+  background: rgba(74, 144, 226, 0.32);
+}
+.map-tree-item:focus { outline: none; }
+.map-tree-item:focus-visible {
+  outline: 2px solid #4da3ff;
+  outline-offset: -2px;
+}
+/* Group sub-headers inside a listbox are decorative, not options. */
+.floor-group-label { padding-left: 2px; }
 .map-tree-vis input { transform: scale(0.85); }
 .map-tree-name {
   flex: 1;

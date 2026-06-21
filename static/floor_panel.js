@@ -118,16 +118,27 @@
       if (!groups[key]) { groups[key] = { label: key, items: [] }; order.push(key); }
       groups[key].items.push(f);
     }
-    let html = '<div class="map-tree-title">Floors (' + floors.length + ')</div>';
-    html += '<ul class="map-tree-list">';
+    let html = '<div class="map-tree-title" id="floorListLabel">Floors (' + floors.length + ')</div>';
+    // role=listbox + role=option so the floor list is a proper a11y
+    // single-select widget. A roving tabindex (one item tabbable at a
+    // time) lets Tab reach the list and Arrow keys move within it.
+    html += '<ul class="map-tree-list" role="listbox" aria-labelledby="floorListLabel" tabindex="-1">';
+    let first = true;        // first selectable row gets tabindex=0 if nothing selected
+    const hasSel = floors.some((f) => f.floor_id === state.selectedId);
     for (const cid of order) {
       const g = groups[cid];
       if (!g || !g.items.length) continue;
-      html += `<li class="dim" style="margin-top:6px;font-size:10px;text-transform:uppercase">${escapeHtml(g.label)}</li>`;
+      html += `<li class="dim floor-group-label" role="presentation" style="margin-top:6px;font-size:10px;text-transform:uppercase">${escapeHtml(g.label)}</li>`;
       for (const f of g.items) {
-        const sel = f.floor_id === state.selectedId ? ' selected' : '';
+        const isSel = f.floor_id === state.selectedId;
+        const sel = isSel ? ' selected' : '';
+        // Roving tabindex: the selected row is tabbable; if none selected,
+        // the very first row is tabbable so keyboard users can enter.
+        const tab = isSel || (!hasSel && first) ? '0' : '-1';
+        first = false;
         const parts = (f.part_count != null) ? `${f.part_count} parts` : '';
-        html += `<li class="map-tree-item floor-item${sel}" data-floor-id="${escapeHtml(f.floor_id)}" style="cursor:pointer">`
+        html += `<li class="map-tree-item floor-item${sel}" data-floor-id="${escapeHtml(f.floor_id)}" `
+              + `role="option" aria-selected="${isSel ? 'true' : 'false'}" tabindex="${tab}" style="cursor:pointer">`
               + `<span class="map-tree-name" title="${escapeHtml(f.floor_id)}">${escapeHtml(f.label || f.floor_id)}</span>`
               + `<span class="map-tree-stat dim">${escapeHtml(f.area || '')} · ${parts}</span>`
               + `<span class="map-tag">${escapeHtml(f.source || '')}</span>`
@@ -459,19 +470,67 @@
       window.psoSceneToggleGrid && window.psoSceneToggleGrid(state.showGrid);
     });
 
-    // Floor list rows
-    stage.querySelectorAll(".floor-item").forEach(function (row) {
+    // Floor list rows: click to select + keyboard nav (a11y 2026-06-20).
+    const rows = Array.from(stage.querySelectorAll(".floor-item"));
+    rows.forEach(function (row) {
       row.addEventListener("click", function () {
-        state.selectedId = row.dataset.floorId;
-        const detail = stage.querySelector("#floorDetail");
-        if (detail) detail.innerHTML = renderDetail();
-        const list = stage.querySelector("#floorList");
-        if (list) list.querySelectorAll(".floor-item").forEach(r => r.classList.remove("selected"));
-        row.classList.add("selected");
-        rebindDetail();
+        selectFloorRow(row);
+      });
+      row.addEventListener("keydown", function (ev) {
+        onFloorRowKeydown(ev, row, rows);
       });
     });
     rebindDetail();
+  }
+
+  // Apply selection to a floor row: update state, the detail pane, and the
+  // visual / ARIA / roving-tabindex bookkeeping. Shared by click + Enter.
+  function selectFloorRow(row) {
+    const stage = state._stage;
+    if (!stage || !row) return;
+    state.selectedId = row.dataset.floorId;
+    const detail = stage.querySelector("#floorDetail");
+    if (detail) detail.innerHTML = renderDetail();
+    const list = stage.querySelector("#floorList");
+    if (list) {
+      list.querySelectorAll(".floor-item").forEach(function (r) {
+        const on = r === row;
+        r.classList.toggle("selected", on);
+        r.setAttribute("aria-selected", on ? "true" : "false");
+        r.setAttribute("tabindex", on ? "0" : "-1");
+      });
+    }
+    rebindDetail();
+  }
+
+  // Roving-tabindex keyboard handler for the floor list. Arrow Up/Down move
+  // the focus (and selection follows, listbox-style); Home/End jump to ends;
+  // Enter/Space (re)confirm the focused row.
+  function onFloorRowKeydown(ev, row, rows) {
+    if (!rows || !rows.length) return;
+    const idx = rows.indexOf(row);
+    let target = null;
+    switch (ev.key) {
+      case "ArrowDown": target = rows[Math.min(rows.length - 1, idx + 1)]; break;
+      case "ArrowUp":   target = rows[Math.max(0, idx - 1)]; break;
+      case "Home":      target = rows[0]; break;
+      case "End":       target = rows[rows.length - 1]; break;
+      case "Enter":
+      case " ":
+        ev.preventDefault();
+        selectFloorRow(row);
+        return;
+      default: return;
+    }
+    if (!target) return;
+    ev.preventDefault();
+    // Move selection with focus (single-select listbox pattern), then
+    // physically focus the new row so the focus ring tracks it.
+    selectFloorRow(target);
+    target.focus();
+    if (typeof target.scrollIntoView === "function") {
+      target.scrollIntoView({ block: "nearest" });
+    }
   }
 
   function rebindDetail() {
