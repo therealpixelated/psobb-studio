@@ -318,7 +318,6 @@ def floor_bundle(info: MapInfo, floor: int) -> dict:
         "animations": [],
         "other": [],
     }
-    has_real_terrain = False
     nrel_asset: Optional[MapAsset] = None
     rrel_asset: Optional[MapAsset] = None
     for a in assets:
@@ -331,8 +330,6 @@ def floor_bundle(info: MapInfo, floor: int) -> dict:
         }
         if a.ext in RENDERABLE_EXTS:
             out["renderable"].append(rec)
-            if a.suffix == "s":
-                has_real_terrain = True
         elif a.ext in TEXTURE_EXTS:
             out["textures"].append(rec)
         elif a.ext in SCRIPT_EXTS:
@@ -347,17 +344,31 @@ def floor_bundle(info: MapInfo, floor: int) -> dict:
         else:
             out["other"].append(rec)
 
-    # REL fallback: if the floor has no .nj/.xj but does have an n.rel,
-    # surface the n.rel as a "rel_terrain" renderable so the frontend
-    # routes through the rel-extraction endpoint.
-    if not has_real_terrain and nrel_asset is not None:
-        out["renderable"].append({
-            "path": nrel_asset.path,
-            "kind": "rel_terrain",
-            "ext": nrel_asset.ext,
-            "suffix": nrel_asset.suffix,
-            "size": nrel_asset.size,
-        })
+    # n.rel terrain: surface the n.rel as a "rel_terrain" renderable so the
+    # frontend routes through the rel-extraction endpoint.
+    #
+    # IMPORTANT (2026-06-20): the n.rel holds the DENSE WALKABLE TERRAIN
+    # (forest aancient01: 17,899 verts / 18,427 tris). The ``s.nj`` sibling
+    # is NOT the floor — it's a tiny (1-3 KB) sky / distant-scenery shell
+    # (aancient01 s.nj: 218 verts spanning ±5200). The old code only used
+    # the n.rel as a *fallback* when no ``s.nj`` existed, so any map WITH a
+    # sky shell rendered only that shell and the real floor never loaded
+    # (the "Preview renders nothing" / "empty plane" bug). We now always
+    # add the n.rel when present; the ``s.nj`` skybox still loads too (it
+    # has a distinct path-stem so the frontend de-dupe keeps both), and the
+    # camera auto-fit ignores the giant shell when framing.
+    if nrel_asset is not None:
+        # Avoid a duplicate if the n.rel was already listed as renderable
+        # (it never is today — n.rel lives in SCRIPT_EXTS — but guard anyway).
+        already = any(r.get("path") == nrel_asset.path for r in out["renderable"])
+        if not already:
+            out["renderable"].append({
+                "path": nrel_asset.path,
+                "kind": "rel_terrain",
+                "ext": nrel_asset.ext,
+                "suffix": nrel_asset.suffix,
+                "size": nrel_asset.size,
+            })
 
     return {
         "map_id": info.map_id,

@@ -5696,13 +5696,67 @@ function _psoSceneInstallNav() {
   cv.addEventListener("pointercancel", release);
 }
 
-// Auto-fit the camera so the entire group's AABB is in frame. Stores
+// Compute the bounding box of the scene's "core" geometry — i.e. the
+// walkable terrain — by EXCLUDING giant skybox / distant-scenery shells.
+//
+// Why this exists: PSOBB map scenes carry a sky/backdrop shell (a low-poly
+// cylinder ~±5000 units across, e.g. ``map_aancient01_00s.nj`` or the last
+// mesh in an acity n.rel). A naive Box3.setFromObject(root) is dominated by
+// that shell, so the camera auto-fits to an ~8000-unit box and the actual
+// terrain becomes a sub-pixel speck — the "empty brown/tan plane" bug.
+//
+// Strategy: take every leaf mesh's own world-space AABB diagonal, find the
+// median, and drop any mesh whose diagonal is a large multiple of it
+// (SKY_OUTLIER_FACTOR). The survivors are the dense terrain cluster; we
+// union their boxes. Falls back to the full box when filtering would
+// remove everything (e.g. a scene that really is one big mesh).
+function _psoSceneCoreBox() {
+  const SKY_OUTLIER_FACTOR = 6;   // a mesh >6× the median size = skybox shell
+  const entries = [];             // { box: Box3, diag: number }
+  state.sceneRoot.traverse(function (m) {
+    if (!m.isMesh || !m.geometry) return;
+    m.updateWorldMatrix(true, false);
+    const b = new THREE.Box3().setFromObject(m);
+    if (!isFinite(b.min.x) || !isFinite(b.max.x)) return;
+    const s = new THREE.Vector3();
+    b.getSize(s);
+    const diag = s.length();
+    if (!isFinite(diag) || diag <= 0) return;
+    entries.push({ box: b, diag: diag });
+  });
+  if (!entries.length) {
+    const full = new THREE.Box3().setFromObject(state.sceneRoot);
+    return isFinite(full.min.x) ? full : null;
+  }
+  // Median diagonal.
+  const diags = entries.map(function (e) { return e.diag; }).sort(function (a, b) { return a - b; });
+  const median = diags[(diags.length / 2) | 0] || diags[0];
+  const cutoff = median * SKY_OUTLIER_FACTOR;
+  const core = new THREE.Box3();
+  core.makeEmpty();
+  let kept = 0;
+  for (const e of entries) {
+    if (e.diag > cutoff) continue;   // skybox / scenery shell — skip framing
+    core.union(e.box);
+    kept++;
+  }
+  // If the filter nuked everything (one-mesh scene, or all meshes huge),
+  // frame the full scene instead of an empty box.
+  if (!kept || !isFinite(core.min.x)) {
+    const full = new THREE.Box3().setFromObject(state.sceneRoot);
+    return isFinite(full.min.x) ? full : null;
+  }
+  return core;
+}
+
+// Auto-fit the camera so the scene's core terrain AABB is in frame. Stores
 // the chosen target on state.sceneCamTarget so panning + reset can
-// re-anchor.
+// re-anchor. Skybox / scenery shells are excluded from the framing box
+// (see _psoSceneCoreBox) but still render — they just don't dictate zoom.
 function _psoSceneAutoFit() {
   if (!state.sceneRoot || !state.camera) return;
-  const box = new THREE.Box3().setFromObject(state.sceneRoot);
-  if (!isFinite(box.min.x)) return;
+  const box = _psoSceneCoreBox();
+  if (!box || !isFinite(box.min.x)) return;
   const size = new THREE.Vector3();
   const center = new THREE.Vector3();
   box.getSize(size);
@@ -6623,7 +6677,26 @@ window.psoSceneApplyEnvironment = function (category) {
   // Remove any existing fog (THREE.Fog or FogExp2)
   state.scene.fog = null;
   if (env.fog) {
-    state.scene.fog = new THREE.Fog(env.fog.color, env.fog.near, env.fog.far);
+    // The per-area fog far (e.g. forest 1800) is tuned for PSOBB's
+    // in-game first-person view, where the player sees ~1800 units ahead.
+    // The scene EDITOR auto-fits the camera to an overview of the WHOLE
+    // floor — which for a big map (forest core ~4600 units) sits well
+    // beyond the fog far, so the entire terrain fogs out to a flat green
+    // wash and looks empty / unreadable. For the overview we anchor the
+    // fog band to the auto-fit camera distance instead: terrain stays in
+    // clear air out to ~camDist, and only the far edge of the floor fades
+    // into the area's fog colour (mood preserved, geometry readable).
+    // ``state.sceneCamDist`` is set by the auto-fit that ran inside
+    // psoSceneLoadMap immediately before this call.
+    let near = env.fog.near;
+    let far = env.fog.far;
+    const camDist = state.sceneCamDist || 0;
+    if (camDist > 0) {
+      // Only widen — never make the in-game fog tighter than authored.
+      near = Math.max(near, camDist * 0.6);
+      far = Math.max(far, camDist * 2.4);
+    }
+    state.scene.fog = new THREE.Fog(env.fog.color, near, far);
   }
 
   // Background tint — picks up where fog leaves off.
