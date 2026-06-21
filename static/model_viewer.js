@@ -3162,8 +3162,26 @@ async function tryLoadCompositeBmlMesh(bmlPath, innerNames) {
       mesh.userData.compositeKey = `${ii}:${matId}`;
     };
 
+    // 2026-06-21 FIX: bone-attached parts (De Rol Le helm/fins/sting/
+    // tentacle) must build via the skinned helper too. Their payload comes
+    // from /api/model_skinned with BONE-LOCAL verts; the world-baked branch
+    // below would place each shard at its bone-local origin (the helm's 28
+    // translated shards => the splayed mask). The helper bakes a one-pass
+    // BIND pose so the part assembles correctly; only the primary is wired
+    // into per-frame animation (bone-attached parts freeze at bind pose and
+    // ride the body bone rigidly via _updateBoneAttachments).
+    const curPartForBuild = curatedAssembly
+      ? partsByInner.get(inner.toLowerCase())
+      : null;
+    const isBoneAttachedBuild =
+      !!curPartForBuild &&
+      curPartForBuild.parent_bone !== null &&
+      curPartForBuild.parent_bone !== undefined;
     let innerGroup;
-    if (isPrimary && payload && payload.bones && payload.mesh_count) {
+    if (
+      (isPrimary || isBoneAttachedBuild) &&
+      payload && payload.bones && payload.bones.length && payload.mesh_count
+    ) {
       // SKINNED primary: build via the existing skinned-payload helper
       // so we get back per-submesh bone-local snapshots and a
       // skinSubmeshes array the per-frame re-bake can chew through.
@@ -3187,13 +3205,20 @@ async function tryLoadCompositeBmlMesh(bmlPath, innerNames) {
       // already drove a one-pass bind-pose re-bake so ``built.aabbMin``
       // / ``built.aabbMax`` are valid world-space bounds for THIS
       // inner alone (pre-curated-TRS).
-      primarySkinned = {
-        ii,
-        inner,
-        payload,
-        skinSubmeshes: built.skinSubmeshes,
-        bones: payload.bones,
-      };
+      // Only the PRIMARY (body) drives per-frame animation. A bone-attached
+      // part got its one-pass bind bake above and stays frozen there — it
+      // rides the body bone rigidly, so we must NOT add its submeshes to the
+      // animated skinSubmeshes list (re-baking its verts against the BODY's
+      // 176 bones is exactly the splay bug this whole branch fixes).
+      if (isPrimary) {
+        primarySkinned = {
+          ii,
+          inner,
+          payload,
+          skinSubmeshes: built.skinSubmeshes,
+          bones: payload.bones,
+        };
+      }
       // Adopt the helper's debug-mesh entries (one per submesh) into
       // the composite-wide allDebugMeshes list, with composite metadata.
       // We do NOT push the helper's `debugMeshes` directly because their

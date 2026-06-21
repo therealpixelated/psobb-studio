@@ -226,17 +226,32 @@ class CompositeAssembly:
 #   * head / face crown : bones 33, 34 (parent of skull node 77)
 #   * tail base         : bone 104 (Z=-124, deep tail)
 #
-# helm_break / shell_break are DAMAGE STATES (broken armor spawned as
-# physics debris only after the player breaks it). They have NO static
-# rest-pose bone in the source (they spawn via SetDerollePositionAndHp /
-# DerolleInitializeSpawn, not body-bone parenting), so they are NOT in
-# the default intact-boss assembly. Placing them would re-introduce the
-# "goofy mesh on its head" bug. See the RE notes for the spawn path.
+# CORRECTED 2026-06-21 (engine RE, workflow wf_905d5cf3): the pale bony
+# tusked HEAD/MASK the real boss shows is boss2_b_helm_break.nj — the
+# *breakable head armor*, which is DRAWN ON THE INTACT BOSS by default
+# and only breaks off after armor damage. In the engine the helm mesh is
+# grafted onto body NJCM node 0x4d (decimal 77) and drawn while the
+# break bit (sinowbeat_subtype & 0x40) is clear; the break event hides
+# node 0x4d and spawns a *separate* debris object. So the FILE named
+# "_break" is the intact head, not debris. The prior RE (a1e765f)
+# wrongly read the body inner's bare neck crest as "the skull" and
+# omitted the helm — which is exactly why the bony tusked face was
+# missing (owner: "it doesn't have a swept back skull"). We re-add it,
+# bone-attached at body node 0x4d/bone 77 (the engine graft point), so
+# it caps the head and rides the head animation.
+# Decomp refs (Psobb.exe-05112026.c): handle_derolle_behavior case-4
+# L175630-175706 (helm visibility gate L175685, DerolleGetModelNode(
+# model_files[2].njcm, 0x4d) L176464); UpdateDerolle break trigger
+# L175071. shell_break.nj is the breakable back shell debris; the intact
+# shells render as live body nodes, so it stays omitted for the preview.
 _DE_ROL_LE_PARTS: List[CompositePart] = [
-    # Body — the worm; the whole recognizable De Rol Le serpent INCLUDING
-    # the pointy skull is this single .nj (its own 176-bone NJCM skeleton
-    # drives the curve + crest). World-absolute at origin; animation root.
-    # Every appendage below rides this skeleton's bones.
+    # Body — the segmented centipede carapace + legs + tail + the head's
+    # NECK BASE. This single .nj (176-bone NJCM skeleton) carries the
+    # purple plated body, the underside legs, the yellow/orange flank
+    # dots and the spined tail. Its head end is just a bare neck crest —
+    # the distinctive bony tusked face is the helm part below, which the
+    # engine grafts onto this skeleton's head node. World-absolute at
+    # origin; animation root. Every appendage rides this skeleton.
     CompositePart(
         inner_nj="boss2_b_derorure_body.nj",
         pos=(0.0, 0.0, 0.0),
@@ -244,22 +259,40 @@ _DE_ROL_LE_PARTS: List[CompositePart] = [
         scale=(1.0, 1.0, 1.0),
         parent_inner=None,
         notes=(
-            "body — composite root + the pointy skull (crest = bones "
-            "77/84-88, intrinsic to this inner). Drives all child poses."
+            "body — composite root: purple segmented carapace, legs, "
+            "flank dots, spined tail. Head end is a bare neck crest; the "
+            "bony face is the helm part (grafted on node 0x4d=bone 77)."
         ),
     ),
-    # Bite-attack jaw fins — hung off the head/face bones (33/34). In-game
-    # these flicker during the bite attack (DerolleInitializeAttackParams);
-    # at rest they sit flush at the jaw. Bone matrix carries placement.
+    # HEAD / FACE — the pale bony tusked mask. boss2_b_helm_break.nj is
+    # the breakable head armor, drawn on the intact boss (engine grafts
+    # its mesh onto body node 0x4d). Bone-attach at body bone 77 so it
+    # sits on the head and rides the head animation. This is THE fix for
+    # the missing bony face; its own 29-bone skeleton handles local
+    # placement (no extra offset — the graft point is the bone matrix).
+    CompositePart(
+        inner_nj="boss2_b_helm_break.nj",
+        parent_inner="boss2_b_derorure_body.nj",
+        parent_bone=77,
+        local_offset=(0.0, 0.0, 0.0),
+        notes=(
+            "HEAD/FACE — pale bony tusked mask (breakable head armor, "
+            "drawn intact). Grafted on body NJCM node 0x4d (=bone 77) "
+            "per engine handle_derolle_behavior case-4 L175630-176464."
+        ),
+    ),
+    # Bite-attack jaw fins — small face appendages. NOTE: the bone
+    # indices 33/34 are the prior RE's UNVERIFIED guesses (the engine RE
+    # found only node 0x4d=77 code-grounded); kept because they are tiny
+    # and render near the head. Revisit if they float.
     CompositePart(
         inner_nj="boss2_b_derorure_fin_a.nj",
         parent_inner="boss2_b_derorure_body.nj",
         parent_bone=33,
         local_offset=(0.0, 0.0, 0.0),
         notes=(
-            "bite-attack jaw fin (a) — attached to head bone 33; rides "
-            "the body skull. Attack-state visual (RE: model_files attack "
-            "params)."
+            "bite-attack jaw fin (a) — head bone 33 (UNVERIFIED guess). "
+            "Small face appendage."
         ),
     ),
     CompositePart(
@@ -268,22 +301,19 @@ _DE_ROL_LE_PARTS: List[CompositePart] = [
         parent_bone=34,
         local_offset=(0.0, 0.0, 0.0),
         notes=(
-            "bite-attack jaw fin (b) — attached to head-crown bone 34; "
-            "rides the body skull. Attack-state visual."
+            "bite-attack jaw fin (b) — head bone 34 (UNVERIFIED guess). "
+            "Small face appendage."
         ),
     ),
-    # Tail appendages — sting + tentacle hang off the tail base (bone 104,
-    # Z=-124). In-game spawned during specific attacks; the tentacle is
-    # self-animated (own tloop NJM) but for the static asset preview it
-    # rides bone 104 of the body so it sits at the correct tail position.
+    # Tail appendages — sting + tentacle. Bone 104 is the prior RE's
+    # UNVERIFIED guess (the body inner already carries the spined tail).
     CompositePart(
         inner_nj="boss2_b_derorure_sting.nj",
         parent_inner="boss2_b_derorure_body.nj",
         parent_bone=104,
         local_offset=(0.0, 0.0, 0.0),
         notes=(
-            "tail stinger — attached to tail-base bone 104 (Z=-124). "
-            "Attack-state appendage."
+            "tail stinger — tail-base bone 104 (UNVERIFIED guess)."
         ),
     ),
     CompositePart(
@@ -292,16 +322,13 @@ _DE_ROL_LE_PARTS: List[CompositePart] = [
         parent_bone=104,
         local_offset=(0.0, 0.0, 0.0),
         notes=(
-            "articulated tail tentacle — attached to tail-base bone 104. "
-            "Self-animated in-game (tloop_boss2_b_tentacle.njm); preview "
-            "shows it riding the body tail."
+            "articulated tail tentacle — tail-base bone 104 (UNVERIFIED "
+            "guess). Self-animated in-game (tloop NJM)."
         ),
     ),
-    # helm_break / shell_break are intentionally OMITTED — they are the
-    # broken-armor damage states (debris), NOT the intact boss's skull
-    # (which lives in the body inner above). Adding them is the "goofy
-    # mesh on its head" bug. They have no static rest-pose body bone in
-    # the RE; they spawn as separate physics objects when armor breaks.
+    # shell_break.nj is the breakable BACK SHELL debris — the intact
+    # shells render as live body nodes, so it is OMITTED for the static
+    # preview (adding it would double the carapace).
 ]
 
 

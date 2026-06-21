@@ -57,56 +57,66 @@ def test_de_rol_le_is_in_the_table():
     )
 
 
-def test_de_rol_le_appendages_bone_attached_no_damage_states():
-    """De Rol Le = body (with the intrinsic pointy skull) + the four
-    ATTACK appendages bone-attached to the body skeleton (2026-06-21,
-    RE-derived).
+def test_de_rol_le_has_bony_head_helm_and_no_shell_debris():
+    """De Rol Le = body + the bony HEAD/FACE (helm) bone-attached, plus
+    the small attack appendages (2026-06-21, engine-RE corrected).
 
-    Ground truth (decompiled psobb.exe + skeleton parse): the pointy
-    skull is INTRINSIC to boss2_b_derorure_body.nj (crest = bones
-    77/84-88), so the faithful boss is the body inner itself, NOT a
-    helm placed on the head. The four appendages (fin_a, fin_b, sting,
-    tentacle) attach to specific body BONES (head bones 33/34, tail
-    bone 104) via the parent_bone mechanism so they ride the animation
-    instead of floating.
+    Ground truth (engine RE, workflow wf_905d5cf3, decompiled psobb.exe
+    handle_derolle_behavior case-4 L175630-176464): the pale bony tusked
+    head/mask the real boss shows is boss2_b_helm_break.nj — the
+    *breakable head armor*, DRAWN ON THE INTACT BOSS by default (the
+    engine grafts its mesh onto body NJCM node 0x4d = bone 77 and only
+    hides it after an armor-break event). So the file named "_break" is
+    the intact head, NOT debris — it MUST be present, attached at bone
+    77. The prior contract (omit helm_break, "skull intrinsic to body")
+    was WRONG and produced a bare-crest head instead of the bony face.
 
-    The helm_break / shell_break inners are DAMAGE STATES (broken-armor
-    debris) that spawn as separate physics objects only after the player
-    breaks the armor — they are NOT the skull and must NOT appear on the
-    intact boss (placing helm_break on the head is the original "goofy
-    mesh on its head" bug).
+    shell_break.nj stays OMITTED — it is the breakable back-shell debris;
+    the intact shells render as live body nodes (adding it doubles the
+    carapace).
     """
     assembly = lookup_composite("bm_boss2_de_rol_le.bml")
     assert assembly is not None
     inners = [p.inner_nj.lower() for p in assembly.parts]
     assert any("body" in i for i in inners), "lost the body part"
-    # The four attack appendages must be present and bone-attached.
-    appendages = {
-        "boss2_b_derorure_fin_a.nj": 33,
-        "boss2_b_derorure_fin_b.nj": 34,
-        "boss2_b_derorure_sting.nj": 104,
-        "boss2_b_derorure_tentacle.nj": 104,
-    }
     by_name = {p.inner_nj: p for p in assembly.parts}
-    for name, want_bone in appendages.items():
+
+    # The bony head/face MUST be present, bone-attached at the engine's
+    # graft node (body bone 77 = NJCM node 0x4d).
+    helm = by_name.get("boss2_b_helm_break.nj")
+    assert helm is not None, (
+        "missing the bony head — boss2_b_helm_break.nj must be drawn on "
+        "the intact boss (engine grafts it on body node 0x4d=bone 77)"
+    )
+    assert helm.parent_bone == 77, (
+        f"helm must attach at body bone 77 (node 0x4d), got "
+        f"{helm.parent_bone}"
+    )
+    assert helm.parent_inner == "boss2_b_derorure_body.nj", (
+        "helm bone-attach must name the body as parent_inner"
+    )
+
+    # The small attack appendages remain present and bone-attached.
+    for name in (
+        "boss2_b_derorure_fin_a.nj",
+        "boss2_b_derorure_fin_b.nj",
+        "boss2_b_derorure_sting.nj",
+        "boss2_b_derorure_tentacle.nj",
+    ):
         assert name in by_name, f"missing appendage {name}"
-        part = by_name[name]
-        assert part.parent_bone == want_bone, (
-            f"{name}: expected bone {want_bone}, got {part.parent_bone}"
-        )
-        assert part.parent_inner == "boss2_b_derorure_body.nj", (
+        assert by_name[name].parent_inner == "boss2_b_derorure_body.nj", (
             f"{name}: bone-attach must name the body as parent_inner"
         )
+
     # The body is the animation root (no parent).
     body = next(p for p in assembly.parts if "body" in p.inner_nj.lower())
     assert body.parent_bone is None and body.parent_inner is None, (
         "body must be the composite root, not bone-attached"
     )
-    # Damage states must NOT be in the intact-boss assembly.
-    for bad in ("helm_break", "shell_break"):
-        assert not any(bad in i for i in inners), (
-            f"{bad} is a damage state and must not show on the intact boss"
-        )
+    # The back-shell debris must NOT be in the intact-boss assembly.
+    assert not any("shell_break" in i for i in inners), (
+        "shell_break is back-shell debris and must not double the carapace"
+    )
 
 
 def test_de_rol_le_includes_the_body():
