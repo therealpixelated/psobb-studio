@@ -264,23 +264,15 @@ _DE_ROL_LE_PARTS: List[CompositePart] = [
             "bony face is the helm part (grafted on node 0x4d=bone 77)."
         ),
     ),
-    # HEAD / FACE — the pale bony tusked mask. boss2_b_helm_break.nj is
-    # the breakable head armor, drawn on the intact boss (engine grafts
-    # its mesh onto body node 0x4d). Bone-attach at body bone 77 so it
-    # sits on the head and rides the head animation. This is THE fix for
-    # the missing bony face; its own 29-bone skeleton handles local
-    # placement (no extra offset — the graft point is the bone matrix).
-    CompositePart(
-        inner_nj="boss2_b_helm_break.nj",
-        parent_inner="boss2_b_derorure_body.nj",
-        parent_bone=77,
-        local_offset=(0.0, 0.0, 0.0),
-        notes=(
-            "HEAD/FACE — pale bony tusked mask (breakable head armor, "
-            "drawn intact). Grafted on body NJCM node 0x4d (=bone 77) "
-            "per engine handle_derolle_behavior case-4 L175630-176464."
-        ),
-    ),
+    # NOTE (2026-06-21, corrected): boss2_b_helm_break.nj is NOT the head.
+    # The BODY inner already contains De Rol Le's head/skull — psov2
+    # renders the body inner WITH its head, and our single-model
+    # psov2_ninja.js path does too. helm_break is breakable-armor DEBRIS
+    # that psov2's api_setModel spreads OFF to the side (dx+=20), not onto
+    # the body. Bone-attaching it onto the head was wrong (it doubled the
+    # head into the goofy blade). OMITTED. The real defect is that the
+    # COMPOSITE skinned path mangles the body head that psov2_ninja.js
+    # draws correctly.
     # Bite-attack jaw fins — small face appendages. NOTE: the bone
     # indices 33/34 are the prior RE's UNVERIFIED guesses (the engine RE
     # found only node 0x4d=77 code-grounded); kept because they are tiny

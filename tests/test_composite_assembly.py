@@ -57,23 +57,19 @@ def test_de_rol_le_is_in_the_table():
     )
 
 
-def test_de_rol_le_has_bony_head_helm_and_no_shell_debris():
-    """De Rol Le = body + the bony HEAD/FACE (helm) bone-attached, plus
-    the small attack appendages (2026-06-21, engine-RE corrected).
+def test_de_rol_le_body_carries_head_no_break_debris():
+    """De Rol Le = the BODY inner (which already carries the head/skull)
+    plus the small attack appendages — NOT the _break debris inners
+    (2026-06-21, corrected against psov2's own render).
 
-    Ground truth (engine RE, workflow wf_905d5cf3, decompiled psobb.exe
-    handle_derolle_behavior case-4 L175630-176464): the pale bony tusked
-    head/mask the real boss shows is boss2_b_helm_break.nj — the
-    *breakable head armor*, DRAWN ON THE INTACT BOSS by default (the
-    engine grafts its mesh onto body NJCM node 0x4d = bone 77 and only
-    hides it after an armor-break event). So the file named "_break" is
-    the intact head, NOT debris — it MUST be present, attached at bone
-    77. The prior contract (omit helm_break, "skull intrinsic to body")
-    was WRONG and produced a bare-crest head instead of the bony face.
-
-    shell_break.nj stays OMITTED — it is the breakable back-shell debris;
-    the intact shells render as live body nodes (adding it doubles the
-    carapace).
+    Ground truth (psov2 reference renderer + our single-model
+    psov2_ninja.js path): the body inner boss2_b_derorure_body.nj renders
+    WITH De Rol Le's head. psov2's api_setModel draws that body inner at
+    the origin and spreads the OTHER inners off to the side (dx+=20) —
+    i.e. boss2_b_helm_break.nj / boss2_b_shell_break.nj are breakable-armor
+    DEBRIS, not the intact head. Bone-attaching helm_break onto the head
+    (the earlier mistake) doubled the head into a goofy swept-back blade.
+    Both _break inners must be OMITTED; the body supplies the head.
     """
     assembly = lookup_composite("bm_boss2_de_rol_le.bml")
     assert assembly is not None
@@ -81,20 +77,14 @@ def test_de_rol_le_has_bony_head_helm_and_no_shell_debris():
     assert any("body" in i for i in inners), "lost the body part"
     by_name = {p.inner_nj: p for p in assembly.parts}
 
-    # The bony head/face MUST be present, bone-attached at the engine's
-    # graft node (body bone 77 = NJCM node 0x4d).
-    helm = by_name.get("boss2_b_helm_break.nj")
-    assert helm is not None, (
-        "missing the bony head — boss2_b_helm_break.nj must be drawn on "
-        "the intact boss (engine grafts it on body node 0x4d=bone 77)"
-    )
-    assert helm.parent_bone == 77, (
-        f"helm must attach at body bone 77 (node 0x4d), got "
-        f"{helm.parent_bone}"
-    )
-    assert helm.parent_inner == "boss2_b_derorure_body.nj", (
-        "helm bone-attach must name the body as parent_inner"
-    )
+    # The breakable-armor DEBRIS inners must NOT be in the intact assembly
+    # (the body inner already carries the head; adding helm_break doubles
+    # the head into the goofy blade, shell_break doubles the carapace).
+    for bad in ("helm_break", "shell_break"):
+        assert not any(bad in i for i in inners), (
+            f"{bad} is breakable-armor debris (psov2 spreads it off to the "
+            f"side) and must not be assembled onto the intact boss"
+        )
 
     # The small attack appendages remain present and bone-attached.
     for name in (
@@ -112,10 +102,6 @@ def test_de_rol_le_has_bony_head_helm_and_no_shell_debris():
     body = next(p for p in assembly.parts if "body" in p.inner_nj.lower())
     assert body.parent_bone is None and body.parent_inner is None, (
         "body must be the composite root, not bone-attached"
-    )
-    # The back-shell debris must NOT be in the intact-boss assembly.
-    assert not any("shell_break" in i for i in inners), (
-        "shell_break is back-shell debris and must not double the carapace"
     )
 
 
