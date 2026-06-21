@@ -213,6 +213,87 @@
     return v.toFixed(v < 10 ? 1 : 0) + " " + u[i];
   }
 
+  // ── friendly-name + nesting helpers ──────────────────────────────
+  // Human-readable label for an entry. Prefers the global resolver
+  // (asset_names.js); degrades to the raw basename if it isn't loaded.
+  function friendlyName(entry) {
+    if (window.PSOAssetNames && typeof window.PSOAssetNames.friendly === "function") {
+      try { return window.PSOAssetNames.friendly(entry) || ""; }
+      catch (_e) { /* fall through */ }
+    }
+    // Minimal inline fallback: server display_name, else basename.
+    if (entry && entry.display_name) return entry.display_name;
+    const p = (entry && entry.path) || "";
+    const base = String(p).replace(/\\/g, "/").split("/").pop();
+    return base.indexOf("#") >= 0 ? base.split("#").pop() : base;
+  }
+
+  // The basename a row should also show as a dim subtitle/tooltip. For
+  // an archive inner ("<archive>#<inner>") this is the INNER filename;
+  // for a plain file it's the bare basename.
+  function rawLabel(path) {
+    let p = String(path || "").replace(/\\/g, "/");
+    p = p.split("/").pop();
+    if (p.indexOf("#") >= 0) {
+      let inner = p.split("#").pop();
+      // Drop the "NNNN_" synth index prefix that AFS inners carry so the
+      // subtitle reads like a real filename ("inner.nj" not "0042_inner.nj").
+      inner = inner.replace(/^\d{1,5}_/, "");
+      return inner;
+    }
+    return p;
+  }
+
+  // Short basename of an archive path (parent_archive is a relpath).
+  function archiveBasename(archivePath) {
+    return String(archivePath || "").replace(/\\/g, "/").split("/").pop();
+  }
+
+  // Split a bucket's flat entry list into:
+  //   archives : ordered list of { key, archivePath, archiveEntry|null,
+  //                                children:[entry...] }
+  //   loose    : entries that are NOT archive inners (rendered as before)
+  // An entry is an inner when it has a `parent_archive` AND its path
+  // contains '#'. The bare archive entry (path === parent_archive, no '#')
+  // becomes the parent row when present in this same bucket; otherwise we
+  // synthesise a parent header from the archive path so inners always roll
+  // up under an obvious parent instead of appearing as flat #-siblings.
+  function splitArchives(list) {
+    const byArchive = new Map();   // archivePath -> { children:[], archiveEntry }
+    const looseCandidates = [];    // possibly-bare-archive entries
+
+    for (const e of list) {
+      if (!e) continue;
+      const pa = e.parent_archive;
+      const isInner = pa && typeof e.path === "string" && e.path.indexOf("#") >= 0;
+      if (isInner) {
+        let rec = byArchive.get(pa);
+        if (!rec) { rec = { children: [], archiveEntry: null }; byArchive.set(pa, rec); }
+        rec.children.push(e);
+      } else {
+        looseCandidates.push(e);
+      }
+    }
+
+    // Attach any bare archive entry (its path is a key in byArchive) to
+    // the matching group as the parent; everything else stays loose.
+    const loose = [];
+    for (const e of looseCandidates) {
+      const rec = byArchive.get(e.path);
+      if (rec) rec.archiveEntry = e;
+      else loose.push(e);
+    }
+
+    // Stable order: archives by archive path, children by their own path.
+    const archives = [];
+    for (const [archivePath, rec] of byArchive) {
+      rec.children.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+      archives.push({ key: archivePath, archivePath, archiveEntry: rec.archiveEntry, children: rec.children });
+    }
+    archives.sort((a, b) => (a.archivePath < b.archivePath ? -1 : a.archivePath > b.archivePath ? 1 : 0));
+    return { archives, loose };
+  }
+
   // ── component CSS (shadow DOM scope) ─────────────────────────────
   // All values come from --tk-* tokens. Tokens cross the shadow
   // boundary because they're inherited via custom-property cascade
@@ -407,6 +488,68 @@
       font-size: 10px;
       margin-top: 1px;
       font-family: var(--tk-font-mono, monospace);
+    }
+
+    /* Friendly (human-readable) primary label + dim raw-filename subtitle.
+       The friendly name is the prominent line; the raw filename stays
+       visible underneath (never hidden) so the user can always see what
+       file backs the row. */
+    .item .friendly {
+      display: block;
+      color: var(--tk-text, #e0f0ff);
+      font-size: var(--tk-fs-xs, 0.8rem);
+      line-height: 1.25;
+    }
+    .item .raw {
+      display: block;
+      color: var(--tk-text-dim, rgba(224,240,255,0.5));
+      font-size: 10px;
+      margin-top: 1px;
+      font-family: var(--tk-font-mono, monospace);
+      word-break: break-all;
+    }
+
+    /* Archive parent row: a collapsible node that rolls its inner files
+       up underneath it (no more flat "<archive>#<inner>" siblings). */
+    .archive { list-style: none; margin: 0; padding: 0; }
+    .archive > .arc-header {
+      display: flex;
+      align-items: center;
+      gap: var(--tk-sp-2, 0.5rem);
+      padding: 3px var(--tk-sp-3, 0.75rem) 3px var(--tk-sp-5, 1.5rem);
+      cursor: pointer;
+      user-select: none;
+      color: var(--tk-text, #e0f0ff);
+      font-size: var(--tk-fs-xs, 0.8rem);
+      border-left: 2px solid transparent;
+      transition: background-color var(--tk-d-1, 0.2s);
+    }
+    .archive > .arc-header:hover {
+      background: rgba(0, 255, 255, 0.06);
+      border-left-color: var(--tk-blue, #00ffff);
+    }
+    .archive > .arc-header .arc-twist {
+      width: 10px;
+      display: inline-block;
+      flex: none;
+      transition: transform var(--tk-d-1, 0.2s);
+      color: var(--tk-text-dim, rgba(224,240,255,0.5));
+    }
+    .archive.open > .arc-header .arc-twist { transform: rotate(90deg); }
+    .archive > .arc-header .arc-name { flex: 1; min-width: 0; }
+    .archive > .arc-header .arc-name .friendly { color: var(--tk-text, #e0f0ff); }
+    .archive > .arc-header .arc-name .raw { color: var(--tk-text-dim, rgba(224,240,255,0.5)); }
+    .archive > .arc-header .arc-count {
+      flex: none;
+      color: var(--tk-text-mute, rgba(224,240,255,0.7));
+      font-size: var(--tk-fs-xs, 0.8rem);
+    }
+    /* The inner-children list is hidden until the archive is open. */
+    .archive > .arc-children { display: none; list-style: none; margin: 0; padding: 0; }
+    .archive.open > .arc-children { display: block; }
+    /* Inner rows indent one step deeper than a normal leaf. */
+    .archive > .arc-children > .item {
+      padding-left: var(--tk-sp-7, 2.75rem);
     }
     .item .matched {
       display: block;
@@ -769,6 +912,24 @@
         }
         return;
       }
+      // Archive parent toggle (ISSUE 1): expand/collapse the inner-file
+      // children rolled up under an archive row.
+      const arcHeader = ev.target.closest(".archive > .arc-header");
+      if (arcHeader) {
+        const archive = arcHeader.parentElement;
+        const arcPath = archive.dataset.arc;
+        const open = archive.classList.toggle("open");
+        this._expanded["arc:" + arcPath] = open;
+        arcHeader.setAttribute("aria-expanded", open ? "true" : "false");
+        saveExpandedState(this._expanded);
+        // Lazy-build children on first open (parity with the group lazy build).
+        if (open) {
+          const childrenEl = archive.querySelector(".arc-children");
+          const built = childrenEl && childrenEl.querySelector("li.item");
+          if (!built) { this._renderTree(); }
+        }
+        return;
+      }
       const item = ev.target.closest(".item");
       if (item) {
         const path = item.dataset.path;
@@ -862,7 +1023,7 @@
     // a leaf or toggles a group; ArrowLeft/Right collapse/expand groups.
     _onBodyKeydown(ev) {
       const focusables = Array.from(
-        this._bodyEl.querySelectorAll(".group > .header, li.item")
+        this._bodyEl.querySelectorAll(".group > .header, .archive > .arc-header, li.item")
       ).filter((el) => el.offsetParent !== null);
       if (!focusables.length) return;
       const active = this.shadowRoot.activeElement
@@ -888,6 +1049,12 @@
           if (hdr && !hdr.parentElement.classList.contains("expanded")) {
             ev.preventDefault();
             hdr.click();
+            break;
+          }
+          const arc = active && active.closest && active.closest(".archive > .arc-header");
+          if (arc && !arc.parentElement.classList.contains("open")) {
+            ev.preventDefault();
+            arc.click();
           }
           break;
         }
@@ -896,6 +1063,12 @@
           if (hdr && hdr.parentElement.classList.contains("expanded")) {
             ev.preventDefault();
             hdr.click();
+            break;
+          }
+          const arc = active && active.closest && active.closest(".archive > .arc-header");
+          if (arc && arc.parentElement.classList.contains("open")) {
+            ev.preventDefault();
+            arc.click();
           }
           break;
         }
@@ -903,7 +1076,8 @@
         case " ": {
           if (!active) break;
           ev.preventDefault();
-          if (active.classList.contains("header")) {
+          if (active.classList.contains("header")
+              || active.classList.contains("arc-header")) {
             active.click();
           } else if (active.classList.contains("item")) {
             const path = active.dataset.path;
@@ -936,6 +1110,104 @@
       const btn = this._bodyEl.querySelector("button[data-action=refresh]");
       if (btn) btn.addEventListener("click", this._onRefreshClick);
       this._statsEl.textContent = "";
+    }
+
+    // Build the HTML for a single leaf <li>. ``ctx`` carries the shared
+    // render state (selection + rendered-path order); ``opts.inner`` marks
+    // an archive-child row (it shows the short inner name, not the path).
+    _leafHtml(entry, ctx, opts) {
+      opts = opts || {};
+      const meta = [
+        entry.format,
+        fmtSize(entry.size),
+        entry.parsable && entry.parsable !== "yes" ? entry.parsable : "",
+      ].filter(Boolean).join(" · ");
+      let matchedHtml = "";
+      if (Array.isArray(entry.matched_textures) && entry.matched_textures.length) {
+        const best = entry.matched_textures[0];
+        const otherCount = entry.matched_textures.length - 1;
+        const tail = otherCount > 0 ? ` (+${otherCount})` : "";
+        matchedHtml = `<span class="matched">→ ${esc(best.path)}${tail}</span>`;
+      }
+      const cat = entry.category || "unknown";
+      const isSelected = ctx.sel && ctx.sel.has(entry.path);
+      const isActive = entry.path === this._activePath;
+      const cls = "item cat-" + esc(cat)
+        + (entry.parsable === "no" ? " parsable-no" : "")
+        + (isSelected ? " ms-selected" : "")
+        + (isActive ? " active" : "");
+      ctx.renderedPaths.push(entry.path);
+      const pill = `<span class="cat-pill">${esc(entry.format || cat || "?")}</span>`;
+
+      // Human-readable primary label + dim raw-filename subtitle. For an
+      // archive child the raw subtitle is the short inner filename; for a
+      // loose file it's the bare basename. The friendly name is always
+      // present (asset_names.js never returns blank).
+      const friendly = friendlyName(entry);
+      const raw = opts.inner ? rawLabel(entry.path)
+                             : String(entry.path).replace(/\\/g, "/").split("/").pop();
+      // Only show the raw subtitle when it differs from the friendly label
+      // (avoids "Booma / Booma" duplication when no friendly name applies).
+      const showRaw = raw && raw.toLowerCase() !== friendly.toLowerCase();
+
+      return [
+        `    <li class="${cls}" data-path="${esc(entry.path)}" title="${esc(entry.path)}"` +
+        ` role="treeitem" tabindex="-1"${isActive ? ' aria-current="true"' : ""}>`,
+        `      ${pill}<span class="friendly">${esc(friendly)}</span>`,
+        showRaw ? `      <span class="raw">${esc(raw)}</span>` : "",
+        `      <span class="meta">${esc(meta)}</span>`,
+        `      ${matchedHtml}`,
+        `    </li>`,
+      ].filter(Boolean).join("\n");
+    }
+
+    // Build the HTML for one archive node: a collapsible <li> whose
+    // children are the inner files, rolled up under a single parent row
+    // (instead of flat "<archive>#<inner>" siblings). ``arc`` is a record
+    // from splitArchives(). The parent label uses the bare archive entry's
+    // friendly name when present, else a prettified archive basename.
+    _archiveHtml(arc, ctx, opts) {
+      opts = opts || {};
+      const archBase = archiveBasename(arc.archivePath);
+      // Friendly parent name: prefer the bare archive entry's curated name,
+      // else the resolver on the archive path itself (covers e.g. an .afs
+      // whose curated name lives on a child), else prettified basename.
+      let parentFriendly;
+      if (arc.archiveEntry) parentFriendly = friendlyName(arc.archiveEntry);
+      else parentFriendly = friendlyName({ path: arc.archivePath });
+      const showRawArc = archBase && archBase.toLowerCase() !== parentFriendly.toLowerCase();
+
+      // Persisted open/closed state keyed by archive path. Single-inner
+      // archives default OPEN so the obvious inner is visible at a glance;
+      // multi-inner archives default to the user's saved state (collapsed).
+      const single = arc.children.length === 1;
+      const arcKey = "arc:" + arc.archivePath;
+      const isOpen = opts.forceOpen
+        ? true
+        : (arcKey in this._expanded) ? !!this._expanded[arcKey] : single;
+
+      const n = arc.children.length;
+      const out = [];
+      out.push(
+        `    <li class="archive${isOpen ? " open" : ""}" data-arc="${esc(arc.archivePath)}" role="treeitem">`,
+        `      <div class="arc-header" role="button" aria-expanded="${isOpen}" tabindex="-1" title="${esc(arc.archivePath)}">`,
+        `        <span class="arc-twist">▶</span>`,
+        `        <span class="arc-name">` +
+          `<span class="friendly">${esc(parentFriendly)}</span>` +
+          (showRawArc ? `<span class="raw">${esc(archBase)}</span>` : "") +
+        `</span>`,
+        `        <span class="arc-count">${n} inner${n === 1 ? "" : "s"}</span>`,
+        `      </div>`,
+        `      <ul class="arc-children" role="group">`,
+      );
+      // Build child leaves only when open (perf parity with group lazy-build).
+      if (isOpen) {
+        for (const child of arc.children) {
+          out.push(this._leafHtml(child, ctx, { inner: true }));
+        }
+      }
+      out.push(`      </ul>`, `    </li>`);
+      return out.join("\n");
     }
 
     _renderTree() {
@@ -977,8 +1249,14 @@
       const parts = [];
       for (const label of labels) {
         const list = byLabel[label];
+        // Search matches the raw path OR the friendly name so a user can
+        // find "Booma" even though the file is bm_ene_re8_b_beast.bml. The
+        // path match keeps archive-name searches working across nesting
+        // (an inner's path still contains the archive basename).
         const filtered = q
-          ? list.filter((e) => e.path.toLowerCase().includes(q))
+          ? list.filter((e) =>
+              e.path.toLowerCase().includes(q)
+              || friendlyName(e).toLowerCase().includes(q))
           : list;
         totalEntries += list.length;
         totalShown += filtered.length;
@@ -1017,36 +1295,31 @@
             `    <li class="empty-cat">${q ? "no matches" : "(empty)"}</li>`,
           );
         } else {
-          for (const entry of filtered) {
-            const meta = [
-              entry.format,
-              fmtSize(entry.size),
-              entry.parsable && entry.parsable !== "yes" ? entry.parsable : "",
-            ].filter(Boolean).join(" · ");
-            let matchedHtml = "";
-            if (Array.isArray(entry.matched_textures) && entry.matched_textures.length) {
-              const best = entry.matched_textures[0];
-              const otherCount = entry.matched_textures.length - 1;
-              const tail = otherCount > 0 ? ` (+${otherCount})` : "";
-              matchedHtml = `<span class="matched">→ ${esc(best.path)}${tail}</span>`;
+          // ISSUE 1: roll archive inners up under a collapsible parent row
+          // instead of rendering them as flat "<archive>#<inner>" siblings.
+          // splitArchives groups the filtered entries by parent_archive;
+          // loose (non-inner) files render exactly as before.
+          const ctx = { sel, renderedPaths };
+          const { archives, loose } = splitArchives(filtered);
+
+          // Interleave loose files + archive nodes in one path-sorted
+          // stream so the bucket reads in a stable, predictable order.
+          const stream = [];
+          for (const e of loose) stream.push({ sortPath: e.path, kind: "leaf", e });
+          for (const arc of archives) {
+            // Sort an archive next to where its bare path would fall.
+            stream.push({ sortPath: arc.archivePath, kind: "arc", arc });
+          }
+          stream.sort((a, b) => (a.sortPath < b.sortPath ? -1 : a.sortPath > b.sortPath ? 1 : 0));
+
+          for (const node of stream) {
+            if (node.kind === "leaf") {
+              parts.push(this._leafHtml(node.e, ctx, { inner: false }));
+            } else {
+              // During an active search, force the archive open so matched
+              // inners are visible without an extra click.
+              parts.push(this._archiveHtml(node.arc, ctx, { forceOpen: !!q }));
             }
-            const cat = entry.category || "unknown";
-            const isSelected = sel && sel.has(entry.path);
-            const isActive = entry.path === this._activePath;
-            const cls = "item cat-" + esc(cat)
-              + (entry.parsable === "no" ? " parsable-no" : "")
-              + (isSelected ? " ms-selected" : "")
-              + (isActive ? " active" : "");
-            renderedPaths.push(entry.path);
-            const pill = `<span class="cat-pill">${esc(entry.format || cat || "?")}</span>`;
-            parts.push(
-              `    <li class="${cls}" data-path="${esc(entry.path)}" title="${esc(entry.path)}"` +
-              ` role="treeitem" tabindex="-1"${isActive ? ' aria-current="true"' : ""}>`,
-              `      ${pill}${esc(entry.path)}`,
-              `      <span class="meta">${esc(meta)}</span>`,
-              `      ${matchedHtml}`,
-              `    </li>`,
-            );
           }
         }
         parts.push(`  </ul>`, `</div>`);
