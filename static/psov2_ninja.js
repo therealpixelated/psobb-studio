@@ -179,19 +179,29 @@ BitStream.prototype = {
     };
   },
 
+  // PSO Ninja angles are BAMS (Binary Angular Measurement System): a full
+  // turn is 0x10000 (65536), NOT 0xffff. The reference uses
+  // ANGLE_TO_RAD = (2*PI)/0x10000 (phantasmal-world Angle.kt; psov2's own
+  // angleToRad). 0xffff is off by ~1 part in 65535 — negligible per-angle
+  // but wrong; align with the reference.
   readRot3: function () {
     return {
-      x: this.readInt() * ((2 * Math.PI) / 0xffff),
-      y: this.readInt() * ((2 * Math.PI) / 0xffff),
-      z: this.readInt() * ((2 * Math.PI) / 0xffff),
+      x: this.readInt() * ((2 * Math.PI) / 0x10000),
+      y: this.readInt() * ((2 * Math.PI) / 0x10000),
+      z: this.readInt() * ((2 * Math.PI) / 0x10000),
     };
   },
 
   readShortRot3: function () {
+    // Compact 16-bit BAMS, read UNSIGNED — matching the reference
+    // (phantasmal-world Motion.kt parseEulerAngleKeyframes: uShort().toInt()
+    // -> angleToRad). Unsigned vs signed is a no-op for the rotation itself
+    // (each single-axis matrix is 2*PI-periodic, so a value and value-0x10000
+    // build the identical orientation); we keep the reference's unsigned read.
     return {
-      x: this.readUShort() * ((2 * Math.PI) / 0xffff),
-      y: this.readUShort() * ((2 * Math.PI) / 0xffff),
-      z: this.readUShort() * ((2 * Math.PI) / 0xffff),
+      x: this.readUShort() * ((2 * Math.PI) / 0x10000),
+      y: this.readUShort() * ((2 * Math.PI) / 0x10000),
+      z: this.readUShort() * ((2 * Math.PI) / 0x10000),
     };
   },
 
@@ -447,12 +457,14 @@ class NinjaModel {
     this.bone.name = "bone_" + num;
     this.bones.push(this.bone);
 
-    // Check flags for LightWave 3d Export
-
-    let zxy = BitStream.bitflag(bone.flag, 5);
-    if (zxy) {
-      console.error("ZXY FLAG SET!!!!");
-    }
+    // Rotation-order eval flag (NJD_EVAL_ZXY_ANG, bit 5). PSO bones rotate
+    // in either ZYX (default) or ZXY order; the reference picks the Euler
+    // order per-bone from this bit (phantasmal-world NinjaAnimation.kt:
+    // `if (bone.evaluationFlags.zxyRotationOrder) "ZXY" else "ZYX"`). Stash
+    // it on the bone so the keyframe build (readAnim) can honor it too —
+    // bind pose and animation MUST agree on order or a ZXY bone twists.
+    const zxy = !!BitStream.bitflag(bone.flag, 5);
+    this.bone.userData.njZxyRotationOrder = zxy;
 
     // Update bone local transform matrix
 
@@ -464,18 +476,31 @@ class NinjaModel {
 
     if (!BitStream.bitflag(bone.flag, 1)) {
       if (!bone.rot.w) {
-        // ZYX Euler: Rz * Ry * Rx applied in X, Y, Z order (psov2 order).
+        // Euler bind rotation. applyMatrix4 PRE-multiplies, so applying
+        // Rx then Ry then Rz yields M = Rz*Ry*Rx == intrinsic ZYX. For a
+        // ZXY bone, swap the Y/Z application order so M = Ry*Rz*Rx ==
+        // intrinsic ZXY, matching the reference's per-bone order.
         const xRotMatrix = new THREE.Matrix4();
         xRotMatrix.makeRotationX(bone.rot.x);
         this.bone.applyMatrix4(xRotMatrix); // ADAPT: applyMatrix -> applyMatrix4
 
-        const yRotMatrix = new THREE.Matrix4();
-        yRotMatrix.makeRotationY(bone.rot.y);
-        this.bone.applyMatrix4(yRotMatrix);
+        if (zxy) {
+          const zRotMatrix = new THREE.Matrix4();
+          zRotMatrix.makeRotationZ(bone.rot.z);
+          this.bone.applyMatrix4(zRotMatrix);
 
-        const zRotMatrix = new THREE.Matrix4();
-        zRotMatrix.makeRotationZ(bone.rot.z);
-        this.bone.applyMatrix4(zRotMatrix);
+          const yRotMatrix = new THREE.Matrix4();
+          yRotMatrix.makeRotationY(bone.rot.y);
+          this.bone.applyMatrix4(yRotMatrix);
+        } else {
+          const yRotMatrix = new THREE.Matrix4();
+          yRotMatrix.makeRotationY(bone.rot.y);
+          this.bone.applyMatrix4(yRotMatrix);
+
+          const zRotMatrix = new THREE.Matrix4();
+          zRotMatrix.makeRotationZ(bone.rot.z);
+          this.bone.applyMatrix4(zRotMatrix);
+        }
       } else {
         const { x, y, z, w } = bone.rot;
         const q = new THREE.Quaternion(x, y, z, w);
@@ -1222,7 +1247,15 @@ class NinjaModel {
         }
 
         if (frame && frame.rot) {
+          // Compose the per-frame Euler rotation in the SAME order the
+          // bone's bind pose uses (ZYX default, ZXY when the eval flag is
+          // set) — the reference picks the order per-bone
+          // (NinjaAnimation.kt). applyMatrix4 pre-multiplies, so X then
+          // Y then Z gives M = Rz*Ry*Rx (intrinsic ZYX); X then Z then Y
+          // gives M = Ry*Rz*Rx (intrinsic ZXY). Mismatching the bind-pose
+          // order would make a ZXY bone twist as it animates.
           let obj = new THREE.Bone();
+          const zxy = !!(bone.userData && bone.userData.njZxyRotationOrder);
 
           var xRotMatrix = new THREE.Matrix4();
           xRotMatrix.makeRotationX(frame.rot.x);
@@ -1230,11 +1263,16 @@ class NinjaModel {
 
           var yRotMatrix = new THREE.Matrix4();
           yRotMatrix.makeRotationY(frame.rot.y);
-          obj.applyMatrix4(yRotMatrix);
-
           var zRotMatrix = new THREE.Matrix4();
           zRotMatrix.makeRotationZ(frame.rot.z);
-          obj.applyMatrix4(zRotMatrix);
+
+          if (zxy) {
+            obj.applyMatrix4(zRotMatrix);
+            obj.applyMatrix4(yRotMatrix);
+          } else {
+            obj.applyMatrix4(yRotMatrix);
+            obj.applyMatrix4(zRotMatrix);
+          }
 
           let quat = new THREE.Quaternion();
           quat.setFromRotationMatrix(obj.matrix);
