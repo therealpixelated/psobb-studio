@@ -268,18 +268,13 @@
   }
 
   function maybeAutoShow() {
-    var seen = false;
-    try { seen = localStorage.getItem(SEEN_KEY) === "1"; } catch (_e) {}
-    if (seen) return;
-    // Don't barge in if an asset is already open (deep-link / reload).
-    var st = window.psoEditor && window.psoEditor.state;
-    if (st && st.currentFile && st.currentFile.name) { markSeen(); return; }
-    open();
-    // Mark seen the MOMENT it auto-shows so it never re-appears on later
-    // loads / hard-reloads. The prior code only saved on an explicit
-    // dismiss, so reloading WITHOUT closing it re-triggered the tour every
-    // time. The "don't show this again" checkbox (default on) lets the
-    // user un-check to see it again next load.
+    // Auto-show DISABLED (owner request 2026-06-20). The first-run tour was
+    // flashing on every refresh — aggressive static-JS caching meant the
+    // updated once-gate never ran, and per-port localStorage made it
+    // unreliable anyway. The owner doesn't want it auto-rendering at all.
+    // The walkthrough is still available ON DEMAND via open(): the header
+    // "?" button and the "Start the walkthrough" button on the empty-state
+    // welcome screen. We mark it seen so nothing ever auto-triggers.
     markSeen();
   }
 
