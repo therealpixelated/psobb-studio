@@ -69,6 +69,7 @@ TEXTURE_COVERAGE.csv
 # formats/__init__.py, aigen/_imageutil.py, formats/_psobb_engine_tables_extra.py).
 # ---------------------------------------------------------------------------
 /_*.py
+/_*.mjs
 /_*.json
 /_*.bin
 /_*.txt

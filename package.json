@@ -1,5 +1,6 @@
 {
   "dependencies": {
-    "jsdom": "^29.0.2"
+    "jsdom": "^29.1.1",
+    "three": "^0.160.0"
   }
 }
