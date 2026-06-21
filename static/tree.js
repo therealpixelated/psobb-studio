@@ -336,6 +336,13 @@
       color: var(--tk-text, #e0f0ff);
       background: transparent;
       font-size: var(--tk-fs-sm, 0.9rem);
+      /* Indent system (P1-3): content-left = base + depth*unit so
+         same-depth siblings line up. Twist rows reserve their padding-left
+         at the depth's base; no-twist leaves add the twist gutter so their
+         text aligns with a twisted sibling's text at the same depth. */
+      --row-base: 12px;     /* depth-0 left pad (group header) */
+      --row-unit: 16px;     /* one indent step */
+      --twist-gutter: 18px; /* twist (10px) + gap (8px) */
     }
 
     .toolbar {
@@ -419,12 +426,33 @@
       font-size: 9px;
       vertical-align: 1px;
     }
+    /* On the active (cyan-filled) tab the muted count was ~0.45 effective
+       black-on-cyan — muddy. Lift it and pin to solid black (P2-1). */
+    .tab-strip button.tab.active .tab-count {
+      opacity: 0.85;
+      color: #000;
+    }
 
     .body {
       flex: 1;
       overflow-y: auto;
       padding: var(--tk-sp-1, 0.25rem) 0;
     }
+
+    /* Themed shadow-DOM scrollbar (complaint 1). Shadow-DOM scrollbars
+       are unreachable from style.css, so this MUST live here. The 2px
+       transparent border + background-clip:padding-box renders a slim
+       themed bar instead of a chunky slab. Firefox via scrollbar-color. */
+    .body { scrollbar-width: thin; scrollbar-color: var(--tk-line, rgba(0,255,255,0.3)) transparent; }
+    .body::-webkit-scrollbar { width: 10px; height: 10px; }
+    .body::-webkit-scrollbar-track { background: transparent; }
+    .body::-webkit-scrollbar-thumb {
+      background: var(--tk-line, rgba(0,255,255,0.3));
+      border-radius: var(--tk-rad-1, 4px);
+      border: 2px solid transparent;
+      background-clip: padding-box;
+    }
+    .body::-webkit-scrollbar-thumb:hover { background: var(--tk-blue, #00ffff); }
 
     .placeholder {
       padding: var(--tk-sp-5, 1.5rem) var(--tk-sp-4, 1rem);
@@ -460,7 +488,8 @@
       display: flex;
       align-items: center;
       gap: var(--tk-sp-2, 0.5rem);
-      padding: 4px var(--tk-sp-3, 0.75rem);
+      /* depth 0: padding-left = base */
+      padding: 4px var(--tk-sp-3, 0.75rem) 4px var(--row-base, 12px);
       cursor: pointer;
       user-select: none;
       color: var(--tk-blue, #00ffff);
@@ -482,8 +511,9 @@
     }
     .group > .header .label { flex: 1; min-width: 0; }
     .group > .header .count {
-      color: var(--tk-text-mute, rgba(224,240,255,0.7));
-      font-size: var(--tk-fs-xs, 0.8rem);
+      /* bright category label > dim count (complaint 3c). */
+      color: var(--tk-text-dim, rgba(224,240,255,0.5));
+      font-size: 10px;
       font-weight: var(--tk-fw-normal, 400);
     }
 
@@ -496,11 +526,16 @@
     .group.expanded > .items { display: block; }
 
     .item {
-      padding: 3px var(--tk-sp-3, 0.75rem) 3px var(--tk-sp-6, 2rem);
+      /* depth 1 loose leaf: base + 1*unit + twist gutter so its text
+         aligns with a (twisted) arc-header sibling's text (P1-3). */
+      padding: 3px var(--tk-sp-3, 0.75rem) 3px
+               calc(var(--row-base, 12px) + var(--row-unit, 16px) + var(--twist-gutter, 18px));
       cursor: pointer;
       color: var(--tk-text, #e0f0ff);
       font-size: var(--tk-fs-xs, 0.8rem);
-      word-break: break-all;
+      /* One consistent vertical rhythm; break-all moved to the dim .raw
+         subtitle only (the friendly line ellipsizes — P1-2). */
+      line-height: 1.3;
       transition: background-color var(--tk-d-1, 0.2s),
                   color            var(--tk-d-1, 0.2s);
       border-left: 2px solid transparent;
@@ -513,7 +548,8 @@
     .item .meta {
       display: block;
       color: var(--tk-text-dim, rgba(224,240,255,0.5));
-      font-size: 10px;
+      font-size: 9px;
+      opacity: 0.85;
       margin-top: 1px;
       font-family: var(--tk-font-mono, monospace);
     }
@@ -527,6 +563,11 @@
       color: var(--tk-text, #e0f0ff);
       font-size: var(--tk-fs-xs, 0.8rem);
       line-height: 1.25;
+      /* single-line ellipsis — kills mid-word break-all chops; full path
+         is in title= (P1-2). break-all stays ONLY on .raw below. */
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
     .item .raw {
       display: block;
@@ -542,9 +583,14 @@
     .archive { list-style: none; margin: 0; padding: 0; }
     .archive > .arc-header {
       display: flex;
-      align-items: center;
+      /* The arc-name column now has height (two lines); top-align so the
+         twist + count sit on the FIRST (friendly) line, not floating
+         against the two-line block. */
+      align-items: flex-start;
       gap: var(--tk-sp-2, 0.5rem);
-      padding: 3px var(--tk-sp-3, 0.75rem) 3px var(--tk-sp-5, 1.5rem);
+      /* depth 1 (has a twist): padding-left = base + 1*unit */
+      padding: 3px var(--tk-sp-3, 0.75rem) 3px
+               calc(var(--row-base, 12px) + var(--row-unit, 16px));
       cursor: pointer;
       user-select: none;
       color: var(--tk-text, #e0f0ff);
@@ -560,24 +606,51 @@
       width: 10px;
       display: inline-block;
       flex: none;
+      padding-top: 1px;
       transition: transform var(--tk-d-1, 0.2s);
       color: var(--tk-text-dim, rgba(224,240,255,0.5));
     }
     .archive.open > .arc-header .arc-twist { transform: rotate(90deg); }
-    .archive > .arc-header .arc-name { flex: 1; min-width: 0; }
-    .archive > .arc-header .arc-name .friendly { color: var(--tk-text, #e0f0ff); }
-    .archive > .arc-header .arc-name .raw { color: var(--tk-text-dim, rgba(224,240,255,0.5)); }
+    /* Two-line archive header: bright friendly name over a smaller,
+       dimmer mono raw filename — same hierarchy as the leaf rows. This
+       fixes the run-together "Dragonbm_boss1_dragon.bml" (complaints 2+3)
+       at the root: the prior rule set COLOR only, so both spans stayed
+       inline at the inherited 12.8px. */
+    .archive > .arc-header .arc-name {
+      flex: 1; min-width: 0;
+      display: flex; flex-direction: column; gap: 1px;
+    }
+    .archive > .arc-header .arc-name .friendly {
+      display: block; color: var(--tk-text, #e0f0ff);
+      font-size: var(--tk-fs-xs, 0.8rem); line-height: 1.25;
+      /* single-line ellipsis — full path is in title= (fixes "De Rol L|e"
+         mid-word break). */
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .archive > .arc-header .arc-name .raw {
+      display: block; color: var(--tk-text-dim, rgba(224,240,255,0.5));
+      font-size: 10px; font-family: var(--tk-font-mono, monospace); line-height: 1.2;
+    }
     .archive > .arc-header .arc-count {
       flex: none;
-      color: var(--tk-text-mute, rgba(224,240,255,0.7));
-      font-size: var(--tk-fs-xs, 0.8rem);
+      font-size: 10px;
+      color: var(--tk-text-dim, rgba(224,240,255,0.5));
+      padding-top: 1px;
     }
-    /* The inner-children list is hidden until the archive is open. */
-    .archive > .arc-children { display: none; list-style: none; margin: 0; padding: 0; }
+    /* The inner-children list is hidden until the archive is open. A faint
+       border-left guide (offset to sit just left of the depth-2 content)
+       visually ties inners to their parent (P1-3). */
+    .archive > .arc-children {
+      display: none; list-style: none; margin: 0; padding: 0;
+      margin-left: calc(var(--row-base, 12px) + var(--row-unit, 16px) + 4px);
+      border-left: 1px solid var(--tk-line, rgba(0,255,255,0.18));
+    }
     .archive.open > .arc-children { display: block; }
-    /* Inner rows indent one step deeper than a normal leaf. */
+    /* depth 2 inner rows: text aligns one step deeper than the depth-1
+       arc-header text. The guide ate (base+unit+4px) of margin, so the
+       remaining left pad is (unit - 4px + twist gutter). */
     .archive > .arc-children > .item {
-      padding-left: var(--tk-sp-7, 2.75rem);
+      padding-left: calc(var(--row-unit, 16px) - 4px + var(--twist-gutter, 18px));
     }
     .item .matched {
       display: block;
@@ -598,6 +671,10 @@
       font-size: 9px;
       font-family: var(--tk-font-mono, monospace);
       vertical-align: 1px;
+      /* The pill restates the extension — keep it quiet so it never
+         outshines the friendly name it labels (P1-1). */
+      opacity: 0.8;
+      letter-spacing: 0.02em;
     }
     .item.cat-model    .cat-pill { background: rgba(157,78,221,0.18); color: var(--tk-purple, #9d4edd); }
     .item.cat-texture  .cat-pill { background: rgba(0,255,255,0.12);  color: var(--tk-blue,   #00ffff); }
@@ -956,9 +1033,18 @@
         const onTwist = ev.target.closest(".arc-twist");
         if (!onTwist) {
           const entry = this._findEntry(arcPath) || { path: arcPath };
-          this._setActive(arcPath);
-          if (window.bus) window.bus.emit("asset.opened", { path: arcPath, entry });
-          return;
+          // Gate click-to-load to MODEL containers only (slop B/E). The huge
+          // texture/item AFS bundles (plItex.afs 516 inners, ItemKT*.afs,
+          // *ModelEp4.afs, plZsmpnj.afs) have no single-model view: emitting
+          // asset.opened on a 516-entry texture AFS is a foot-gun. For those
+          // we FALL THROUGH to the twist/expand path (expand-only) instead.
+          const isModel = (entry.category === "model") || /\.bml$/i.test(arcPath);
+          if (isModel) {
+            this._setActive(arcPath);
+            if (window.bus) window.bus.emit("asset.opened", { path: arcPath, entry });
+            return;
+          }
+          // Non-model bundle: treat a bare-row click as an expand toggle.
         }
         const open = archive.classList.toggle("open");
         this._expanded["arc:" + arcPath] = open;
@@ -1159,8 +1245,11 @@
     // an archive-child row (it shows the short inner name, not the path).
     _leafHtml(entry, ctx, opts) {
       opts = opts || {};
+      // Drop the format token from meta (P1-1): the format already shows in
+      // the cat-pill AND is implied by the raw filename's extension, so
+      // repeating it here ("xj · 22 KB") is the redundant 3rd copy. Meta is
+      // now just size (+ a parse-warning when the file won't parse).
       const meta = [
-        entry.format,
         fmtSize(entry.size),
         entry.parsable && entry.parsable !== "yes" ? entry.parsable : "",
       ].filter(Boolean).join(" · ");
@@ -1211,13 +1300,17 @@
     _archiveHtml(arc, ctx, opts) {
       opts = opts || {};
       const archBase = archiveBasename(arc.archivePath);
+      // Drop the container extension from the raw subtitle so it reads as
+      // clean as the inner subtitles ("bm_boss1_dragon" not
+      // "bm_boss1_dragon.bml") (slop A).
+      const archRaw = archBase.replace(/\.(bml|afs|gsl)$/i, "");
       // Friendly parent name: prefer the bare archive entry's curated name,
       // else the resolver on the archive path itself (covers e.g. an .afs
       // whose curated name lives on a child), else prettified basename.
       let parentFriendly;
       if (arc.archiveEntry) parentFriendly = friendlyName(arc.archiveEntry);
       else parentFriendly = friendlyName({ path: arc.archivePath });
-      const showRawArc = archBase && archBase.toLowerCase() !== parentFriendly.toLowerCase();
+      const showRawArc = archRaw && archRaw.toLowerCase() !== parentFriendly.toLowerCase();
 
       // Persisted open/closed state keyed by archive path. Single-inner
       // archives default OPEN so the obvious inner is visible at a glance;
@@ -1236,7 +1329,7 @@
         `        <span class="arc-twist">▶</span>`,
         `        <span class="arc-name">` +
           `<span class="friendly">${esc(parentFriendly)}</span>` +
-          (showRawArc ? `<span class="raw">${esc(archBase)}</span>` : "") +
+          (showRawArc ? `<span class="raw">${esc(archRaw)}</span>` : "") +
         `</span>`,
         `        <span class="arc-count">${n} inner${n === 1 ? "" : "s"}</span>`,
         `      </div>`,
