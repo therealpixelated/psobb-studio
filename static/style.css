@@ -432,7 +432,43 @@ aside#assetTree pso-asset-tree {
      flex box (~700px), so overflow-y:auto gives a real, visible, usable
      scrollbar. `overflow:hidden` here was what removed scrolling entirely. */
   overflow-y: auto;
+  /* 2026-06-21: theme the HOST scrollbar (the actual visible scroller — an
+     earlier attempt styled the shadow-DOM .body, which never scrolls, so the
+     clunky default bar stayed). Thin, cyan-tinted thumb, transparent track —
+     verified live in-browser before committing. */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 255, 255, 0.28) transparent;
 }
+aside#assetTree pso-asset-tree::-webkit-scrollbar { width: 9px; }
+aside#assetTree pso-asset-tree::-webkit-scrollbar-track { background: transparent; }
+aside#assetTree pso-asset-tree::-webkit-scrollbar-thumb {
+  background: rgba(0, 255, 255, 0.22);
+  border-radius: 7px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+aside#assetTree pso-asset-tree::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 255, 255, 0.45);
+  background-clip: padding-box;
+}
+
+/* 2026-06-21: app-wide dark-theme scrollbars so every scroller blends, not
+   just the asset tree. Firefox via html{scrollbar-*}; Chromium via the
+   unscoped ::-webkit-scrollbar. (Shadow-DOM scrollers theme themselves.) */
+html { scrollbar-width: thin; scrollbar-color: rgba(0, 255, 255, 0.20) transparent; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 255, 255, 0.16);
+  border-radius: 7px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 255, 255, 0.38);
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-corner { background: transparent; }
 
 /* ────────────────────────────────────────────────────────────── */
 
