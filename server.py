@@ -13768,6 +13768,93 @@ def api_animation_data(path: str, motion: str = "", inner: Optional[str] = None)
     }
 
 
+@app.get("/api/animation_njm/{path:path}")
+def api_animation_njm(path: str, motion: str = "", inner: Optional[str] = None):
+    """Serve the RAW NMDM-IFF bytes for ONE native motion of a model.
+
+    This is the byte-level sibling of ``/api/animation_data`` (which
+    returns pre-parsed JSON keyframes). The client-side psov2 Ninja
+    loader (``static/psov2_ninja.js``) builds its ``THREE.AnimationClip``
+    via its own faithful ``readAnim`` port, which needs the original
+    NMDM chunk bytes — not the JSON projection. Both endpoints share the
+    SAME motion resolver (``_resolve_motion_sources`` +
+    ``_read_njm_for_source``), so the NpcApcMot fallback, standalone-NJ
+    siblings, and BML inner extraction all resolve identically; the only
+    difference is the response body.
+
+    The returned buffer is the inner motion payload AFTER PRS decompress,
+    starting at the ``NMDM`` magic — exactly what ``new BitStream(name,
+    buf)`` + ``addAnimation`` expects.
+
+    Query parameters mirror ``/api/animation_data``:
+      - ``motion``: motion name (entry name minus ``.njm``, case-
+        insensitive) OR an integer index. Required.
+
+    Returns 400 on missing/invalid ``motion``, 404 when no motion sources
+    exist or the named motion is not found, 413 when the payload is too
+    large.
+    """
+    base, effective_inner = _split_inner_with_query(path, inner)
+
+    if not motion:
+        raise HTTPException(400, "missing ?motion=<name|index>")
+
+    p = _resolve_model_mesh_path(base)
+    ext = p.suffix.lower()
+    sources = _resolve_motion_sources(p, ext, effective_inner)
+    if not sources:
+        raise HTTPException(404, f"no NJM motions found for {path}")
+
+    # Resolve the motion identifier — same priority order as
+    # api_animation_data (numeric index, then exact stem/name, then
+    # substring) so the two endpoints never disagree on which source a
+    # given ``?motion=`` selects.
+    try:
+        motion_idx = int(motion)
+        if motion_idx < 0 or motion_idx >= len(sources):
+            raise HTTPException(
+                404, f"motion index {motion_idx} out of range (0..{len(sources)})"
+            )
+        chosen = sources[motion_idx]
+    except ValueError:
+        m_lower = motion.lower()
+        m_lower_njm = m_lower if m_lower.endswith(".njm") else f"{m_lower}.njm"
+        m_stem = m_lower[:-4] if m_lower.endswith(".njm") else m_lower
+        chosen = None
+        for i, (bml_path, inner_name, _label) in enumerate(sources):
+            cand = inner_name.lower() if inner_name else bml_path.name.lower()
+            cand_stem = cand[:-4] if cand.endswith(".njm") else cand
+            if cand_stem == m_stem or cand == m_lower or cand == m_lower_njm:
+                chosen = sources[i]
+                break
+        if chosen is None:
+            for i, (bml_path, inner_name, _label) in enumerate(sources):
+                cand = inner_name.lower() if inner_name else bml_path.name.lower()
+                cand_stem = cand[:-4] if cand.endswith(".njm") else cand
+                if m_stem and m_stem in cand_stem:
+                    chosen = sources[i]
+                    break
+        if chosen is None:
+            raise HTTPException(404, f"no motion named {motion!r}")
+
+    bml_path, inner_name, label = chosen
+    njm_bytes = _read_njm_for_source(bml_path, inner_name)
+    if len(njm_bytes) > MAX_RAW_RESPONSE_BYTES:
+        raise HTTPException(
+            413,
+            f"NJM too large for raw endpoint: {len(njm_bytes)} > {MAX_RAW_RESPONSE_BYTES}",
+        )
+    return Response(
+        content=njm_bytes,
+        media_type="application/octet-stream",
+        headers={
+            "X-Asset-Size": str(len(njm_bytes)),
+            "X-Motion-Source": label,
+            "Cache-Control": "public, max-age=3600",
+        },
+    )
+
+
 # ---------------------------------------------------------------------------- model bundle
 #
 # `/api/model_bundle/{path}` consolidates the 4-7 round-trips a cold model
