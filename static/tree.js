@@ -79,11 +79,17 @@
   // ``category`` enum so nothing is lost.
   const INFERRED_CATEGORY_ORDER = [
     "Bosses",
+    "Boss Attack Effects",
     "Enemies",
     "NPCs",
+    "Mags",
+    "Photon Blasts",
     "Player Bodies",
     "Player Headgear",
     "Player Textures",
+    "Player Rigs",
+    "Player Misc",
+    "Items",
     "Weapons / Items",
     "Weapon Textures",
     "Effects",
@@ -161,10 +167,32 @@
   // with `labels` ordered: INFERRED_CATEGORY_ORDER first, then any
   // canonical-category labels in CATEGORY_ORDER, then alpha for
   // anything left.
-  function bucketEntries(entries) {
+  // Display label for the area-data bucket. Entries whose inferred bucket
+  // is this (or whose canonical category is "map") are consumed by the
+  // dedicated Map Editor / Floor Editor tabs, NOT the asset tree — so the
+  // tree hides them by default (opts.excludeMap) to declutter. The Floors
+  // tab re-includes them because it scopes inScope to category==="map"
+  // BEFORE calling bucketEntries with excludeMap=false.
+  const MAP_BUCKET_LABEL = "Maps / Terrain";
+
+  function bucketEntries(entries, opts) {
+    const excludeMap = !!(opts && opts.excludeMap);
     const byLabel = Object.create(null);
     for (const e of entries) {
       if (!e || e.deprecated) continue;
+      // Owner request: keep area/terrain data out of the asset tree (it
+      // lives in the Map + Floor editor tabs). Drop entries whose DISPLAY
+      // bucket is "Maps / Terrain". We key on the inferred bucket label, NOT
+      // the canonical "map" category, on purpose: a handful of assets
+      // (pl?smp.rel rigs, cam_*/particleentry effect tables, SetDataTable
+      // set-pieces) have a .rel/.gsl extension that maps to canonical
+      // category=="map" yet were re-bucketed to Player Rigs / Effects /
+      // Set Pieces by the DB — those are real browsable assets and must
+      // stay in the tree. Guarded by excludeMap so the Floors tab (which
+      // scopes to category=="map" before calling this) still shows terrain.
+      if (excludeMap && bucketLabel(e) === MAP_BUCKET_LABEL) {
+        continue;
+      }
       const label = bucketLabel(e);
       if (!byLabel[label]) byLabel[label] = [];
       byLabel[label].push(e);
@@ -768,8 +796,12 @@
       if (!el) return;
       let total = 0;
       for (const e of allEntries) { if (e && !e.deprecated) total += 1; }
+      // Match the default ("All") tree view, which hides the Maps / Terrain
+      // area-data bucket, so the header's category count agrees with what
+      // the user actually sees in the tree.
       const { labels } = bucketEntries(
-        allEntries.filter((e) => e && !e.deprecated)
+        allEntries.filter((e) => e && !e.deprecated),
+        { excludeMap: true }
       );
       const n = labels.length;
       el.textContent = `${total.toLocaleString()} entries · ${n} categor${n === 1 ? "y" : "ies"}`;
@@ -1247,7 +1279,12 @@
       const inScope = tabAllow
         ? allEntries.filter((e) => e && !e.deprecated && tabAllow.has(e.category || "unknown"))
         : allEntries;
-      const { labels, byLabel } = bucketEntries(inScope);
+      // Hide the "Maps / Terrain" area-data bucket from the asset tree in
+      // every scope EXCEPT the dedicated Floors tab (which explicitly wants
+      // category==="map"). The Map + Floor editors own that data, so it
+      // doesn't belong in the asset browser.
+      const isFloorTab = !!(tabAllow && tabAllow.has("map"));
+      const { labels, byLabel } = bucketEntries(inScope, { excludeMap: !isFloorTab });
 
       let totalShown = 0;
       let totalEntries = 0;

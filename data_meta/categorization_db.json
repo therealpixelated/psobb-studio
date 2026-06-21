@@ -4,13 +4,17 @@
   "categories": [
     "Player Bodies",
     "Player Headgear",
+    "Player Textures",
+    "Player Rigs",
     "Player Misc",
     "Enemies",
     "Bosses",
+    "Boss Attack Effects",
     "NPCs",
     "Objects",
     "Items",
     "Mags",
+    "Photon Blasts",
     "Weapons",
     "Effects",
     "Maps / Terrain",
@@ -118,25 +122,26 @@
     },
     {
       "pattern": "pl?nj.bml",
-      "category": "Player Misc",
+      "category": "Player Rigs",
       "subcategory": "Player skeleton bundle",
       "in_game_name": "Player class NJ rig bundle"
     },
     {
       "pattern": "pl?smp.rel",
-      "category": "Player Misc",
+      "category": "Player Rigs",
       "subcategory": "Player skinned-mesh sample",
       "in_game_name": "Player class .rel skin/animation map"
     },
     {
       "pattern": "pl?tex.afs",
-      "category": "Player Misc",
-      "subcategory": "Player textures",
-      "in_game_name": "Player class XVM textures"
+      "category": "Player Textures",
+      "subcategory": "Player class textures",
+      "in_game_name": "Player class XVR/XVM textures (body / headgear / hair / cap skins)",
+      "source": "pl[A-Z]tex.afs = per-class texture archive (plA=HUmar .. plI=FOnewearl, plJ.. = extra slots). Its inner blobs are numerically-named (plXtex_NNNN.xvr) with no semantic body/hed/hai token, so they cannot be split by inner name — the whole archive routes to 'Player Textures' (one class-distinguishable bucket) instead of the old 4767-entry 'Player Misc' catch-all. Via archive-fallback, every inner inherits this category."
     },
     {
       "pattern": "plZsmpnj.afs",
-      "category": "Player Misc",
+      "category": "Player Rigs",
       "subcategory": "Generic player template",
       "in_game_name": "Z-class generic player skeleton+samples (template/proto)"
     },
@@ -197,11 +202,25 @@
       "source": "psobb_binary_scan.md note: bm_obj_boss8_*.bml are Gol Dragon assets, NOT Vol Opt despite similar naming"
     },
     {
-      "pattern": "bm_obj_ep4_boss09_*",
+      "pattern": "bm_obj_ep4_boss09_core*",
       "category": "Bosses",
-      "subcategory": "EP4 final boss subparts",
-      "in_game_name": "Saint-Million / Shambertin / Kondrieu subpart",
-      "source": "Phantasmal NpcType.SaintMilion + Shambertin + Kondrieu (EP4 final). 'boss09' is the EP4 final-boss asset family."
+      "subcategory": "EP4 final boss core",
+      "in_game_name": "Saint-Million / Shambertin / Kondrieu (boss core body)",
+      "source": "Phantasmal NpcType.SaintMilion + Shambertin + Kondrieu (EP4 final). The 'core' subpart is the actual boss body/geometry."
+    },
+    {
+      "pattern": "bm_obj_ep4_boss09_bossiwa*",
+      "category": "Bosses",
+      "subcategory": "EP4 final boss core",
+      "in_game_name": "Saint-Million boss rock-shell (bossiwa = boss rock)",
+      "source": "iwa = Japanese for 'rock'; bossiwa is the destructible rock-shell the boss core sits inside — treated as a boss core part, not an attack effect."
+    },
+    {
+      "pattern": "bm_obj_ep4_boss09_*",
+      "category": "Boss Attack Effects",
+      "subcategory": "EP4 final boss attacks / projectiles",
+      "in_game_name": "Saint-Million attack effect (sonic/sandsonic/storm/laser/missile/nemesis/ptcl_anim/kabe)",
+      "source": "Owner-confirmed: the boss09 sonic/sandsonic/storm/laser/missile/nemesis/ptcl_anim/kabe subparts are EP4 final-boss ATTACK EFFECTS / projectiles, NOT the boss itself (kabe = wall hazard, ptcl_anim = particle animation). The actual boss entity is bm_ene_boss09* and the boss core is bm_obj_ep4_boss09_core*/bossiwa* (handled by earlier rules)."
     },
     {
       "pattern": "bm_ene_boss09*",
@@ -602,11 +621,11 @@
       "in_game_name": "Effect descriptor"
     },
     {
-      "pattern": "fe_obj_*",
+      "pattern": "fe_obj*",
       "category": "Objects",
       "subcategory": "Forest exterior props",
       "in_game_name": "Forest/exterior environment object",
-      "source": "fe = forest exterior; covers fences, trees, rocks, capsules, doors. Common shared models."
+      "source": "fe = forest exterior; covers fences, trees, rocks, capsules, doors, bridges (hashi). Common shared models. Broadened from 'fe_obj_*' to 'fe_obj*' so numbered variants (fe_obj306_hashi, fe_obj321_hashi) no longer leak into the Models bucket."
     },
     {
       "pattern": "bm_fe_obj_*",
@@ -809,7 +828,7 @@
       "source": "sakana = fish (background creature deco)"
     },
     {
-      "pattern": "bm_n_*_body.bml",
+      "pattern": "bm_n_*body*.bml",
       "category": "NPCs",
       "subcategory": "Pioneer 2 NPCs",
       "in_game_name": "City NPC body (Hakase=Professor / Hisyo=Secretary / Kantei=Appraiser / Kanteib=Male / Kanteif=Female / Karen / Leo / Michel / Momoka / Nol / Paganini / Soutoku=Governor / Trunk / Karen=Karen Erra / Nurse / Gunb=Gun-shop / Gunm=Gun-master / Elly / Delta)",
@@ -879,11 +898,96 @@
       "source": "PsoBB.exe @bm_ply_photon_chair, fs_obj_lobby_isu (isu=chair)"
     },
     {
+      "pattern": "pm_mdl.bml#pm_b_*",
+      "category": "Photon Blasts",
+      "subcategory": "Photon Blast body",
+      "in_game_name": "Photon Blast (Estlla / Mylla & Youlla / Golla / Pilla / Farlla / Leilla — pm_b_ body)",
+      "source": "Owner-confirmed split. pm_b_* inners of pm_mdl.bml are the Photon Blast projectile bodies (estlla/mylla/youlla/etc.); pm = Photon Magic. Routed BEFORE the generic mag-name rules so pm_b_estlla_body lands in Photon Blasts, not Mags."
+    },
+    {
+      "pattern": "pm_mdl.bml#pm?_s_*",
+      "category": "Photon Blasts",
+      "subcategory": "Photon Blast support model",
+      "in_game_name": "Photon Blast core model (pm1_s / pm2_s)",
+      "source": "pm1_s_body / pm2_s_body are the shared Photon-Blast core/summon geometry."
+    },
+    {
+      "pattern": "pm_mdl.bml#pmback_*",
+      "category": "Photon Blasts",
+      "subcategory": "Photon Blast backdrop",
+      "in_game_name": "Photon Blast rainbow backdrop (pmback niji = rainbow)",
+      "source": "pmback_s_niji* are the Photon-Blast summon backdrop planes (niji = rainbow)."
+    },
+    {
+      "pattern": "pm_mdl.bml#*mahoujin*",
+      "category": "Mags",
+      "subcategory": "Mag summon circle",
+      "in_game_name": "Mahoujin (mag/photon summon magic circle)",
+      "source": "mahoujin = Japanese for 'magic circle'; the ground decal that appears under a mag / photon-blast summon. Bucketed with Mags per owner request."
+    },
+    {
+      "pattern": "pm_mdl.bml#*farlla*",
+      "category": "Mags",
+      "subcategory": "Mag body",
+      "in_game_name": "Mag body (Farlla)",
+      "source": "Owner-confirmed: pm_mdl.bml mag bodies (farlla/leilla/estlla/mylla/youlla/golla) are MAGS, not generic Effects. PsoBB.exe @pm_mdl PHOTON_FARLLA family."
+    },
+    {
+      "pattern": "pm_mdl.bml#*leilla*",
+      "category": "Mags",
+      "subcategory": "Mag body",
+      "in_game_name": "Mag body (Leilla)"
+    },
+    {
+      "pattern": "pm_mdl.bml#*estlla*",
+      "category": "Mags",
+      "subcategory": "Mag body",
+      "in_game_name": "Mag body (Estlla)"
+    },
+    {
+      "pattern": "pm_mdl.bml#*mylla*",
+      "category": "Mags",
+      "subcategory": "Mag body",
+      "in_game_name": "Mag body (Mylla)"
+    },
+    {
+      "pattern": "pm_mdl.bml#*youlla*",
+      "category": "Mags",
+      "subcategory": "Mag body",
+      "in_game_name": "Mag body (Youlla)"
+    },
+    {
+      "pattern": "pm_mdl.bml#*golla*",
+      "category": "Mags",
+      "subcategory": "Mag body",
+      "in_game_name": "Mag body (Golla)"
+    },
+    {
+      "pattern": "pm_mdl.bml#*pilla*",
+      "category": "Mags",
+      "subcategory": "Mag body",
+      "in_game_name": "Mag body (Pilla)"
+    },
+    {
+      "pattern": "pm_b_*",
+      "category": "Photon Blasts",
+      "subcategory": "Photon Blast (loose)",
+      "in_game_name": "Photon Blast body (loose pm_b_ model)",
+      "source": "Loose pm_b_* models outside the pm_mdl.bml container, if any, are Photon Blast bodies."
+    },
+    {
+      "pattern": "mahoujin*",
+      "category": "Mags",
+      "subcategory": "Mag summon circle (loose)",
+      "in_game_name": "Mahoujin (mag/photon summon magic circle)",
+      "source": "Loose mahoujin* models are the mag/photon summon magic-circle decal."
+    },
+    {
       "pattern": "pm_mdl.bml",
-      "category": "Effects",
-      "subcategory": "Photon",
-      "in_game_name": "Photon Magic projectile model (FARLLA/ESTLLA/GOLLA/PILLA/LEILLA/MYLLA)",
-      "source": "PsoBB.exe @pm_mdl: PHOTON_FARLLA, PHOTON_ESTLLA, etc.; pm = Photon Magic; covers all techniques' projectiles"
+      "category": "Mags",
+      "subcategory": "Mag + Photon Blast container",
+      "in_game_name": "Mag / Photon-Blast model container (FARLLA/ESTLLA/GOLLA/PILLA/LEILLA/MYLLA + pm_b_ photon blasts)",
+      "source": "pm = Photon Magic. The archive bundles BOTH mag bodies and photon-blast projectiles + the mahoujin summon circle; its named inners are split into Mags / Photon Blasts by the rules above. This rule only labels the bare archive top-level entry (the inner-blob children match the # rules first). Narrowed from the old 'pm_mdl.bml'->Effects blanket that, via archive-fallback, wrongly tagged EVERY inner as Effects."
     },
     {
       "pattern": "re_b_mark_base.bml",
@@ -919,6 +1023,27 @@
       "in_game_name": "Per-area particle descriptor"
     },
     {
+      "pattern": "effect_nt.xvm",
+      "category": "Effects",
+      "subcategory": "Effect sprite atlas",
+      "in_game_name": "Generic effect glow/light-burst sprites",
+      "source": "2026-06-20 visual categorize (rendered via /api/tile_png): multi-tile atlas of radial glow / white flare / blue orb sprites used by in-game effects. Was falling to the canonical 'Textures' bucket."
+    },
+    {
+      "pattern": "technic.xvm",
+      "category": "Effects",
+      "subcategory": "Technique effect texture",
+      "in_game_name": "Technique (spell) aura/orb texture",
+      "source": "2026-06-20 visual categorize: rendered as a circular spell aura/orb. 'technic' = technique (magic). Was 'Textures'."
+    },
+    {
+      "pattern": "technic_pt.xvm",
+      "category": "Effects",
+      "subcategory": "Technique effect texture",
+      "in_game_name": "Technique lightning-bolt texture (Zonde family)",
+      "source": "2026-06-20 visual categorize: rendered as a yellow-green lightning bolt (Zonde/Gizonde technique). Was 'Textures'."
+    },
+    {
       "pattern": "map_*.bin",
       "category": "Maps / Terrain",
       "subcategory": "Area maps",
@@ -943,6 +1068,13 @@
       "subcategory": "Set data tables",
       "in_game_name": "SetData table (object/enemy spawn rules)",
       "source": "SetDataTableOff/On/Ulti.rel = SetData tables for online/offline/ultimate"
+    },
+    {
+      "pattern": "SetDataTable*.rel",
+      "category": "Set Pieces",
+      "subcategory": "Set data tables",
+      "in_game_name": "SetData spawn table (Off/On + Ultimate variants)",
+      "source": "2026-06-20: SetDataTableOff/On/OffUlti/OnUlti.rel are the master object/enemy spawn-rule tables. Same family as the set_*.rel rule but named SetDataTable*; previously fell to the canonical 'Maps' bucket because no rule matched the capitalized basename."
     },
     {
       "pattern": "*.gsl",
@@ -1103,6 +1235,20 @@
       "category": "UI",
       "subcategory": "Localized text texture",
       "in_game_name": "Japanese text texture"
+    },
+    {
+      "pattern": "radermapframe.xvm",
+      "category": "UI",
+      "subcategory": "Radar / minimap chrome",
+      "in_game_name": "Radar-map frame border (HUD minimap chrome)",
+      "source": "2026-06-20 visual categorize (rendered via /api/tile_png): a near-blank alpha-driven white border frame — the HUD radar/minimap frame chrome ('rader' = radar). Was falling to the canonical 'Textures' bucket."
+    },
+    {
+      "pattern": "pso_x_*.mkv",
+      "category": "Quests",
+      "subcategory": "Cutscene video",
+      "in_game_name": "PSO-X opening/ending cutscene (op=opening, ed=ending; _ep2/_u = Episode 2 / Ultimate variant)",
+      "source": "pso_x_op_*.mkv / pso_x_ed_*.mkv are the Matroska cutscene videos shipped in the data root. Previously fell through to Unknown because .mkv was not in the extension map."
     },
     {
       "pattern": "openning_*.pae",
