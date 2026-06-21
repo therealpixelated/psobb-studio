@@ -1028,8 +1028,32 @@ class NinjaModel {
     this.bs.seekSet(motionOfs);
 
     // Read offsets to animation list for each bone
+    //
+    // FIX (fix/native-anim): the per-bone offset table is followed
+    // immediately by the keyframe-data blocks, so the table ends where the
+    // smallest channel offset (`firstOfs`) begins. psov2 stops the table
+    // walk with `tell() === firstOfs` (exact equality). That holds only when
+    // the motion was authored for EXACTLY `this.bones.length` bones AND has
+    // at least one non-zero offset. PSOBB ships degenerate motions whose
+    // bone-count is smaller than the skeleton it's mounted on — e.g.
+    // gi_gue's `on_on_barrier` (1 bone, ALL channel offsets 0) loaded onto
+    // the 96-bone `gi_gue_all` skeleton. There `firstOfs` never drops below
+    // the buffer length, so `tell()` steps PAST it (never equal) and the
+    // loop reads bone entries off the end of the DataView -> RangeError at
+    // the table read (readUInt), dropping that clip. We therefore stop when
+    // `tell()` REACHES the keyframe region (`>=`, not `===`) or when the
+    // next full bone entry would not fit in the buffer. Well-formed motions
+    // land exactly on `firstOfs`, so `>=` is identical to `===` for them.
 
-    let firstOfs = this.bs.length;
+    // The true read bound is the ACTIVE view (the NMDM chunk after setOfs),
+    // whose byteLength is the chunk's `len` field — this can be smaller than
+    // the whole file (`this.bs.length`). Bound `firstOfs` and the fit-check
+    // by the view so the table walk never reads past the chunk.
+    const viewLen = this.bs.view.byteLength;
+    let firstOfs = viewLen;
+    const nActive = Object.keys(motionTypes).filter((k) => motionTypes[k])
+      .length;
+    const entryBytes = nActive * 8; // per bone: N offsets + N nums, 4 bytes each
     for (let i = 0; i < this.bones.length; i++) {
       let motionEntry = {
         bone: i,
@@ -1037,7 +1061,10 @@ class NinjaModel {
         frames: [],
       };
 
-      if (this.bs.tell() === firstOfs) {
+      if (
+        this.bs.tell() >= firstOfs ||
+        this.bs.tell() + entryBytes > viewLen
+      ) {
         motionList[i] = motionEntry;
         continue;
         // break;
@@ -1098,13 +1125,27 @@ class NinjaModel {
       }
 
       // Read Rotation
+      //
+      // FIX (fix/native-anim): PSOBB's on-disk .njm rotation keyframes use
+      // the COMPACT layout — a 2-byte (UShort) frame number followed by a
+      // 3xUShort BAMS triple (8 bytes/key total), NOT the 4-byte frameNo +
+      // 3xInt (16 bytes/key) that psov2's generic `readAnim` assumed. The
+      // wide read over-ran the DataView by 8 bytes per keyframe, throwing
+      // `RangeError: Offset is outside the bounds of the DataView` for every
+      // non-quat (type_flags 3 / 7) motion (e.g. Dark Bringer, Gi Gue),
+      // building 0 clips. This matches psov2's own PSOBB-tailored reader
+      // `readPsobbAnim` (_reference/psov2/public/js/NinjaModel.js:1675-1684:
+      // readUShort frameNo + readShortRot3) and was empirically verified
+      // against the served bytes (rot block = 8.00 bytes/key, monotonic
+      // in-range frameNos). The quat path (boota/dolphon, type_flags 8193)
+      // is untouched — it never enters this branch.
 
       if (motion.rot) {
         this.bs.seekSet(motion.rot.ofs);
 
         for (let i = 0; i < motion.rot.num; i++) {
-          let frameNo = this.bs.readUInt();
-          let rot = this.bs.readRot3();
+          let frameNo = this.bs.readUShort();
+          let rot = this.bs.readShortRot3();
 
           if (!motion.frames[frameNo]) {
             motion.frames[frameNo] = {};
