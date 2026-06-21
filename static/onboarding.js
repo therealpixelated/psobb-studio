@@ -154,6 +154,8 @@
       '  <div class="ob-card-title" id="obTitle"></div>' +
       '  <div class="ob-card-body" id="obBody"></div>' +
       '  <div class="ob-card-foot">' +
+      '    <label class="ob-noshow" style="margin-right:auto;display:flex;align-items:center;gap:6px;font-size:12px;color:var(--tk-text-mute,#9aa7b4);cursor:pointer">' +
+      '      <input type="checkbox" id="obNoShow" checked> don\'t show this again</label>' +
       '    <div class="ob-dots" id="obDots"></div>' +
       '    <button class="ghost" id="obPrev" type="button">back</button>' +
       '    <button id="obNext" type="button">next</button>' +
@@ -165,6 +167,10 @@
     ov.querySelector("#obClose").addEventListener("click", close);
     ov.querySelector("#obPrev").addEventListener("click", function () { go(-1); });
     ov.querySelector("#obNext").addEventListener("click", function () { go(1); });
+    var noShow = ov.querySelector("#obNoShow");
+    if (noShow) noShow.addEventListener("change", function () {
+      if (noShow.checked) markSeen(); else clearSeen();
+    });
     // Click on the backdrop (outside the card) dismisses.
     ov.addEventListener("mousedown", function (e) {
       if (e.target === ov) close();
@@ -257,6 +263,9 @@
   function markSeen() {
     try { localStorage.setItem(SEEN_KEY, "1"); } catch (_e) {}
   }
+  function clearSeen() {
+    try { localStorage.removeItem(SEEN_KEY); } catch (_e) {}
+  }
 
   function maybeAutoShow() {
     var seen = false;
@@ -266,6 +275,12 @@
     var st = window.psoEditor && window.psoEditor.state;
     if (st && st.currentFile && st.currentFile.name) { markSeen(); return; }
     open();
+    // Mark seen the MOMENT it auto-shows so it never re-appears on later
+    // loads / hard-reloads. The prior code only saved on an explicit
+    // dismiss, so reloading WITHOUT closing it re-triggered the tour every
+    // time. The "don't show this again" checkbox (default on) lets the
+    // user un-check to see it again next load.
+    markSeen();
   }
 
   // ── data-dir callout / header pill ───────────────────────────────
