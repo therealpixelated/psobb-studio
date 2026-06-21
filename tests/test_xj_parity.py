@@ -207,7 +207,7 @@ def _oracle_meshes(payload: bytes):
         strips = []
         strips.extend(xd._parse_strip_table(body, ts_off, ts_count))
         strips.extend(xd._parse_strip_table(body, tts_off, tts_count))
-        for (_tex, _diffuse, strip_indices) in strips:
+        for (_tex, _diffuse, _blend, strip_indices) in strips:
             if len(strip_indices) < 3:
                 continue
             local_verts = []

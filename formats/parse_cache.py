@@ -89,7 +89,12 @@ _DISK_PERSIST_MAX_BYTES = 32 * 1024 * 1024
 # without manual cleanup — the lookup just won't find any v<old> files.
 # v2 (2026-06-20): XjVertex gained a `color` RGBA field — old v1 pickles
 # unpickle WITHOUT it and crash `_xj_meshes_to_payload`'s v.color read.
-_DISK_CACHE_SCHEMA = 2
+# v3 (2026-06-21): the descriptor-XJ parser now POPULATES XjMesh.blend_mode
+# / alpha_blend from the type-2 (src_alpha,dst_alpha) material entry
+# (additive FX — e.g. bm_eff_ice). v2 pickles carry the old default
+# blend_mode="none" for every descriptor mesh, so effect models would keep
+# rendering dark-opaque off a stale pkl until this bump forces a re-parse.
+_DISK_CACHE_SCHEMA = 3
 
 # Disk cache root. Created on first write; the ``ensure_cache_dir``
 # helper in the server points us at the real location.

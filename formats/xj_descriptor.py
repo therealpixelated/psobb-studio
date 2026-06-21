@@ -200,6 +200,64 @@ assert _MAT_ENTRY_SIZE == 16, _MAT_ENTRY_SIZE
 # mesh-tree nodes; this bounds malicious / corrupt inputs.
 _MAX_NODES = 4096
 
+# Ninja GPU blend-factor symbol table (index == the factor enum value the
+# XJ descriptor's type-2 material entry stores as a raw u32). Same order
+# as ``formats.material._BLEND_SRC_FACTORS`` — duplicated here as a local
+# constant so the descriptor reader has no import-time dependency on the
+# chunk-NJ material module (and so the index→name decode is documented at
+# the one place it is used). Index 1 = "one", 4 = "src_alpha",
+# 5 = "one_minus_src_alpha" — the three values that actually appear in
+# shipped PSOBB.IO .xj material tables.
+_BLEND_FACTOR_NAMES = (
+    "zero",                 # 0
+    "one",                  # 1
+    "src_color",            # 2
+    "one_minus_src_color",  # 3
+    "src_alpha",            # 4
+    "one_minus_src_alpha",  # 5
+    "dst_alpha",            # 6
+    "one_minus_dst_alpha",  # 7
+)
+
+
+def _blend_factors_to_mode(src: int, dst: int) -> Tuple[str, Optional[dict]]:
+    """Map an XJ type-2 ``(src_alpha, dst_alpha)`` factor pair to a
+    ``(blend_mode, alpha_blend)`` result.
+
+    Ground truth (phantasmal-world ``NinjaGeometryConversion.convertXjModel``):
+    a strip is ADDITIVE-blended unless its pair is exactly
+    ``(src_alpha, one_minus_src_alpha)`` == ``(4, 5)`` — the standard
+    "normal" alpha blend.
+
+    We honour that distinction but deliberately map the NON-additive case
+    to ``"none"`` rather than ``"blend"``:
+
+        (4, 5)        -> ("none", None)     normal alpha; over PSOBB's
+                                            opaque (alpha=255) textures this
+                                            is pixel-identical to opaque, so
+                                            leaving the material untouched
+                                            avoids the depthWrite=false sort
+                                            risk that a "blend" tag carries
+                                            on otherwise-solid object/door
+                                            geometry (the guardrail).
+        anything else -> ("additive", {...})  glow / energy / FX — e.g. the
+                                            ice break's (4,1) == (src_alpha,
+                                            one). THIS is the case that was
+                                            being dropped and rendering as a
+                                            dark opaque solid.
+
+    Only the genuinely-additive case produces a material change downstream
+    (the frontend's ``applyPsoMaterialFlags`` acts on ``blend_mode ==
+    "additive"``); everything else stays the opaque baseline.
+    """
+    def _name(i: int) -> str:
+        return _BLEND_FACTOR_NAMES[i] if 0 <= i < len(_BLEND_FACTOR_NAMES) else "src_alpha"
+    # Normal alpha blend (4,5): treat as opaque-equivalent → no change.
+    if src == 4 and dst == 5:
+        return "none", None
+    # Every other explicit factor pair is additive FX (phantasmal's rule).
+    return "additive", {"src": _name(src), "dst": _name(dst)}
+
 
 # ---------------------------------------------------------------------------
 # Strip-to-triangle-list helper (shared shape with formats/xj.py).
@@ -644,8 +702,13 @@ def _parse_vertex_array(
 
 def _parse_material(
     body: bytes, mat_off: int, mat_size: int
-) -> Tuple[Optional[int], Optional[Tuple[float, float, float, float]]]:
-    """Walk the material entry list; return ``(texture_id, diffuse_rgba)``.
+) -> Tuple[
+    Optional[int],
+    Optional[Tuple[float, float, float, float]],
+    Optional[Tuple[int, int]],
+]:
+    """Walk the material entry list; return ``(texture_id, diffuse_rgba,
+    blend_factors)``.
 
     Each entry is 16 bytes; the first u32 is the entry "type". Per
     Phantasmal's ``parseTriangleStripMaterial``:
@@ -659,40 +722,63 @@ def _parse_material(
     diffuse is fed to the vertex-color channel so the descriptor render
     path matches psov2's "unlit × diffuse" look (2026-06-20); previously
     the color was decoded and discarded.
+
+    ``blend_factors`` is the first type-2 entry's ``(src_alpha, dst_alpha)``
+    GL factor pair (raw u32 enum values) or None when the strip carries no
+    blend material entry. This is the load-bearing field for additive FX
+    (ice / fire / energy) — previously the type-2 entry was decoded only
+    to advance the cursor and was then discarded, so every effect model
+    rendered as a dark opaque solid. See ``_blend_factors_to_mode``.
     """
     tex_id: Optional[int] = None
     diffuse: Optional[Tuple[float, float, float, float]] = None
+    blend: Optional[Tuple[int, int]] = None
     if mat_size <= 0 or mat_off <= 0:
-        return tex_id, diffuse
+        return tex_id, diffuse, blend
     n = len(body)
     for i in range(mat_size):
         off = mat_off + i * _MAT_ENTRY_SIZE
         if off + _MAT_ENTRY_SIZE > n:
             break
         (entry_type,) = struct.unpack_from("<I", body, off)
-        if entry_type == 3 and tex_id is None:
+        if entry_type == 2 and blend is None:
+            src, dst = struct.unpack_from("<II", body, off + 4)
+            blend = (int(src), int(dst))
+        elif entry_type == 3 and tex_id is None:
             (tex_id,) = struct.unpack_from("<I", body, off + 4)
         elif entry_type == 5 and diffuse is None:
             r, g, b, a = body[off + 4], body[off + 5], body[off + 6], body[off + 7]
             diffuse = (r / 255.0, g / 255.0, b / 255.0, a / 255.0)
-    return tex_id, diffuse
+    return tex_id, diffuse, blend
 
 
 def _parse_strip_table(
     body: bytes,
     strip_table_off: int,
     strip_count: int,
-) -> List[Tuple[Optional[int], Optional[Tuple[float, float, float, float]], List[int]]]:
+) -> List[Tuple[
+    Optional[int],
+    Optional[Tuple[float, float, float, float]],
+    Optional[Tuple[int, int]],
+    List[int],
+]]:
     """Read all strips from one strip table.
 
-    Returns ``[(texture_id, diffuse_rgba, indices), ...]``.
+    Returns ``[(texture_id, diffuse_rgba, blend_factors, indices), ...]``.
 
     Phantasmal's ``parseTriangleStripTable`` (Xj.kt) emits one ``XjMesh``
     per row; we mirror that. Each row has a 20-byte header pointing to
     a material table + an index list. Indices are u16 triangle-strip
-    indices into the global vertex slot table.
+    indices into the global vertex slot table. ``blend_factors`` is the
+    strip's ``(src_alpha, dst_alpha)`` pair (or None) — the additive-FX
+    signal threaded through to the XjMesh below.
     """
-    out: List[Tuple[Optional[int], Optional[Tuple[float, float, float, float]], List[int]]] = []
+    out: List[Tuple[
+        Optional[int],
+        Optional[Tuple[float, float, float, float]],
+        Optional[Tuple[int, int]],
+        List[int],
+    ]] = []
     if strip_count <= 0 or strip_table_off <= 0:
         return out
     n = len(body)
@@ -703,13 +789,13 @@ def _parse_strip_table(
         mat_off, mat_size, idx_off, idx_count, _unk = struct.unpack_from(
             _STRIP_ROW_FMT, body, row_off,
         )
-        tex_id, diffuse = _parse_material(body, mat_off, mat_size)
+        tex_id, diffuse, blend = _parse_material(body, mat_off, mat_size)
 
         if idx_count <= 0 or idx_off <= 0 or idx_off + 2 * idx_count > n:
             indices: List[int] = []
         else:
             indices = list(struct.unpack_from(f"<{idx_count}H", body, idx_off))
-        out.append((tex_id, diffuse, indices))
+        out.append((tex_id, diffuse, blend, indices))
     return out
 
 
@@ -882,6 +968,18 @@ def parse_xj_descriptor(
     # submeshes show their authored tint instead of washing to white.
     last_diffuse: Optional[Tuple[float, float, float, float]] = None
     for (_off, model_offset, world_M, ef) in nodes:
+        # Sticky blend factors are scoped PER XjModel node — reset here.
+        # phantasmal-world's convertXjModel declares currentSrcAlpha /
+        # currentDstAlpha as model-local and lets them persist across the
+        # node's meshes, but NOT across separate nodes. Scoping per-node
+        # (rather than across the whole file like last_tex_id) is the
+        # guardrail that keeps a single FX node's additive blend from
+        # bleeding onto an unrelated opaque node later in the tree: a
+        # strip only becomes blended once a type-2 entry has been seen
+        # WITHIN ITS OWN node; strips that precede the first blend entry
+        # — and every strip of a node that carries no blend entry at all
+        # — stay blend_mode="none" and are left fully opaque.
+        last_blend: Optional[Tuple[int, int]] = None
         # HIDE / SHAPE_SKIP suppress drawing for this node only.
         # Children were already enqueued during the DFS regardless of
         # SHAPE_SKIP (see module header). Note: EVAL_BREAK is
@@ -921,8 +1019,14 @@ def parse_xj_descriptor(
         # Strip tables: opaque + transparent. Both are emitted as
         # XjMesh rows in Phantasmal — we keep them in one combined
         # list. The texture id (when present in the material list)
-        # rides along on each strip entry.
-        strips: List[Tuple[Optional[int], Optional[Tuple[float, float, float, float]], List[int]]] = []
+        # rides along on each strip entry. A 4th field carries the
+        # ``(src_alpha, dst_alpha)`` blend pair (or None).
+        strips: List[Tuple[
+            Optional[int],
+            Optional[Tuple[float, float, float, float]],
+            Optional[Tuple[int, int]],
+            List[int],
+        ]] = []
         strips.extend(_parse_strip_table(body, ts_off, ts_count))
         strips.extend(_parse_strip_table(body, tts_off, tts_count))
 
@@ -932,7 +1036,7 @@ def parse_xj_descriptor(
         wp, wr, ws = _decompose_world_xform(world_M)
         wm_tuple = tuple(world_M)
 
-        for (tex_id, diffuse, strip_indices) in strips:
+        for (tex_id, diffuse, blend, strip_indices) in strips:
             if len(strip_indices) < 3:
                 continue
             # Inherit previous GPU texture state when this strip's
@@ -954,6 +1058,25 @@ def parse_xj_descriptor(
                 vcolor = (dr, dg, db, da)
             else:
                 vcolor = (1.0, 1.0, 1.0, 1.0)
+
+            # Same render-state stickiness for the blend factors. A strip
+            # with its own type-2 entry sets the active blend; later
+            # strips with no entry inherit it (PSOBB's sticky GPU blend
+            # state — phantasmal-world's convertXjModel does the same with
+            # currentSrcAlpha/currentDstAlpha). ``effective_blend`` is None
+            # until the FIRST type-2 entry is seen, so the leading opaque
+            # geometry of a mixed model — and every strip of a model that
+            # carries no blend entry at all — stays blend_mode="none" and
+            # is left fully opaque by the frontend (the guardrail).
+            if blend is not None:
+                last_blend = blend
+            effective_blend = blend if blend is not None else last_blend
+            if effective_blend is not None:
+                blend_mode, alpha_blend = _blend_factors_to_mode(
+                    effective_blend[0], effective_blend[1],
+                )
+            else:
+                blend_mode, alpha_blend = "none", None
 
             # Locally renumber the strip's slot references so that
             # downstream consumers can treat the XjMesh's `vertices`
@@ -1042,6 +1165,8 @@ def parse_xj_descriptor(
                 world_rotation_euler=wr,
                 world_scale=ws,
                 world_matrix=wm_tuple,
+                blend_mode=blend_mode,
+                alpha_blend=alpha_blend,
             ))
 
     return out_meshes
