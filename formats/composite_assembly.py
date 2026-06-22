@@ -169,13 +169,46 @@ class CompositeAssembly:
     source:
         Provenance tag — one of ``"pso-blender"``,
         ``"static-analysis-fcn-0xNNNNNNNN"``, ``"hand-curated"``,
-        ``"bml-root-trs"``, or ``"identity-fallback"``. Surfaced
-        verbatim in the API response so callers can decide which
-        tier of data they trust.
+        ``"psov2-catalog"``, ``"bml-root-trs"``, or
+        ``"identity-fallback"``. Surfaced verbatim in the API response
+        so callers can decide which tier of data they trust.
+    layout:
+        The psov2 NinjaPlugin catalog kind that governs how the parts
+        are laid out by the frontend. This mirrors the reference
+        renderer's per-catalog ``api_setModel`` / ``api_setItem`` /
+        ``api_setWeapon`` / ``api_setPlayer`` behaviour 1:1 (the owner
+        wants a pixel side-by-side match):
+
+          * ``"enemy"``  — primary (``parts[0]``) at the world origin;
+            every other part laid in a straight +X row at
+            ``x = 20 * i`` (``i`` = 1-based index of the non-primary
+            part). Matches ``NinjaPlugin.api_setModel``.
+          * ``"object"`` — identical +X row, step 20. Matches
+            ``api_setItem``.
+          * ``"weapon"`` — primary at origin; extras at ``x = 10 * i``
+            (step 10). Matches ``api_setWeapon``.
+          * ``"player"`` — NO spread. ``parts[0]`` (the body) sits at
+            the origin and owns the full skeleton; every other part is
+            attached as a CHILD of a body skeleton bone (psov2 attaches
+            head / hair / cap to ``body.skeleton.bones[59]``) so it
+            rides the bone's world transform and stands on the
+            character. Matches ``api_setPlayer`` + the per-class
+            ``AssetPlayer`` handler's ``bones[59].add(...)`` calls.
+          * ``""`` / ``None`` — legacy hand-curated absolute-TRS /
+            bone-attach layout (the pre-psov2 placement table). The
+            frontend honours each part's literal ``pos`` /
+            ``rot_euler`` / ``scale`` / ``parent_inner`` /
+            ``parent_bone``.
+
+        When ``layout`` is one of the psov2 kinds the frontend IGNORES
+        the per-part literal ``pos`` (it derives the spread from the
+        part index) — the part ORDER is what matters, matching psov2's
+        curated ``keys[]`` order exactly.
     """
     bml_path: str
     parts: List[CompositePart]
     source: str
+    layout: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -226,145 +259,53 @@ class CompositeAssembly:
 #   * head / face crown : bones 33, 34 (parent of skull node 77)
 #   * tail base         : bone 104 (Z=-124, deep tail)
 #
-# CORRECTED 2026-06-21 (engine RE, workflow wf_905d5cf3): the pale bony
-# tusked HEAD/MASK the real boss shows is boss2_b_helm_break.nj — the
-# *breakable head armor*, which is DRAWN ON THE INTACT BOSS by default
-# and only breaks off after armor damage. In the engine the helm mesh is
-# grafted onto body NJCM node 0x4d (decimal 77) and drawn while the
-# break bit (sinowbeat_subtype & 0x40) is clear; the break event hides
-# node 0x4d and spawns a *separate* debris object. So the FILE named
-# "_break" is the intact head, not debris. The prior RE (a1e765f)
-# wrongly read the body inner's bare neck crest as "the skull" and
-# omitted the helm — which is exactly why the bony tusked face was
-# missing (owner: "it doesn't have a swept back skull"). We re-add it,
-# bone-attached at body node 0x4d/bone 77 (the engine graft point), so
-# it caps the head and rides the head animation.
-# Decomp refs (Psobb.exe-05112026.c): handle_derolle_behavior case-4
-# L175630-175706 (helm visibility gate L175685, DerolleGetModelNode(
-# model_files[2].njcm, 0x4d) L176464); UpdateDerolle break trigger
-# L175071. shell_break.nj is the breakable back shell debris; the intact
-# shells render as live body nodes, so it stays omitted for the preview.
+# LAYOUT 2026-06-21 (psov2-catalog, owner directive "1:1 with psov2"):
+# psov2's AssetEnemies "De Rol Le" handler (NinjaPlugin api_setModel) draws
+# the body inner at the ORIGIN and SPREADS the other inners in a +X row
+# (mesh.position.x = dx; dx += 20). The curated keys[] ORDER is
+# authoritative (NOT BML directory order):
+#   body (origin) -> fin_b(20) -> fin_a(40) -> sting(60) -> tentacle(80)
+#   -> helm_break(100) -> shell_break(120)
+# All fragments share the SAME body PVM (boss2_b_derorure_body.pvm) — psov2
+# passes the body `tex` to every fragment loader. The earlier bone-attach
+# placement (fins on the head, sting/tentacle on the tail, _break omitted)
+# was the in-game-faithful layout but it is NOT what psov2's parity view
+# shows; the owner wants the side-by-side to match psov2, so we lay the
+# parts out exactly as api_setModel does.
+# psov2 ref: _reference/psov2/public/js/AssetEnemies.js L846-910.
 _DE_ROL_LE_PARTS: List[CompositePart] = [
-    # Body — the segmented centipede carapace + legs + tail + the head's
-    # NECK BASE. This single .nj (176-bone NJCM skeleton) carries the
-    # purple plated body, the underside legs, the yellow/orange flank
-    # dots and the spined tail. Its head end is just a bare neck crest —
-    # the distinctive bony tusked face is the helm part below, which the
-    # engine grafts onto this skeleton's head node. World-absolute at
-    # origin; animation root. Every appendage rides this skeleton.
+    # Body — the segmented carapace + legs + tail + head. This single .nj
+    # is the primary; rendered at the origin and drives animation. psov2
+    # textures it (and every spread fragment) with boss2_b_derorure_body.pvm.
     CompositePart(
         inner_nj="boss2_b_derorure_body.nj",
         pos=(0.0, 0.0, 0.0),
-        rot_euler=(0.0, 0.0, 0.0),
-        scale=(1.0, 1.0, 1.0),
-        parent_inner=None,
-        notes=(
-            "body — composite root: purple segmented carapace, legs, "
-            "flank dots, spined tail. Head end is a bare neck crest; the "
-            "bony face is the helm part (grafted on node 0x4d=bone 77)."
-        ),
+        notes="body — primary at origin (shared body PVM). psov2 keys[] order.",
     ),
-    # NOTE (2026-06-21, corrected): boss2_b_helm_break.nj is NOT the head.
-    # The BODY inner already contains De Rol Le's head/skull — psov2
-    # renders the body inner WITH its head, and our single-model
-    # psov2_ninja.js path does too. helm_break is breakable-armor DEBRIS
-    # that psov2's api_setModel spreads OFF to the side (dx+=20), not onto
-    # the body. Bone-attaching it onto the head was wrong (it doubled the
-    # head into the goofy blade). OMITTED. The real defect is that the
-    # COMPOSITE skinned path mangles the body head that psov2_ninja.js
-    # draws correctly.
-    # Bite-attack jaw fins — small face appendages. NOTE: the bone
-    # indices 33/34 are the prior RE's UNVERIFIED guesses (the engine RE
-    # found only node 0x4d=77 code-grounded); kept because they are tiny
-    # and render near the head. Revisit if they float.
-    CompositePart(
-        inner_nj="boss2_b_derorure_fin_a.nj",
-        parent_inner="boss2_b_derorure_body.nj",
-        parent_bone=33,
-        local_offset=(0.0, 0.0, 0.0),
-        notes=(
-            "bite-attack jaw fin (a) — head bone 33 (UNVERIFIED guess). "
-            "Small face appendage."
-        ),
-    ),
-    CompositePart(
-        inner_nj="boss2_b_derorure_fin_b.nj",
-        parent_inner="boss2_b_derorure_body.nj",
-        parent_bone=34,
-        local_offset=(0.0, 0.0, 0.0),
-        notes=(
-            "bite-attack jaw fin (b) — head bone 34 (UNVERIFIED guess). "
-            "Small face appendage."
-        ),
-    ),
-    # Tail appendages — sting + tentacle. Bone 104 is the prior RE's
-    # UNVERIFIED guess (the body inner already carries the spined tail).
-    CompositePart(
-        inner_nj="boss2_b_derorure_sting.nj",
-        parent_inner="boss2_b_derorure_body.nj",
-        parent_bone=104,
-        local_offset=(0.0, 0.0, 0.0),
-        notes=(
-            "tail stinger — tail-base bone 104 (UNVERIFIED guess)."
-        ),
-    ),
-    CompositePart(
-        inner_nj="boss2_b_derorure_tentacle.nj",
-        parent_inner="boss2_b_derorure_body.nj",
-        parent_bone=104,
-        local_offset=(0.0, 0.0, 0.0),
-        notes=(
-            "articulated tail tentacle — tail-base bone 104 (UNVERIFIED "
-            "guess). Self-animated in-game (tloop NJM)."
-        ),
-    ),
-    # shell_break.nj is the breakable BACK SHELL debris — the intact
-    # shells render as live body nodes, so it is OMITTED for the static
-    # preview (adding it would double the carapace).
+    # Spread fragments — laid in a +X row by the frontend (x=20,40,...) in
+    # this exact psov2 keys[] order. fin_b BEFORE fin_a (psov2 order).
+    CompositePart(inner_nj="boss2_b_derorure_fin_b.nj", notes="spread (psov2 keys[0])"),
+    CompositePart(inner_nj="boss2_b_derorure_fin_a.nj", notes="spread (psov2 keys[1])"),
+    CompositePart(inner_nj="boss2_b_derorure_sting.nj", notes="spread (psov2 keys[2])"),
+    CompositePart(inner_nj="boss2_b_derorure_tentacle.nj", notes="spread (psov2 keys[3])"),
+    CompositePart(inner_nj="boss2_b_helm_break.nj", notes="breakable-armor debris — spread (psov2 keys[4])"),
+    CompositePart(inner_nj="boss2_b_shell_break.nj", notes="breakable shell debris — spread (psov2 keys[5])"),
 ]
 
 
-# Challenge-mode De Rol Le variant (bm_boss7_de_rol_le_c.bml). Same body
-# skeleton (boss2_b_derorure_body.nj — pointy skull intrinsic), so the same
-# RE-derived bone attachment applies. Inner set: body + tentacle + a
-# Challenge-only hige (whisker) tentacle + the two damage-state inners.
-# The tentacles attach to the tail base (bone 104, same as the main
-# variant). The damage states (helm_break/shell_break) are OMITTED for the
-# same reason as the main variant — they are broken-armor debris, not the
-# intact boss, and have no static rest-pose body bone in the RE.
+# Challenge-mode De Rol Le variant (bm_boss7_de_rol_le_c.bml). Not present
+# in psov2's catalog (no parity reference), so we lay it out with the same
+# psov2 ENEMY convention the base variant uses: body primary at the origin
+# + the remaining inners spread in a +X row (the frontend computes the
+# step from the part index). Same body skeleton (boss2_b_derorure_body.nj).
 _DE_ROL_LE_C_PARTS: List[CompositePart] = [
     CompositePart(
         inner_nj="boss2_b_derorure_body.nj",
         pos=(0.0, 0.0, 0.0),
-        rot_euler=(0.0, 0.0, 0.0),
-        scale=(1.0, 1.0, 1.0),
-        parent_inner=None,
-        notes=(
-            "body — Challenge mode; composite root + intrinsic pointy "
-            "skull (same skeleton as the main variant)."
-        ),
+        notes="body — primary at origin (Challenge variant).",
     ),
-    CompositePart(
-        inner_nj="boss2_b_derorure_tentacle.nj",
-        parent_inner="boss2_b_derorure_body.nj",
-        parent_bone=104,
-        local_offset=(0.0, 0.0, 0.0),
-        notes="tentacle — attached to tail-base bone 104 (rides the body tail).",
-    ),
-    CompositePart(
-        inner_nj="hige_at01_tentacle.nj",
-        parent_inner="boss2_b_derorure_body.nj",
-        parent_bone=104,
-        local_offset=(0.0, 0.0, 0.0),
-        notes=(
-            "hige (whisker) tentacle — Challenge-mode-only extra appendage. "
-            "Attached to the tail base (bone 104); the RE did not pin a "
-            "distinct bone for this Challenge-only piece, so it shares the "
-            "tail-base attach (UNRESOLVED: exact hige bone)."
-        ),
-    ),
-    # helm_break / shell_break OMITTED — damage-state debris, not the
-    # intact boss (see the main-variant note above).
+    CompositePart(inner_nj="boss2_b_derorure_tentacle.nj", notes="spread"),
+    CompositePart(inner_nj="hige_at01_tentacle.nj", notes="Challenge-only hige tentacle — spread"),
 ]
 
 
@@ -426,68 +367,44 @@ _DRAGON_PARTS: List[CompositePart] = [
 # cluster above and replace these visual-separation guesses with the
 # engine's own per-part TRS. See psobb_r2_findings.md for the cluster
 # context (Vol Opt class descriptor list at 0xA44C00..0xA44CBC).
+# LAYOUT 2026-06-21 (psov2-catalog, owner directive "1:1 with psov2"):
+# psov2's AssetEnemies "Vol Opt" handler (api_setModel) draws me5p02_y_all.nj
+# (phase-2 snake form) at the ORIGIN as the primary, then SPREADS the
+# curated keys[] list in a +X row (x=20,40,...). The first THREE keys[]
+# entries in psov2 (me5p02_y_broken01 / me5_y_all / me5p01_y_all) are
+# COMMENTED OUT, so they are NOT rendered — we drop them too. Each spread
+# fragment is textured with its OWN per-fragment .pvm (the frontend's
+# per-inner texture binding already does this). The exact keys[] ORDER is
+# authoritative.
+# psov2 ref: _reference/psov2/public/js/AssetEnemies.js L1209-1382.
 _VOLOPT_PARTS: List[CompositePart] = [
-    # Phase 1 — the wall / face. This is a single skinned mesh: the
-    # entire phase-1 silhouette (face core + flanking monitors + side
-    # displays) is authored as one skeleton in this NJ. Place at world
-    # origin so the asset preview centres on phase 1 by default.
-    CompositePart(
-        inner_nj="me5p01_y_all.nj",
-        pos=(0.0, 0.0, 0.0),
-        rot_euler=(0.0, 0.0, 0.0),
-        scale=(1.0, 1.0, 1.0),
-        parent_inner=None,
-        notes=(
-            "phase 1 (wall + face) — skinned monolithic mesh; primary "
-            "for animation playback. TODO: engine constants from "
-            "voloptcontrol_constructor (0x00A447D4)."
-        ),
-    ),
-    # Phase 2 — the snake-like body. In-game it emerges from below the
-    # phase-1 wall after the wall is destroyed. For preview we offset
-    # +Y so it floats ABOVE the phase-1 silhouette (phase 2 is roughly
-    # 150 units tall in PSOBB world units; a 200-unit Y offset clears
-    # the phase 1 mesh without crowding the screen).
+    # Primary — phase-2 snake form at the origin (psov2 modelLoader.parse).
     CompositePart(
         inner_nj="me5p02_y_all.nj",
-        pos=(0.0, 200.0, 0.0),
-        rot_euler=(0.0, 0.0, 0.0),
-        scale=(1.0, 1.0, 1.0),
-        parent_inner=None,
-        notes=(
-            "phase 2 (snake form) — visual offset above phase 1 for "
-            "preview. In-game phase 2 spawns at the room centre after "
-            "phase 1 dies — the two never co-render. TODO: engine "
-            "constants from init_voloptform2_global_config (0x00A44BF0)."
-        ),
+        pos=(0.0, 0.0, 0.0),
+        notes="phase 2 (snake form) — primary at origin (psov2 modelLoader).",
     ),
-    # Phase 2 pillar — the central pillar prop. Place to the right of
-    # the snake so it doesn't overlap the body silhouette.
-    CompositePart(
-        inner_nj="me5p02_y_pillar.nj",
-        pos=(150.0, 200.0, 0.0),
-        rot_euler=(0.0, 0.0, 0.0),
-        scale=(1.0, 1.0, 1.0),
-        parent_inner=None,
-        notes=(
-            "phase 2 pillar — visual-separation offset; in-game the "
-            "pillar is room-centre. TODO: engine constants from "
-            "player_hit_volopt_pillar (0x00A44A18)."
-        ),
-    ),
-    # Phase 2 cage — surrounding cage prop. Offset to the left of the
-    # snake silhouette for inspection.
-    CompositePart(
-        inner_nj="me5p02_y_cage.nj",
-        pos=(-150.0, 200.0, 0.0),
-        rot_euler=(0.0, 0.0, 0.0),
-        scale=(1.0, 1.0, 1.0),
-        parent_inner=None,
-        notes=(
-            "phase 2 cage — visual-separation offset for preview. "
-            "TODO: engine constants."
-        ),
-    ),
+    # Spread keys[] in psov2 order (the 3 commented-out entries are dropped).
+    CompositePart(inner_nj="fe_obj_hira_kage.nj", notes="spread"),
+    CompositePart(inner_nj="fe_obj_vo_mo_dai_aka.nj", notes="spread"),
+    CompositePart(inner_nj="fe_obj_vo_mo_dai_ao.nj", notes="spread"),
+    CompositePart(inner_nj="fe_obj_vo_mo_dai_hakai.nj", notes="spread"),
+    CompositePart(inner_nj="fe_obj_vo_mo_sho01_aka.nj", notes="spread"),
+    CompositePart(inner_nj="fe_obj_vo_mo_sho01_ao.nj", notes="spread"),
+    CompositePart(inner_nj="fe_obj_vo_mo_sho01_hakai.nj", notes="spread"),
+    CompositePart(inner_nj="fe_obj_vo_mo_sho02_aka.nj", notes="spread"),
+    CompositePart(inner_nj="fe_obj_vo_mo_sho02_ao.nj", notes="spread"),
+    CompositePart(inner_nj="fe_obj_vo_mo_sho02_hakai.nj", notes="spread"),
+    CompositePart(inner_nj="fe_obj_vo_mo_sho03_aka.nj", notes="spread"),
+    CompositePart(inner_nj="fe_obj_vo_mo_sho03_ao.nj", notes="spread"),
+    CompositePart(inner_nj="fe_obj_vo_mo_sho03_hakai.nj", notes="spread"),
+    CompositePart(inner_nj="fe_obj_vo_futa_moto.nj", notes="spread"),
+    CompositePart(inner_nj="fe_obj_vo_tenjo_hahen01.nj", notes="spread"),
+    CompositePart(inner_nj="fe_obj_vo_tenjo_hahen02.nj", notes="spread"),
+    CompositePart(inner_nj="fs_obj_hiraishin_a.nj", notes="spread"),
+    CompositePart(inner_nj="me5p02_y_cage.nj", notes="spread"),
+    CompositePart(inner_nj="me5p02_y_missile.nj", notes="spread"),
+    CompositePart(inner_nj="me5p02_y_pillar.nj", notes="spread"),
 ]
 
 
@@ -713,6 +630,103 @@ _OLGA_FLOW_PARTS: List[CompositePart] = [
         ),
     ),
 ]
+
+
+# ---------------------------------------------------------------------------
+# Player class assemblies (psov2-catalog layout = "player")
+# ---------------------------------------------------------------------------
+#
+# psov2's AssetPlayer handler for each class loads the body inner as a
+# SkinnedMesh that owns the full skeleton, loads head / hair / cap as
+# separate meshes, and PARENTS them onto ``body.skeleton.bones[59]`` (the
+# neck/head bone) BEFORE calling ``NinjaPlugin.API.setPlayer`` — which adds
+# ONLY the body to the scene (head/hair/cap ride along as bone children)
+# and applies NO dx spread. We replicate that 1:1: the body is the primary
+# (origin, animation root) and head/hair/cap are bone-attached to body bone
+# 59. The body inner owns 64 bones for these classes (verified: bone 59 is
+# the neck, parent 56) so the attach index is in range.
+#
+# Inner names per class are the exact ``bml["plXbdy00.nj"]`` /
+# ``plXhed00.nj`` / ``plXhai00.nj`` / ``plXcap00.nj`` strings psov2 parses.
+# The OTHER inners in the BML (alternate hair/cap variants) go only into
+# psov2's mdlList (export bookkeeping), never the scene — so we leave them
+# OUT of the assembly; the composite path renders only the curated parts.
+# psov2 ref: _reference/psov2/public/js/AssetPlayer.js L53-751.
+#
+# The attach bone for head/hair/cap. psov2 hard-codes bones[59] for every
+# humanoid player class.
+_PLAYER_NECK_BONE = 59
+
+
+def _player_parts(
+    prefix: str,
+    *,
+    hair: bool = True,
+    cap: bool = False,
+) -> List[CompositePart]:
+    """Build the curated player part list for a class prefix.
+
+    ``prefix`` is the single uppercase class letter psov2 uses in the
+    inner names, e.g. ``"A"`` for Humar (plAbdy00.nj / plAhed00.nj /
+    plAhai00.nj). Every class has a body + head; ``hair`` / ``cap`` toggle
+    the optional pieces (Hucast/Racast/Racaseal/Fonewearl-cap etc. differ).
+    """
+    parts: List[CompositePart] = [
+        CompositePart(
+            inner_nj=f"pl{prefix}bdy00.nj",
+            pos=(0.0, 0.0, 0.0),
+            notes="player body — primary at origin; owns the skeleton.",
+        ),
+        CompositePart(
+            inner_nj=f"pl{prefix}hed00.nj",
+            parent_inner=f"pl{prefix}bdy00.nj",
+            parent_bone=_PLAYER_NECK_BONE,
+            notes="head — attached to body neck bone 59 (psov2 bones[59].add).",
+        ),
+    ]
+    if hair:
+        parts.append(
+            CompositePart(
+                inner_nj=f"pl{prefix}hai00.nj",
+                parent_inner=f"pl{prefix}bdy00.nj",
+                parent_bone=_PLAYER_NECK_BONE,
+                notes="hair — attached to body neck bone 59.",
+            )
+        )
+    if cap:
+        parts.append(
+            CompositePart(
+                inner_nj=f"pl{prefix}cap00.nj",
+                parent_inner=f"pl{prefix}bdy00.nj",
+                parent_bone=_PLAYER_NECK_BONE,
+                notes="cap — attached to body neck bone 59.",
+            )
+        )
+    return parts
+
+
+# Per-class hair/cap presence mirrors AssetPlayer.js exactly:
+#   Humar(A)     : body + head + hair                 (L53-127)
+#   Hunewearl(B) : body + head + hair                 (L129-206)
+#   Hucast(C)    : body + head                        (L208-270)
+#   Ramar(D)     : body + head + hair + cap           (L272-359)
+#   Racast(E)    : body + head                        (L361-423)
+#   Racaseal(F)  : body + head                        (L425-487)
+#   Fomarl(G)    : body + head + hair + cap           (L489-573)
+#   Fonewm(H)    : body + head + hair + cap           (L575-662)
+#   Fonewearl(I) : body + head + hair + cap           (L664-751)
+_PLAYER_CLASS_FILES: Dict[str, Tuple[str, bool, bool]] = {
+    # bml basename             : (prefix, has_hair, has_cap)
+    "planj.bml": ("A", True, False),   # Humar
+    "plbnj.bml": ("B", True, False),   # Hunewearl
+    "plcnj.bml": ("C", False, False),  # Hucast
+    "pldnj.bml": ("D", True, True),    # Ramar
+    "plenj.bml": ("E", False, False),  # Racast
+    "plfnj.bml": ("F", False, False),  # Racaseal
+    "plgnj.bml": ("G", True, True),    # Fomarl
+    "plhnj.bml": ("H", True, True),    # Fonewm
+    "plinj.bml": ("I", True, True),    # Fonewearl
+}
 
 
 COMPOSITE_TABLE: Dict[str, CompositeAssembly] = {
