@@ -342,10 +342,20 @@ def _find_real_pvrs() -> list[str]:
         Path(__file__).resolve().parent.parent,          # repo root
         Path(__file__).resolve().parent.parent / "_reference",
     ]
+    # Only genuine REFERENCE .pvr assets — never runtime-generated tiles.
+    # The studio writes decoded/re-encoded tiles under cache/ (and parity
+    # renders under _parity/); those are volatile per-machine and, being
+    # ARGB1555 (5 bits/channel), legitimately score below the reference PSNR
+    # bar. Scanning them made this test non-deterministic across machines.
+    _GENERATED = ("/cache/", "/_parity/", "/__pycache__/", "/.git/")
     found: list[str] = []
     for root in roots:
         if root.exists():
-            found.extend(glob.glob(str(root / "**" / "*.pvr"), recursive=True))
+            for p in glob.glob(str(root / "**" / "*.pvr"), recursive=True):
+                norm = p.replace("\\", "/").lower()
+                if any(seg in norm for seg in _GENERATED):
+                    continue
+                found.append(p)
     # De-dup, cap to keep the test quick.
     return sorted(set(found))[:12]
 

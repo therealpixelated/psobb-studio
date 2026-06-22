@@ -96,12 +96,16 @@ def test_floor_bundle_groups_assets_by_kind():
     bundle = sl.floor_bundle(info, 0)
     assert bundle["map_id"] == "aancient01"
     assert bundle["floor"] == 0
-    assert len(bundle["renderable"]) == 2  # nj + xj
+    # nj + xj are the .s-suffix terrain meshes; the n.rel ALSO surfaces as a
+    # renderable "rel_terrain" entry — added with the floor editor (2a40888),
+    # the path Pioneer 2 / city / lab maps render terrain through. The same
+    # n.rel still appears under scripts (it is a .rel), so scripts stays 3.
+    assert len(bundle["renderable"]) == 3  # nj + xj (terrain) + n.rel (rel_terrain)
     assert len(bundle["textures"])   == 1  # xvm
-    assert len(bundle["scripts"])    == 3  # 3 .rel files
-    # Renderable kind is "terrain" for the .s suffix files
-    for r in bundle["renderable"]:
-        assert r["kind"] == "terrain"
+    assert len(bundle["scripts"])    == 3  # 3 .rel files (n.rel double-surfaces)
+    # The .s-suffix mesh files group as "terrain"; the n.rel as "rel_terrain".
+    kinds = sorted(r["kind"] for r in bundle["renderable"])
+    assert kinds == ["rel_terrain", "terrain", "terrain"]
 
 
 def test_floor_bundle_unknown_floor_returns_empty_lists():
