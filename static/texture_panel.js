@@ -935,10 +935,26 @@
       }
       scheduleRefresh();
     } else {
-      // Cross-BML — re-open the model. We pass the variant's path and
-      // an empty entry/matched list (the asset router will fill in
-      // matched textures via its own resolution).
-      if (typeof window.psoOpenModelByPath === "function") {
+      // Cross-BML — re-open the model THROUGH THE ASSET ROUTER
+      // (psoAssetOpen === asset_router.dispatch, the same path a tree
+      // click uses) so it resolves matched textures + composite inners
+      // from the manifest. The previous code called psoOpenModelByPath
+      // DIRECTLY with an empty matched-texture list — bypassing that
+      // resolution — so a bare `.bml` variant (e.g. De Rol Le "state A"
+      // = bm_boss2_de_rol_le_a.bml) never resolved and fell back to the
+      // garbage cube. Routing through the dispatch fixes the broken
+      // variant "states". (Falls back to the direct call if the router
+      // global isn't present, e.g. in a stripped embed.)
+      if (typeof window.psoAssetOpen === "function") {
+        try {
+          await window.psoAssetOpen({
+            path: v.path,
+            entry: { path: v.path, category: "model" },
+          });
+        } catch (e) {
+          console.warn("variant open (router) failed", e);
+        }
+      } else if (typeof window.psoOpenModelByPath === "function") {
         try {
           await window.psoOpenModelByPath(v.path, {}, []);
         } catch (e) {
