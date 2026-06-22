@@ -5231,3 +5231,67 @@ header button.imp-header-btn { margin-right: 4px; }
   color: #6b748a;
   white-space: nowrap;
 }
+
+/* ── Model part picker — scannable Parts list ──────────────────────────
+   The native <select> (#modelInnerPick) stays as a compact fallback; this
+   friendly-named list is the primary part browser for multi-inner bosses.
+   hover = cyan, active = blue #2563eb (same state language as the tree). */
+#modelInnerPickWrap { align-items: flex-start; }
+.inner-pick-list {
+  list-style: none;
+  margin: 4px 0 0 0;
+  padding: 2px;
+  width: 100%;
+  max-height: 220px;
+  overflow-y: auto;
+  border: var(--tk-border-mute);
+  border-radius: var(--tk-rad-1);
+  background: rgba(0, 0, 0, 0.25);
+  scrollbar-width: thin;
+  scrollbar-color: var(--tk-line) transparent;
+}
+.inner-pick-list::-webkit-scrollbar { width: 10px; }
+.inner-pick-list::-webkit-scrollbar-track { background: transparent; }
+.inner-pick-list::-webkit-scrollbar-thumb {
+  background: var(--tk-line);
+  border-radius: var(--tk-rad-1);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+.inner-pick-list::-webkit-scrollbar-thumb:hover { background: var(--tk-blue); }
+.inner-pick-list .part-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 3px 6px;
+  border-radius: 3px;
+  cursor: pointer;
+  border-left: 2px solid transparent;
+  color: var(--tk-text);
+  transition: background-color var(--tk-d-1, 0.2s), color var(--tk-d-1, 0.2s);
+}
+.inner-pick-list .part-row:hover {
+  background: rgba(0, 255, 255, 0.08);
+  border-left-color: var(--tk-blue);
+  color: var(--tk-text-strong, #fff);
+}
+.inner-pick-list .part-row.active {
+  background: rgba(37, 99, 235, 0.22);
+  border-left-color: #2563eb;
+  color: var(--tk-text-strong, #fff);
+}
+.inner-pick-list .part-row .part-name {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--tk-fs-xs, 0.8rem);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.inner-pick-list .part-row .part-kind {
+  flex: none;
+  font-size: 9px;
+  color: var(--tk-text-dim);
+  font-family: var(--tk-font-mono);
+}
+.inner-pick-list .part-row.all-parts .part-name { color: var(--tk-blue); }

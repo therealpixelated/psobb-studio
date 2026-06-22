@@ -653,6 +653,10 @@
         <label id="modelInnerPickWrap" title="A multi-part BML (boss with body + helm + fins, etc.) packs each part as a separate inner .nj. 'All parts' composites every part into one scene; pick a single part to inspect it in isolation." hidden>
           part:
           <select id="modelInnerPick"></select>
+          <!-- Scannable, friendly-named Parts list (a 25-inner boss in a
+               one-line native dropdown IS the slop). The <select> stays as a
+               compact fallback; this list is the primary part browser. -->
+          <ul id="modelInnerPickList" class="inner-pick-list" role="listbox" aria-label="Model parts"></ul>
         </label>
         <label title="Use the upscaled tile if available, otherwise the source">
           <input type="checkbox" id="modelUseUpscaled" checked />

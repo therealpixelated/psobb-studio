@@ -2811,6 +2811,8 @@ function populateInnerPicker(info, currentSelection) {
   if (!info || !info.inners || info.inners.length < 2) {
     wrap.hidden = true;
     sel.innerHTML = "";
+    const list0 = $("#modelInnerPickList");
+    if (list0) list0.innerHTML = "";
     return;
   }
   const order = { primary: 0, destroyed: 1, lod: 2, shadow: 3 };
@@ -2820,19 +2822,30 @@ function populateInnerPicker(info, currentSelection) {
     if (da !== db) return da - db;
     return a.name.localeCompare(b.name);
   });
+  // Friendly label for an inner — the part picker was the ONE place the
+  // friendly-name system was bypassed (slop C). asset_names.friendly
+  // prettifies the null-display_name boss inners (e.g.
+  // fe_obj_vo_mo_dai_aka -> "Fe Obj Vo Mo Dai Aka").
+  const innerFriendly = (name) => {
+    const stem = String(name).replace(/\.(nj|xj)$/i, "");
+    if (window.PSOAssetNames && typeof window.PSOAssetNames.friendly === "function") {
+      try { return window.PSOAssetNames.friendly({ path: info.base + "#" + name }) || stem; }
+      catch (_e) { /* fall through */ }
+    }
+    return stem;
+  };
   sel.innerHTML = "";
   if (info.primaries.length >= 2) {
     const allOpt = document.createElement("option");
     allOpt.value = "__all__";
-    allOpt.textContent = `All parts (${info.primaries.length} primary)`;
+    allOpt.textContent = `All parts (${info.primaries.length})`;
     sel.appendChild(allOpt);
   }
   for (const x of sorted) {
     const opt = document.createElement("option");
     opt.value = x.name;
-    const stem = x.name.replace(/\.(nj|xj)$/i, "");
     const tag = x.kind === "primary" ? "" : ` [${x.kind}]`;
-    opt.textContent = `${stem}${tag}`;
+    opt.textContent = `${innerFriendly(x.name)}${tag}`;
     sel.appendChild(opt);
   }
   let defaultValue;
@@ -2846,6 +2859,47 @@ function populateInnerPicker(info, currentSelection) {
     defaultValue = sorted[0]?.name;
   }
   if (defaultValue) sel.value = defaultValue;
+
+  // Scannable, friendly-named Parts LIST (slop D). A 25-inner boss in a
+  // one-line native dropdown is the slop — render each inner as a clickable
+  // row with the active part lit. The <select> stays as a compact fallback.
+  const list = $("#modelInnerPickList");
+  if (list) {
+    list.innerHTML = "";
+    const makeRow = (value, name, kindLabel, extraClass) => {
+      const li = document.createElement("li");
+      li.className = "part-row" + (extraClass ? " " + extraClass : "");
+      li.dataset.value = value;
+      li.setAttribute("role", "option");
+      const nm = document.createElement("span");
+      nm.className = "part-name";
+      nm.textContent = name;
+      li.appendChild(nm);
+      if (kindLabel) {
+        const kd = document.createElement("span");
+        kd.className = "part-kind";
+        kd.textContent = `[${kindLabel}]`;
+        li.appendChild(kd);
+      }
+      li.addEventListener("click", async () => {
+        const cur = state.bmlInnersInfo;
+        if (!cur) return;
+        cur.current = value;
+        const selEl = $("#modelInnerPick");
+        if (selEl) selEl.value = value;        // keep the fallback in sync
+        highlightInnerPickList(value);
+        await loadInnerSelection(cur);
+      });
+      list.appendChild(li);
+    };
+    if (info.primaries.length >= 2) {
+      makeRow("__all__", `All parts (${info.primaries.length})`, "", "all-parts");
+    }
+    for (const x of sorted) {
+      makeRow(x.name, innerFriendly(x.name), x.kind === "primary" ? "" : x.kind);
+    }
+  }
+
   wrap.hidden = false;
   if (!sel.dataset.wired) {
     sel.dataset.wired = "1";
@@ -2853,10 +2907,22 @@ function populateInnerPicker(info, currentSelection) {
       const cur = state.bmlInnersInfo;
       if (!cur) return;
       cur.current = e.target.value;
+      highlightInnerPickList(e.target.value);
       await loadInnerSelection(cur);
     });
   }
   info.current = defaultValue;
+  highlightInnerPickList(defaultValue);
+}
+
+// Light up the Parts-list row matching `value` (an inner name or "__all__"),
+// clearing any prior highlight. Mirrors the tree's active-row convention.
+function highlightInnerPickList(value) {
+  const list = $("#modelInnerPickList");
+  if (!list) return;
+  for (const row of list.querySelectorAll(".part-row")) {
+    row.classList.toggle("active", row.dataset.value === value);
+  }
 }
 
 /**
