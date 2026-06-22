@@ -35,8 +35,14 @@
 //
 // Usage:
 //   node scripts/psov2_parity.mjs bm_boss2_de_rol_le.bml \
-//        [--ours http://127.0.0.1:8765] [--out _parity] \
+//        [--variant dc] [--ours http://127.0.0.1:8765] [--out _parity] \
 //        [--width 900] [--height 900] [--headed] [--keep-open]
+//
+//   --variant dc  : load the DREAMCAST asset in OUR studio (prefixes the
+//                   path with "dc/"), i.e. the SAME 397 KB De Rol Le BML
+//                   psov2 serves. This is required for the pixel-1:1 match
+//                   (the Xbox/BB BML is a different 2.05 MB atlas packing).
+//                   Default (no flag) loads the Xbox/BB asset as before.
 //
 // Requires: `playwright` installed (npm i playwright && npx playwright
 // install chromium) and OUR studio already serving the model data dir.
@@ -64,6 +70,15 @@ function has(name) {
 }
 const positional = argv.filter((a) => !a.startsWith("--"));
 const MODEL = positional[0] || "bm_boss2_de_rol_le.bml";
+// --variant dc (or PARITY_VARIANT=dc): load the Dreamcast variant of the
+// model in OUR studio (the SAME asset psov2 serves) so the pixel match is
+// possible. We do NOT change the load mechanism — psoOpenModelByPath()
+// stays; we only prefix the path string with "dc/", which the server's
+// variant resolver strips + routes to the read-only Dreamcast data root.
+// Default ("") preserves today's Xbox/BB behaviour for existing invocations.
+const VARIANT = flag("--variant", process.env.PARITY_VARIANT || "");
+const PREFIX = VARIANT === "dc" || VARIANT === "dreamcast" ? "dc/" : "";
+const OURS_MODEL = PREFIX + MODEL;
 const OURS_BASE = flag("--ours", process.env.PARITY_OURS || "http://127.0.0.1:8765");
 const OUT_ROOT = resolve(REPO, flag("--out", "_parity"));
 const W = parseInt(flag("--width", "900"), 10) || 900;
@@ -389,6 +404,8 @@ async function buildComposite(page, leftUrl, rightUrl, leftLabel, rightLabel, w,
 
   const result = {
     model: MODEL,
+    variant: VARIANT || "xbox",
+    oursModel: OURS_MODEL,
     outDir: OUT_DIR,
     psov2: { base: PSOV2_BASE },
     ours: { base: OURS_BASE },
@@ -452,7 +469,7 @@ async function buildComposite(page, leftUrl, rightUrl, leftLabel, rightLabel, w,
     );
     process.stderr.write(`[parity] studio page ready, loading model...\n`);
     const oursCap = await p2.evaluate(
-      `(${OURS_CAPTURE_FN})(${JSON.stringify({ model: MODEL, w: W, h: H, margin: 1.25, settleMs: 2500 })})`,
+      `(${OURS_CAPTURE_FN})(${JSON.stringify({ model: OURS_MODEL, w: W, h: H, margin: 1.25, settleMs: 2500 })})`,
     );
     const oursPng = dataUrlToBuffer(oursCap.dataUrl);
     await writeFile(join(OUT_DIR, "ours.png"), oursPng);

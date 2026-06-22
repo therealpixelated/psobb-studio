@@ -387,6 +387,7 @@ function disposeMesh() {
   state.anim.modelPath = null;
   state.anim.bones = [];
   state.anim.skinSubmeshes = [];
+  state.anim.bindSnapshot = null;
   state.anim.motions = [];
   state.anim.currentMotion = null;
   state.anim.currentData = null;
@@ -3217,6 +3218,9 @@ async function tryLoadCompositeBmlMesh(bmlPath, innerNames) {
           payload,
           skinSubmeshes: built.skinSubmeshes,
           bones: payload.bones,
+          // DIVERGENCE 3: the primary inner's own bind-pose snapshot for
+          // multi-bone LBS during per-frame animation.
+          bindSnapshot: built.bindSnapshot || null,
         };
       }
       // Adopt the helper's debug-mesh entries (one per submesh) into
@@ -3556,6 +3560,7 @@ async function tryLoadCompositeBmlMesh(bmlPath, innerNames) {
     state.anim.modelPath = `${bmlPath}#${primarySkinned.inner}`;
     state.anim.bones = primarySkinned.bones;
     state.anim.skinSubmeshes = primarySkinned.skinSubmeshes;
+    state.anim.bindSnapshot = primarySkinned.bindSnapshot || null;
     state.anim.currentMotion = null;
     state.anim.currentData = null;
     state.anim.time = 0.0;
@@ -4182,18 +4187,16 @@ function _composeTrsM4(out, tx, ty, tz, rx, ry, rz, sx, sy, sz, zxy) {
   const cy = Math.cos(ry), s_y = Math.sin(ry);
   const cz = Math.cos(rz), s_z = Math.sin(rz);
   let r00, r01, r02, r10, r11, r12, r20, r21, r22;
-  if (zxy) {
-    // R = Rz * Rx * Ry (three.js "ZXY" Euler order).
-    r00 = cz * cy - s_z * s_x * s_y;
-    r01 = -s_z * cx;
-    r02 = cz * s_y + s_z * s_x * cy;
-    r10 = s_z * cy + cz * s_x * s_y;
-    r11 = cz * cx;
-    r12 = s_z * s_y - cz * s_x * cy;
-    r20 = -cx * s_y;
-    r21 = s_x;
-    r22 = cx * cy;
-  } else {
+  // DIVERGENCE 1 (2026-06-21): ALWAYS compose ZYX and IGNORE the ZXY/0x20
+  // flag, matching psov2 NinjaModel.js readBone (324-350) which composes
+  // the Euler bind rotation X->Y->Z (net intrinsic ZYX) for EVERY bone and
+  // only logs (console.error) when the ZXY flag is set — it never switches
+  // order. Our prior ZXY branch (kept below, dead, for reference) diverged
+  // the bind pose on flagged bones (e.g. De Rol Le head/jaw), splaying the
+  // skull. The ``zxy`` param is retained for call-site signature
+  // compatibility but is intentionally unused.
+  void zxy;
+  {
     // R = Rz * Ry * Rx (matches Phantasmal's "ZYX" Three.js Euler order).
     r00 = cz * cy;
     r01 = cz * s_y * s_x - s_z * cx;
@@ -4249,6 +4252,87 @@ function _mulM4(out, a, b) {
   out[13] = a30*b01 + a31*b11 + a32*b21 + a33*b31;
   out[14] = a30*b02 + a31*b12 + a32*b22 + a33*b32;
   out[15] = a30*b03 + a31*b13 + a32*b23 + a33*b33;
+}
+
+/**
+ * General row-major 4x4 inverse (out = a^-1). Returns true on success,
+ * false (and leaves identity in out) for a singular matrix. Used to
+ * build per-bone BIND-pose inverses for multi-bone linear-blend skinning
+ * (DIVERGENCE 3) — psov2 stores vertex positions in bind-WORLD space and
+ * its THREE.Skeleton applies animBone × bindInverse; we reproduce that
+ * blend so weighted seams deform identically. `out` must not alias `a`.
+ */
+function _invertM4(out, a) {
+  const m00 = a[0], m01 = a[1], m02 = a[2], m03 = a[3];
+  const m10 = a[4], m11 = a[5], m12 = a[6], m13 = a[7];
+  const m20 = a[8], m21 = a[9], m22 = a[10], m23 = a[11];
+  const m30 = a[12], m31 = a[13], m32 = a[14], m33 = a[15];
+  const b00 = m00 * m11 - m01 * m10;
+  const b01 = m00 * m12 - m02 * m10;
+  const b02 = m00 * m13 - m03 * m10;
+  const b03 = m01 * m12 - m02 * m11;
+  const b04 = m01 * m13 - m03 * m11;
+  const b05 = m02 * m13 - m03 * m12;
+  const b06 = m20 * m31 - m21 * m30;
+  const b07 = m20 * m32 - m22 * m30;
+  const b08 = m20 * m33 - m23 * m30;
+  const b09 = m21 * m32 - m22 * m31;
+  const b10 = m21 * m33 - m23 * m31;
+  const b11 = m22 * m33 - m23 * m32;
+  let det = b00 * b11 - b01 * b10 + b02 * b09 + b03 * b08 - b04 * b07 + b05 * b06;
+  if (!det) {
+    out[0] = 1; out[1] = 0; out[2] = 0; out[3] = 0;
+    out[4] = 0; out[5] = 1; out[6] = 0; out[7] = 0;
+    out[8] = 0; out[9] = 0; out[10] = 1; out[11] = 0;
+    out[12] = 0; out[13] = 0; out[14] = 0; out[15] = 1;
+    return false;
+  }
+  det = 1.0 / det;
+  out[0] = (m11 * b11 - m12 * b10 + m13 * b09) * det;
+  out[1] = (m02 * b10 - m01 * b11 - m03 * b09) * det;
+  out[2] = (m31 * b05 - m32 * b04 + m33 * b03) * det;
+  out[3] = (m22 * b04 - m21 * b05 - m23 * b03) * det;
+  out[4] = (m12 * b08 - m10 * b11 - m13 * b07) * det;
+  out[5] = (m00 * b11 - m02 * b08 + m03 * b07) * det;
+  out[6] = (m32 * b02 - m30 * b05 - m33 * b01) * det;
+  out[7] = (m20 * b05 - m22 * b02 + m23 * b01) * det;
+  out[8] = (m10 * b10 - m11 * b08 + m13 * b06) * det;
+  out[9] = (m01 * b08 - m00 * b10 - m03 * b06) * det;
+  out[10] = (m30 * b04 - m31 * b02 + m33 * b00) * det;
+  out[11] = (m21 * b02 - m20 * b04 - m23 * b00) * det;
+  out[12] = (m11 * b07 - m10 * b09 - m12 * b06) * det;
+  out[13] = (m00 * b09 - m01 * b07 + m02 * b06) * det;
+  out[14] = (m31 * b01 - m30 * b03 - m32 * b00) * det;
+  out[15] = (m20 * b03 - m21 * b01 + m22 * b00) * det;
+  return true;
+}
+
+/**
+ * Snapshot the current bind-pose world matrices (assumed to be sitting in
+ * _MAT_SCRATCH_WORLD after a bind-pose _computeAnimatedBoneMatrices call)
+ * and their inverses into a fresh per-model snapshot object. Returns
+ * ``{world, inverse, count}`` where ``world`` / ``inverse`` are
+ * Float32Arrays of count×16 row-major matrices. Stored on the skinned
+ * group + animation state so a composite (multiple skinned inners) and
+ * model switches each carry THEIR OWN bind pose — the snapshot is passed
+ * explicitly into _bakeSkinnedSubmeshes rather than living in a global
+ * that the next model would clobber.
+ *
+ * Call once per skinned-model load BEFORE the first animated bake.
+ */
+function _snapshotBindPose(boneCount) {
+  const n = Math.min(boneCount | 0, 1024);
+  const world = new Float32Array(n * 16);
+  const inverse = new Float32Array(n * 16);
+  world.set(_MAT_SCRATCH_WORLD.subarray(0, n * 16));
+  for (let bi = 0; bi < n; bi++) {
+    const o = bi * 16;
+    _invertM4(
+      inverse.subarray(o, o + 16),
+      _MAT_SCRATCH_WORLD.subarray(o, o + 16),
+    );
+  }
+  return { world, inverse, count: n };
 }
 
 /**
@@ -4504,17 +4588,110 @@ function _computeAnimatedBoneMatrices(bones, animData, frameT) {
  * Skips vertices with bone_idx < 0 (no skinning info — typically the
  * root bone or non-skinned static prop).
  */
-function _bakeSkinnedSubmeshes(skinSubmeshes, boneCount) {
+function _bakeSkinnedSubmeshes(skinSubmeshes, boneCount, bindSnapshot) {
+  // DIVERGENCE 3 (2026-06-21): bind-pose snapshot for multi-bone LBS.
+  // When absent (no weighted verts in this model, or an old caller) we
+  // simply never take the multi-bone branch below.
+  const bindWorld = bindSnapshot ? bindSnapshot.world : null;
+  const bindInverse = bindSnapshot ? bindSnapshot.inverse : null;
   for (const sub of skinSubmeshes) {
     const localPos = sub.bonePositions;          // bone-local positions (Float32, 3 per vert)
     const localNorm = sub.boneNormals;            // bone-local normals
     const boneIdx = sub.vertBoneIdx;              // Int32
+    // DIVERGENCE 3 (2026-06-21): 4-influence skin (null => rigid path).
+    const skinBones = sub.vertSkinBones || null;
+    const skinWeights = sub.vertSkinWeights || null;
     const posAttr = sub.geometry.attributes.position;
     const normAttr = sub.geometry.attributes.normal;
     const outPos = posAttr.array;
     const outNorm = normAttr ? normAttr.array : null;
     const vc = (localPos.length / 3) | 0;
     for (let vi = 0; vi < vc; vi++) {
+      const px = localPos[vi * 3 + 0];
+      const py = localPos[vi * 3 + 1];
+      const pz = localPos[vi * 3 + 2];
+      const hasNorm = !!outNorm;
+      const nx = hasNorm ? localNorm[vi * 3 + 0] : 0;
+      const ny = hasNorm ? localNorm[vi * 3 + 1] : 0;
+      const nz = hasNorm ? localNorm[vi * 3 + 2] : 0;
+
+      // Determine whether this vertex carries >1 active influence. The
+      // common case (rigid vert, or a weighted vert with only one
+      // contribution) takes the single-bone fast path below — same math
+      // and cost as before the multi-bone change.
+      let multi = false;
+      if (skinBones && skinWeights && bindWorld && bindInverse) {
+        // slot 1 present (bone>=0, weight>0) => genuine multi-bone blend.
+        const b1 = skinBones[vi * 4 + 1];
+        const w1 = skinWeights[vi * 4 + 1];
+        if (b1 >= 0 && w1 > 0) multi = true;
+      }
+
+      if (multi) {
+        // Linear-blend skinning in BIND-WORLD space (psov2 parity):
+        //   p_bw = BindWorld_owner · p_local         (vertex's bind-world
+        //                                              position; psov2 bakes
+        //                                              this at parse time)
+        //   p    = Σ w_i · AnimWorld_i · BindInverse_i · p_bw
+        // This reproduces THREE.Skeleton's skinWeight/skinIndex blend so a
+        // weighted seam (De Rol Le neck/jaw) deforms identically to the
+        // reference instead of rigidly snapping to the owning bone. The
+        // single-influence case collapses to AnimWorld_owner · p_local
+        // (the rigid path), so the two paths agree at the boundary.
+        let owner = boneIdx[vi];
+        if (owner < 0 || owner >= boneCount) owner = 0;
+        const bw = owner * 16;
+        const px_bw = bindWorld[bw + 0] * px + bindWorld[bw + 1] * py + bindWorld[bw + 2] * pz + bindWorld[bw + 3];
+        const py_bw = bindWorld[bw + 4] * px + bindWorld[bw + 5] * py + bindWorld[bw + 6] * pz + bindWorld[bw + 7];
+        const pz_bw = bindWorld[bw + 8] * px + bindWorld[bw + 9] * py + bindWorld[bw + 10] * pz + bindWorld[bw + 11];
+        // Normals: transform the bone-local normal by BindWorld_owner's 3x3
+        // (no translation) to get the bind-world normal, then blend with
+        // each influence's animBone × bindInverse 3x3.
+        const nx_bw = hasNorm ? (bindWorld[bw + 0] * nx + bindWorld[bw + 1] * ny + bindWorld[bw + 2] * nz) : 0;
+        const ny_bw = hasNorm ? (bindWorld[bw + 4] * nx + bindWorld[bw + 5] * ny + bindWorld[bw + 6] * nz) : 0;
+        const nz_bw = hasNorm ? (bindWorld[bw + 8] * nx + bindWorld[bw + 9] * ny + bindWorld[bw + 10] * nz) : 0;
+        let ox = 0, oy = 0, oz = 0, onx = 0, ony = 0, onz = 0, wsum = 0;
+        for (let k = 0; k < 4; k++) {
+          const w = skinWeights[vi * 4 + k];
+          if (w <= 0) continue;
+          let bi = skinBones[vi * 4 + k];
+          if (bi < 0 || bi >= boneCount) bi = 0;
+          // S = AnimWorld_bi · BindInverse_bi  (the per-bone skin matrix).
+          _mulM4(
+            _MAT_SCRATCH_TMP,
+            _MAT_SCRATCH_WORLD.subarray(bi * 16, bi * 16 + 16),
+            bindInverse.subarray(bi * 16, bi * 16 + 16),
+          );
+          const s = _MAT_SCRATCH_TMP;
+          ox += w * (s[0] * px_bw + s[1] * py_bw + s[2] * pz_bw + s[3]);
+          oy += w * (s[4] * px_bw + s[5] * py_bw + s[6] * pz_bw + s[7]);
+          oz += w * (s[8] * px_bw + s[9] * py_bw + s[10] * pz_bw + s[11]);
+          if (hasNorm) {
+            onx += w * (s[0] * nx_bw + s[1] * ny_bw + s[2] * nz_bw);
+            ony += w * (s[4] * nx_bw + s[5] * ny_bw + s[6] * nz_bw);
+            onz += w * (s[8] * nx_bw + s[9] * ny_bw + s[10] * nz_bw);
+          }
+          wsum += w;
+        }
+        // Defensive renormalise (weights are server-normalised, but a
+        // truncated/zero-sum slot must not collapse the vertex to 0).
+        if (wsum > 0 && Math.abs(wsum - 1) > 1e-4) {
+          const inv = 1 / wsum;
+          ox *= inv; oy *= inv; oz *= inv;
+          onx *= inv; ony *= inv; onz *= inv;
+        }
+        outPos[vi * 3 + 0] = ox;
+        outPos[vi * 3 + 1] = oy;
+        outPos[vi * 3 + 2] = oz;
+        if (hasNorm) {
+          outNorm[vi * 3 + 0] = onx;
+          outNorm[vi * 3 + 1] = ony;
+          outNorm[vi * 3 + 2] = onz;
+        }
+        continue;
+      }
+
+      // Single-bone (rigid) fast path — unchanged behaviour.
       let bi = boneIdx[vi];
       if (bi < 0 || bi >= boneCount) bi = 0;
       const mOff = bi * 16;
@@ -4530,16 +4707,10 @@ function _bakeSkinnedSubmeshes(skinSubmeshes, boneCount) {
       const m9 = _MAT_SCRATCH_WORLD[mOff + 9];
       const m10 = _MAT_SCRATCH_WORLD[mOff + 10];
       const m11 = _MAT_SCRATCH_WORLD[mOff + 11];
-      const px = localPos[vi * 3 + 0];
-      const py = localPos[vi * 3 + 1];
-      const pz = localPos[vi * 3 + 2];
       outPos[vi * 3 + 0] = m0 * px + m1 * py + m2 * pz + m3;
       outPos[vi * 3 + 1] = m4 * px + m5 * py + m6 * pz + m7;
       outPos[vi * 3 + 2] = m8 * px + m9 * py + m10 * pz + m11;
       if (outNorm) {
-        const nx = localNorm[vi * 3 + 0];
-        const ny = localNorm[vi * 3 + 1];
-        const nz = localNorm[vi * 3 + 2];
         outNorm[vi * 3 + 0] = m0 * nx + m1 * ny + m2 * nz;
         outNorm[vi * 3 + 1] = m4 * nx + m5 * ny + m6 * nz;
         outNorm[vi * 3 + 2] = m8 * nx + m9 * ny + m10 * nz;
@@ -4635,6 +4806,16 @@ function buildSkinnedMeshGroupFromPayload(payload, boundTextures) {
     const verts = new Float32Array(vbuf);
     const indices = new Uint32Array(ibuf);
     const boneIdxRaw = new Int32Array(bbuf);
+    // DIVERGENCE 3 (2026-06-21): parallel multi-bone skin buffers (4
+    // influences/vertex). Present only when the server marks
+    // has_skin_weights; older payloads (or the static path) leave these
+    // null and the bake falls back to the rigid single-bone bind.
+    let skinBonesRaw = null;
+    let skinWeightsRaw = null;
+    if (payload.has_skin_weights === true && m.skin_bones_b64 && m.skin_weights_b64) {
+      skinBonesRaw = new Int32Array(b64ToArrayBuffer(m.skin_bones_b64));
+      skinWeightsRaw = new Float32Array(b64ToArrayBuffer(m.skin_weights_b64));
+    }
 
     if (verts.length === 0 || indices.length === 0) continue;
     // v2 payloads carry 4 trailing RGBA floats (12-float stride).
@@ -4733,6 +4914,9 @@ function buildSkinnedMeshGroupFromPayload(payload, boundTextures) {
       bonePositions: positions,    // read-only bone-local snapshot
       boneNormals: normals,        // read-only bone-local snapshot
       vertBoneIdx: boneIdxRaw,
+      // DIVERGENCE 3: 4-influence skin (null => rigid single-bone bake).
+      vertSkinBones: skinBonesRaw,
+      vertSkinWeights: skinWeightsRaw,
     });
 
     debugMeshes.push({
@@ -4759,9 +4943,15 @@ function buildSkinnedMeshGroupFromPayload(payload, boundTextures) {
   // mesh, not the bone-local AABB (which is centred on the origin per
   // bone — way too small).
   const bones = payload.bones || [];
+  let bindSnapshot = null;
   if (bones.length > 0 && skinSubmeshes.length > 0) {
     _computeAnimatedBoneMatrices(bones, null, null);
-    _bakeSkinnedSubmeshes(skinSubmeshes, bones.length);
+    // DIVERGENCE 3: snapshot bind-pose world + inverse matrices (from the
+    // bind-pose compute just above) so multi-bone LBS can blend in bind-
+    // world space. Must run BEFORE any bake. Stored on the returned group
+    // (and copied to the anim state) so each model keeps its own pose.
+    bindSnapshot = _snapshotBindPose(bones.length);
+    _bakeSkinnedSubmeshes(skinSubmeshes, bones.length, bindSnapshot);
     // Compute AABB from re-baked render positions.
     for (const sub of skinSubmeshes) {
       const pa = sub.geometry.attributes.position.array;
@@ -4792,7 +4982,7 @@ function buildSkinnedMeshGroupFromPayload(payload, boundTextures) {
     group.scale.set(scale, scale, scale);
   }
 
-  return { group, skinSubmeshes, totalVerts, totalTris, aabbMin, aabbMax, debugMeshes };
+  return { group, skinSubmeshes, totalVerts, totalTris, aabbMin, aabbMax, debugMeshes, bindSnapshot };
 }
 
 // ---- psov2 faithful Ninja path (PRIMARY for .nj) -------------------
@@ -5965,6 +6155,10 @@ async function tryLoadSkinnedMesh(modelPath, hint) {
   state.anim.modelPath = modelPath;
   state.anim.bones = payload.bones;
   state.anim.skinSubmeshes = built.skinSubmeshes;
+  // DIVERGENCE 3: carry the bind-pose snapshot so per-frame bakes blend
+  // multi-bone weights in THIS model's bind space (composite/model switch
+  // safe — each model has its own snapshot).
+  state.anim.bindSnapshot = built.bindSnapshot || null;
   state.anim.currentMotion = null;
   state.anim.currentData = null;
   state.anim.time = 0.0;
@@ -6108,7 +6302,7 @@ async function loadMotion(motionName) {
     a.time = 0.0;
     if (a.skinned && a.bones.length > 0 && a.skinSubmeshes.length > 0) {
       _computeAnimatedBoneMatrices(a.bones, null, null);
-      _bakeSkinnedSubmeshes(a.skinSubmeshes, a.bones.length);
+      _bakeSkinnedSubmeshes(a.skinSubmeshes, a.bones.length, a.bindSnapshot);
     }
     updateAnimationUi();
     // Bind-pose reset: not playing, so just paint the bind pose once.
@@ -6288,7 +6482,7 @@ function tickAnimation(nowMs) {
     const fc = a.currentData.frame_count;
     const frameT = (a.time * a.fps) % Math.max(1, fc);
     _computeAnimatedBoneMatrices(a.bones, a.currentData, frameT);
-    _bakeSkinnedSubmeshes(a.skinSubmeshes, a.bones.length);
+    _bakeSkinnedSubmeshes(a.skinSubmeshes, a.bones.length, a.bindSnapshot);
     // Drive bone-attached composite parts (De Rol Le fins/sting/tentacle)
     // off the just-computed body bone matrices so they ride the animation.
     if (a.boneAttachParts && a.boneAttachParts.length > 0) {

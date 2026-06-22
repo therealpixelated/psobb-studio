@@ -143,6 +143,7 @@ from formats import prs as prs_mod
 # PNGs even though the legacy xvr_codec path only handles XVMH/XVRT.
 # See formats/pvr_decode.py for the supported pixel/tex-mode coverage.
 from formats import pvr_decode as _pvr_decode
+from formats import gvr_decode as _gvr_decode
 # Sibling-archive discovery — magic-sniffed companion files next to a
 # model. Used as a last-resort fallback by _build_model_texture_binding
 # when neither the inline XVMH nor cross-archive lookup finds the
@@ -275,10 +276,36 @@ ROOT = Path(__file__).parent.resolve()
 LIVE_DATA_DIR = Path(os.path.expanduser(os.environ.get("PSO_LIVE_DATA_DIR") or "~/PSOBB.IO/data")).resolve()
 DEV_DATA_DIR = Path(os.path.expanduser(os.environ.get("PSO_DEV_DATA_DIR") or "C:/tmp_pso_dev/data")).resolve()
 DATA_DIR = Path(os.environ.get("PSO_DATA_DIR") or DEV_DATA_DIR).resolve()
+
+# Dreamcast variant data root (2026-06-21, psov2 multivariant). The studio
+# is normally single-root (the Xbox/BB set above). To achieve pixel-1:1
+# parity with the dashgl psov2 reference we must also be able to open the
+# EXACT Dreamcast asset psov2 loads. This is a THIRD, READ-ONLY data root
+# (mirroring LIVE_DATA_DIR's read-only posture) reached via a virtual
+# 'dc/' path prefix that the resolver strips and routes here. It defaults
+# to the in-repo psov2 reference dat (forward slashes only — public repo);
+# _reference/ is gitignored, so the env override points worktrees/other
+# machines at the real tree. VARIANT_ROOTS lets future console variants
+# (gc/, etc.) drop in with no resolver changes.
+DC_DATA_DIR = Path(os.path.expanduser(
+    os.environ.get("PSO_DC_DATA_DIR")
+    or "C:/Users/u03a9/Repositories/psobb-studio/_reference/psov2/public/dat"
+)).resolve()
+# Virtual path prefix -> read-only variant root. Keys are matched against a
+# leading "<key>/" on an asset path; the remainder resolves strictly under
+# the mapped root. Forward slash only.
+VARIANT_ROOTS: dict[str, Path] = {"dc": DC_DATA_DIR}
 CACHE_DIR = ROOT / "cache"
 STATIC_DIR = ROOT / "static"
 EXPORT_DIR = ROOT / "exports"  # token-protected artifacts available via /api/export/...
+# Separate manifest-cache root for the read-only Dreamcast variant set so
+# its build does NOT clobber the primary DATA_DIR manifest.json (which
+# manifest_mod writes to a fixed <cache_dir>/manifest.json regardless of
+# install_root). Entries from here are merged into /api/manifest(_lite)
+# with their paths 'dc/'-prefixed.
+DC_MANIFEST_CACHE_DIR = CACHE_DIR / "dc_manifest"
 CACHE_DIR.mkdir(exist_ok=True)
+DC_MANIFEST_CACHE_DIR.mkdir(exist_ok=True)
 STATIC_DIR.mkdir(exist_ok=True)
 EXPORT_DIR.mkdir(exist_ok=True)
 
@@ -324,7 +351,7 @@ TILE_PNG_CACHE_SCHEMA = 1  # bump if PNG-key shape changes
 # avoid pickle's pre-load cost and a corrupted file is human-readable.
 SKINNED_PAYLOAD_CACHE_DIR = CACHE_DIR / "skinned_payload"
 SKINNED_PAYLOAD_CACHE_DIR.mkdir(exist_ok=True)
-SKINNED_PAYLOAD_CACHE_SCHEMA = 2  # bump on payload-shape change (v2: +RGBA color, 12-float interleave)
+SKINNED_PAYLOAD_CACHE_SCHEMA = 3  # bump on payload-shape change (v3: +per-vertex skin_bones/skin_weights for multi-bone skinning; v2: +RGBA color, 12-float interleave)
 
 # Binding-cache LRU disk root (Phase 0.5 perf, Item 5 of finishing-line
 # 2026-04-25). The in-memory cache wraps `_build_model_texture_binding`
@@ -568,6 +595,14 @@ PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
 XVM_HEADER_SIZE = 0x40
 XVM_MAGIC = b"XVMH"
 XVRT_MAGIC = b"XVRT"
+# Sibling/inline texture-archive container magics (Dreamcast/GameCube).
+# These are the non-Xbox counterparts to XVMH; the BML/model binding path
+# (2026-06-21, psov2 multivariant) magic-routes between them so a Dreamcast
+# PVMH inner (e.g. the De Rol Le body) binds instead of being rejected as
+# "not XVMH". The actual per-tile pixel decode already routes by magic in
+# extract_tiles() -> _extract_tiles_via_pvr_decode().
+PVM_MAGIC = b"PVMH"
+GVM_MAGIC = b"GVMH"
 
 # PSOBB engine has an undocumented internal max texture dimension. Empirically
 # 1024 — at 2048 the game silently fails to load the texture, surfacing as
@@ -833,7 +868,15 @@ def _validate_inner_name(inner: str, *, msg: str = "invalid inner name", require
 
 
 def safe_data_path(name: str) -> Path:
-    """Resolve `name` strictly inside DATA_DIR. Reject path traversal."""
+    """Resolve `name` strictly inside DATA_DIR. Reject path traversal.
+
+    The Dreamcast variant set (``dc/`` prefix) is READ-ONLY: any attempt to
+    resolve a ``dc/``-prefixed name through the WRITE path is rejected so
+    no editor write/deploy can target the reference tree.
+    """
+    variant_root, _rest = _split_variant_prefix(name)
+    if variant_root is not None:
+        raise HTTPException(400, "variant data set is read-only")
     bare = _validate_bare_filename(name, label="filename")
     p = (DATA_DIR / bare).resolve()
     try:
@@ -896,13 +939,45 @@ def _split_inner_with_query(path: str, query_inner: Optional[str]) -> tuple[str,
     return base, hash_inner or query_inner
 
 
+def _split_variant_prefix(name: str) -> tuple[Optional[Path], str]:
+    """Detect a leading variant prefix (e.g. ``dc/``) on an asset name.
+
+    Returns ``(variant_root, deprefixed_name)``. When ``name`` starts with
+    a known ``VARIANT_ROOTS`` key followed by ``/``, the prefix is stripped
+    and the mapped READ-ONLY root is returned so the caller resolves the
+    remainder strictly under it. When there is no prefix, returns
+    ``(None, name)`` and behaviour is exactly as before (DATA_DIR then
+    LIVE_DATA_DIR).
+
+    The split runs on the FULL string (before any ``#inner`` split is
+    re-applied by the caller), so ``dc/foo.bml#bar.nj`` de-prefixes to
+    ``foo.bml#bar.nj`` with the dc root. Keeping the prefix logic in ONE
+    place means all ~15 resolver call sites get variant support for free.
+    """
+    if not name or not isinstance(name, str):
+        return None, name
+    # Only a single leading "<key>/" is meaningful; the post-join
+    # relative_to containment guard in the resolvers still defends against
+    # traversal in the remainder.
+    head, sep, rest = name.partition("/")
+    if sep and head in VARIANT_ROOTS and rest:
+        return VARIANT_ROOTS[head], rest
+    return None, name
+
+
 def _resolve_under_roots(name: str, roots: tuple[Path, ...], *, label: str, missing_msg: str) -> Path:
     """Validate `name` is a bare filename and locate it in the first matching root.
 
     Used by the family of dual-root resolvers (DATA_DIR + LIVE_DATA_DIR,
     optionally + a cache subdir). Raises HTTPException(400) on bad input
     and HTTPException(404) with `missing_msg` if not found in any root.
+
+    A leading variant prefix (``dc/``) overrides ``roots`` with the mapped
+    read-only variant root (2026-06-21, psov2 multivariant).
     """
+    variant_root, name = _split_variant_prefix(name)
+    if variant_root is not None:
+        roots = (variant_root,)
     bare = _validate_bare_filename(name, label=label)
     for root in roots:
         candidate = (root / bare).resolve()
@@ -926,7 +1001,14 @@ def _resolve_under_roots_relpath(
     strictly inside the root, so the relaxed prefix cannot be abused for
     traversal. This is what lets ``scene/map_*.nj`` map meshes load
     instead of rendering the grey cube.
+
+    A leading variant prefix (``dc/``) overrides ``roots`` with the mapped
+    read-only variant root (2026-06-21, psov2 multivariant). The prefix is
+    stripped FIRST so a ``dc/scene/foo.nj`` still resolves its subdir.
     """
+    variant_root, name = _split_variant_prefix(name)
+    if variant_root is not None:
+        roots = (variant_root,)
     rel = _validate_contained_relpath(name, label=label)
     for root in roots:
         candidate = (root / rel).resolve()
@@ -1281,10 +1363,21 @@ def sh(cmd: list, cwd: Optional[Path] = None, timeout: int = 60) -> str:
     return r.stdout
 
 
+# psov2 pixel-1:1 parity mode (2026-06-21). When enabled (env
+# PSO_PSOV2_COMPAT=1), the in-process PVR decoder uses the dashgl psov2
+# reference's JS-style zero-fill 16-bit channel expansion (delta <= 7/255
+# vs our default bit-replication) so a Dreamcast tile is byte-identical to
+# psov2's canvas. OFF by default — normal rendering keeps the strictly-
+# more-correct bit-replication. The flag is folded into the tile cache key
+# so compat and non-compat PNGs never collide in the cache.
+PSOV2_COMPAT = os.environ.get("PSO_PSOV2_COMPAT", "") not in ("", "0", "false", "False")
+
+
 def cache_key(prs_path: Path) -> str:
-    """Stable per-file cache key: name + size + mtime."""
+    """Stable per-file cache key: name + size + mtime (+ psov2-compat tag)."""
     st = prs_path.stat()
-    return f"{prs_path.name}_{st.st_size}_{int(st.st_mtime)}"
+    suffix = "_psov2c" if PSOV2_COMPAT else ""
+    return f"{prs_path.name}_{st.st_size}_{int(st.st_mtime)}{suffix}"
 
 
 def _is_backup_name(name: str) -> bool:
@@ -1766,7 +1859,9 @@ def _extract_tiles_via_pvr_decode(
                 record[:4] in (b"PVRT", b"GBIX")
                 or b"PVRT" in record[:64]
             ):
-                w, h, rgba = _pvr_decode.decode_pvr(record)
+                w, h, rgba = _pvr_decode.decode_pvr(
+                    record, psov2_compat=PSOV2_COMPAT,
+                )
                 # Pick out the px_format byte for the manifest's "fmt"
                 # field — same role the XVR fmt int plays for XVMH.
                 pvrt_off = record.find(b"PVRT")
@@ -1776,9 +1871,26 @@ def _extract_tiles_via_pvr_decode(
                 buf = BytesIO()
                 im.save(buf, format="PNG")
                 png_bytes = buf.getvalue()
+            elif archive_kind == "gvr" and (
+                record[:4] in (b"GVRT", b"GBIX", b"GCIX")
+                or b"GVRT" in record[:64]
+            ):
+                # GameCube GVR (2026-06-21): decode in-process. Palettized
+                # (Index4/Index8) raises NotImplementedError below and falls
+                # through to the placeholder (no regression).
+                w, h, rgba = _gvr_decode.decode_gvr(record)
+                gvrt_off = record.find(b"GVRT")
+                if gvrt_off >= 0 and gvrt_off + 0x10 <= len(record):
+                    # GVRT data-format byte (VrSharp: +0x0B). Mirrors the
+                    # px_format role for the manifest "fmt" field.
+                    fmt = record[gvrt_off + 0x0B]
+                im = Image.frombytes("RGBA", (w, h), rgba)
+                buf = BytesIO()
+                im.save(buf, format="PNG")
+                png_bytes = buf.getvalue()
         except (ValueError, IndexError, NotImplementedError) as e:
             log.info(
-                "pvr_decode: tile %d/%d in %s failed: %s",
+                "pvr/gvr decode: tile %d/%d in %s failed: %s",
                 idx, len(inner_records), work_path.name, e,
             )
             png_bytes = None
@@ -2642,6 +2754,82 @@ def _manifest_health_summary() -> dict:
         return {"entries": 0, "last_built": 0, "path": str(cf)}
 
 
+# In-memory memo of the prefixed DC manifest, keyed on the DC cache
+# file's (mtime_ns, size). Cheap to rebuild but the prefixing pass walks
+# every entry, so we memo it. Cleared implicitly when the cache file's
+# stat changes.
+_DC_MANIFEST_MEMO: dict = {}
+_DC_MANIFEST_MEMO_LOCK = threading.Lock()
+
+
+def _dc_manifest_entries(*, force: bool = False) -> list[dict]:
+    """Return the Dreamcast variant set's manifest entries, ``dc/``-prefixed.
+
+    Builds (and caches, under a SEPARATE cache dir so it never clobbers
+    the primary DATA_DIR manifest) the manifest for ``DC_DATA_DIR``, then
+    prefixes every entry's ``path`` (and ``parent_archive`` if present)
+    with ``dc/`` and tags each row ``variant: "dreamcast"`` so the asset
+    tree buckets them distinctly and the resolver round-trips them through
+    the variant-prefix path. Returns ``[]`` when the Dreamcast set is not
+    present (the default in-repo path is gitignored, so a fresh worktree
+    without the reference tree simply surfaces no DC rows — no error).
+    """
+    if not DC_DATA_DIR.exists():
+        return []
+    try:
+        m = manifest_mod.cache_manifest(
+            DC_DATA_DIR, cache_dir=DC_MANIFEST_CACHE_DIR, force=force,
+        )
+    except OSError as e:
+        log.warning("DC manifest build failed: %s", e)
+        return []
+    cf = manifest_mod.cache_path_for(DC_DATA_DIR, cache_dir=DC_MANIFEST_CACHE_DIR)
+    try:
+        st = cf.stat()
+        memo_key = (int(st.st_mtime_ns), int(st.st_size))
+    except OSError:
+        memo_key = None
+    if memo_key is not None and not force:
+        with _DC_MANIFEST_MEMO_LOCK:
+            slot = _DC_MANIFEST_MEMO.get("slot")
+            if slot is not None and slot[0] == memo_key:
+                return slot[1]
+    out: list[dict] = []
+    for e in (m.get("entries") or []):
+        if not e:
+            continue
+        row = dict(e)
+        p = row.get("path")
+        if not p:
+            continue
+        row["path"] = f"dc/{p}"
+        pa = row.get("parent_archive")
+        if pa:
+            row["parent_archive"] = f"dc/{pa}"
+        row["variant"] = "dreamcast"
+        out.append(row)
+    if memo_key is not None:
+        with _DC_MANIFEST_MEMO_LOCK:
+            _DC_MANIFEST_MEMO["slot"] = (memo_key, out)
+    return out
+
+
+def _merge_dc_into_manifest(m: dict, *, force: bool = False) -> dict:
+    """Return a copy of manifest ``m`` with the DC variant entries merged.
+
+    Primary DATA_DIR entries come first, then the ``dc/``-prefixed
+    Dreamcast rows. The merge is a shallow copy so the cached primary
+    manifest dict is never mutated. No-op (returns ``m`` unchanged) when
+    the Dreamcast set is absent.
+    """
+    dc_entries = _dc_manifest_entries(force=force)
+    if not dc_entries:
+        return m
+    merged = dict(m)
+    merged["entries"] = list(m.get("entries") or []) + dc_entries
+    return merged
+
+
 @app.get("/api/health")
 def api_health():
     """Service health + tool resolution. Used by frontend banner."""
@@ -2654,11 +2842,24 @@ def api_health():
             "exists": REALESRGAN_MODELS.exists(),
         },
         "data_dir": {"path": str(DATA_DIR), "exists": DATA_DIR.exists()},
+        # Read-only Dreamcast variant set (dc/ prefix). Reporting-only:
+        # absence is not a failure (the in-repo reference tree is
+        # gitignored, so a fresh worktree may not have it).
+        "dc_data_dir": {
+            "path": str(DC_DATA_DIR), "exists": DC_DATA_DIR.exists(),
+            "reporting_only": True,
+        },
         "manifest": _manifest_health_summary(),
     }
     # Only gate `ok` on entries that have an `exists` flag — `manifest`
     # is reporting-only, the cache may legitimately be cold on first boot.
-    all_ok = all(v.get("exists", True) for v in tools.values())
+    # Entries flagged ``reporting_only`` (e.g. the optional Dreamcast set)
+    # never gate readiness even when they carry an ``exists`` field.
+    all_ok = all(
+        v.get("exists", True)
+        for v in tools.values()
+        if not v.get("reporting_only")
+    )
     return {
         "ok": all_ok,
         "version": VERSION,
@@ -2700,6 +2901,10 @@ def api_manifest(request: Request, force: int = 0):
     except OSError as e:
         log.exception("manifest build failed")
         raise HTTPException(500, f"manifest build failed: {e}")
+
+    # Merge in the read-only Dreamcast variant set (dc/-prefixed) so a
+    # human can pick "De Rol Le (Dreamcast)" alongside the Xbox/BB asset.
+    m = _merge_dc_into_manifest(m, force=bool(force))
 
     cf = manifest_mod.cache_path_for(DATA_DIR, cache_dir=CACHE_DIR)
     etag_src = f'{int(cf.stat().st_mtime)}-{len(m.get("entries", []))}' if cf.exists() else "0-0"
@@ -2758,11 +2963,29 @@ def api_manifest_lite(request: Request, force: int = 0):
         log.exception("manifest_lite build failed")
         raise HTTPException(500, f"manifest_lite build failed: {e}")
 
+    # Merge the read-only Dreamcast variant set (dc/-prefixed, projected to
+    # the lite shape). Folds the DC lite cache file's stat into the ETag /
+    # serialized-memo key below so a DC-set change invalidates them.
+    dc_full = _dc_manifest_entries(force=bool(force))
+    dc_stat_tag = "0"
+    if dc_full:
+        m = dict(m)
+        m["entries"] = list(m.get("entries") or []) + [
+            {**manifest_mod._to_lite_entry(e), "variant": "dreamcast"}
+            for e in dc_full
+        ]
+        dc_cf = manifest_mod.cache_path_for(DC_DATA_DIR, cache_dir=DC_MANIFEST_CACHE_DIR)
+        try:
+            dst = dc_cf.stat()
+            dc_stat_tag = f"{int(dst.st_mtime_ns)}.{int(dst.st_size)}"
+        except OSError:
+            dc_stat_tag = "x"
+
     etag_src = (
         f'{int(cf.stat().st_mtime)}-{len(m.get("entries", []))}'
         if cf.exists() else "0-0"
     )
-    etag = f'W/"lite-{etag_src}"'
+    etag = f'W/"lite-{etag_src}-dc{dc_stat_tag}"'
 
     inm = request.headers.get("if-none-match")
     if inm and inm == etag:
@@ -2773,12 +2996,13 @@ def api_manifest_lite(request: Request, force: int = 0):
     # encoded JSON bytes keyed on the lite file's stat so warm calls skip
     # the re-serialize entirely; the GZip middleware still compresses the
     # wire body. Keyed on (mtime_ns, size) like the other lite caches, so
-    # an atomic rewrite invalidates it. Bypassed on ?force=1.
+    # an atomic rewrite invalidates it. The DC stat tag is folded in so a
+    # variant-set change invalidates the memo. Bypassed on ?force=1.
     body = None
     if not force:
         try:
             st = cf.stat()
-            ser_key = (int(st.st_mtime_ns), int(st.st_size))
+            ser_key = (int(st.st_mtime_ns), int(st.st_size), dc_stat_tag)
         except OSError:
             ser_key = None
         if ser_key is not None:
@@ -2818,6 +3042,23 @@ def api_asset(path: str):
     """
     if not path:
         raise HTTPException(400, "missing path")
+    # Dreamcast variant rows live in the separate DC manifest; strip the
+    # 'dc/' prefix and look them up there, re-prefixing the returned path.
+    variant_root, deprefixed = _split_variant_prefix(path)
+    if variant_root is not None:
+        entry = manifest_mod.lookup_entry(
+            DC_DATA_DIR, deprefixed, cache_dir=DC_MANIFEST_CACHE_DIR,
+        )
+        if entry is None:
+            raise HTTPException(404, f"no manifest entry for {path!r}")
+        entry = dict(entry)
+        if entry.get("path"):
+            entry["path"] = f"dc/{entry['path']}"
+        pa = entry.get("parent_archive")
+        if pa:
+            entry["parent_archive"] = f"dc/{pa}"
+        entry["variant"] = "dreamcast"
+        return entry
     entry = manifest_mod.lookup_entry(DATA_DIR, path, cache_dir=CACHE_DIR)
     if entry is None:
         raise HTTPException(404, f"no manifest entry for {path!r}")
@@ -3325,12 +3566,16 @@ def api_tiles(filename: str, request: Request):
     )
 
 
-@app.get("/api/tile_png/{filename}/{idx}")
+@app.get("/api/tile_png/{filename:path}/{idx}")
 def api_tile_png(filename: str, idx: int):
     """Serve a raw PNG of a tile (no base64 wrapping). Useful for large tiles.
 
     Accepts the same path forms as ``/api/tiles`` — plain filename or
-    ``<base>#<inner>``.
+    ``<base>#<inner>``. The ``{filename:path}`` converter (vs a bare
+    segment) lets a variant-prefixed ``dc/<bml>#<inner>`` name keep its
+    leading ``dc/`` slash through route matching (Starlette decodes
+    ``%2F`` to ``/`` before matching, which would otherwise split the
+    route and 404 the Dreamcast tiles).
 
     Wraps a 2-tier cache (Phase D Win 5):
       L1: in-memory PNG-bytes LRU keyed on (work_path, mtime, size, idx).
@@ -8786,6 +9031,8 @@ def _xj_meshes_to_skinned_payload(meshes: list, bones: list) -> dict:
             # shape so downstream code doesn't have to special-case.
             verts_bytes = b""
             bone_idx_bytes = b""
+            skin_bone_bytes = b""
+            skin_wt_bytes = b""
             aabb = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
         else:
             # array.array.extend on an 8-tuple drops into a C-level
@@ -8794,6 +9041,15 @@ def _xj_meshes_to_skinned_payload(meshes: list, bones: list) -> dict:
             # PSOBB models exhibit (~10 verts/submesh).
             floats = array.array("f")
             bone_idx_arr = array.array("i")
+            # DIVERGENCE 3 (2026-06-21): parallel per-vertex multi-bone skin
+            # buffers. ``skin_bones`` = 4 Int32 bone DFS indices (-1 = unused
+            # slot); ``skin_weights`` = 4 Float32 normalised weights. The
+            # frontend blends across these in _bakeSkinnedSubmeshes. Falls
+            # back to a rigid 1.0 bind on ``bone_idx`` when an XjVertex
+            # predates the field (old in-process objects); fresh parses
+            # always carry it.
+            skin_bone_arr = array.array("i")
+            skin_wt_arr = array.array("f")
             minx = miny = minz = float("inf")
             maxx = maxy = maxz = float("-inf")
             for v in verts:
@@ -8803,6 +9059,15 @@ def _xj_meshes_to_skinned_payload(meshes: list, bones: list) -> dict:
                 cr, cg, cb, ca = v.color
                 floats.extend((px, py, pz, nx, ny, nz, u, vv, cr, cg, cb, ca))
                 bone_idx_arr.append(v.bone_idx)
+                sb = getattr(v, "skin_bones", None)
+                sw = getattr(v, "skin_weights", None)
+                if sb is None or sw is None or sb[0] < 0:
+                    # Rigid fallback: full weight on the owning bone.
+                    skin_bone_arr.extend((v.bone_idx, -1, -1, -1))
+                    skin_wt_arr.extend((1.0, 0.0, 0.0, 0.0))
+                else:
+                    skin_bone_arr.extend((sb[0], sb[1], sb[2], sb[3]))
+                    skin_wt_arr.extend((sw[0], sw[1], sw[2], sw[3]))
                 if px < minx:
                     minx = px
                 if py < miny:
@@ -8821,8 +9086,12 @@ def _xj_meshes_to_skinned_payload(meshes: list, bones: list) -> dict:
             if not is_le:
                 floats.byteswap()
                 bone_idx_arr.byteswap()
+                skin_bone_arr.byteswap()
+                skin_wt_arr.byteswap()
             verts_bytes = floats.tobytes()
             bone_idx_bytes = bone_idx_arr.tobytes()
+            skin_bone_bytes = skin_bone_arr.tobytes()
+            skin_wt_bytes = skin_wt_arr.tobytes()
 
         if m.indices:
             idx_arr = array.array("I", m.indices)
@@ -8838,6 +9107,14 @@ def _xj_meshes_to_skinned_payload(meshes: list, bones: list) -> dict:
             "vertices_b64": base64.b64encode(verts_bytes).decode("ascii"),
             "indices_b64": base64.b64encode(idx_bytes).decode("ascii"),
             "bone_indices_b64": base64.b64encode(bone_idx_bytes).decode("ascii"),
+            # DIVERGENCE 3 (2026-06-21): parallel multi-bone skin buffers.
+            # skin_bones_b64 = 4 Int32 bone DFS indices/vertex (-1=unused);
+            # skin_weights_b64 = 4 Float32 normalised weights/vertex. The
+            # frontend (_bakeSkinnedSubmeshes) blends across these so a 0x2c
+            # weighted vertex (neck/jaw seams) deforms like psov2 instead of
+            # rigidly snapping to one bone.
+            "skin_bones_b64": base64.b64encode(skin_bone_bytes).decode("ascii"),
+            "skin_weights_b64": base64.b64encode(skin_wt_bytes).decode("ascii"),
             "vertex_count": vc,
             "triangle_count": tc,
             "material_id": m.material_id,
@@ -8878,6 +9155,11 @@ def _xj_meshes_to_skinned_payload(meshes: list, bones: list) -> dict:
         "totals": {"vertices": total_v, "triangles": total_t},
         "vertices_pre_transformed": False,
         "has_bone_indices": True,
+        # DIVERGENCE 3 (2026-06-21): every submesh carries the parallel
+        # skin_bones_b64 / skin_weights_b64 buffers (4 influences/vertex).
+        # The frontend blends across them when present; falls back to the
+        # rigid bone_indices_b64 bind otherwise.
+        "has_skin_weights": True,
         # Same 12-float interleave (+RGBA) as the static payload.
         "has_color": True,
         "vertex_format_version": 2,
@@ -11339,7 +11621,9 @@ def _build_records_from_sibling_archive(arc) -> list[dict]:
         elif arc.magic in ("GVR", "GVM"):
             gvrt_off = inner.find(b"GVRT")
             if gvrt_off >= 0 and gvrt_off + 0x10 <= len(inner):
-                fmt = int(inner[gvrt_off + 0x09])
+                # GVRT data-format byte at +0x0B (VrSharp GvrTexture), the
+                # value gvr_decode dispatches on; width/height at +0x0C BE.
+                fmt = int(inner[gvrt_off + 0x0B])
                 try:
                     w, h = struct.unpack_from(">HH", inner, gvrt_off + 0x0C)
                 except struct.error:
@@ -11357,6 +11641,59 @@ def _build_records_from_sibling_archive(arc) -> list[dict]:
             "fmt": int(fmt),
         })
     return records
+
+
+def _list_texture_records(tex_bytes: bytes) -> list[dict]:
+    """Magic-route an inline/sibling texture archive to per-tile metadata.
+
+    Returns the SAME ``{tile_index, id, width, height, fmt}`` dict shape as
+    ``_list_xvmh_records`` regardless of container format:
+
+        XVMH  -> _list_xvmh_records (Xbox / PSOBB.IO; unchanged path)
+        PVMH  -> SiblingArchive(PVM) + _build_records_from_sibling_archive
+        GVMH  -> SiblingArchive(GVM) + _build_records_from_sibling_archive
+
+    This is the single load-bearing fix that lets the BML/model binding
+    path accept Dreamcast (PVMH) and GameCube (GVMH) inline archives. The
+    per-tile PIXEL decode already routes by magic in ``extract_tiles`` →
+    ``_extract_tiles_via_pvr_decode``; only the binding-metadata side
+    assumed XVMH (and raised "XVMH magic not found"), leaving Dreamcast
+    De Rol Le untextured.
+
+    Raises:
+        HTTPException(400): on an unrecognised / truncated archive magic
+            (mirrors the prior _list_xvmh_records contract so callers that
+            catch HTTPException keep working).
+    """
+    if len(tex_bytes) < 8:
+        raise HTTPException(400, "texture archive too short to identify")
+    head = tex_bytes[:4]
+    if head == XVM_MAGIC:
+        return _list_xvmh_records(tex_bytes)
+    if head == PVM_MAGIC:
+        label = "PVM"
+    elif head == GVM_MAGIC:
+        label = "GVM"
+    else:
+        raise HTTPException(
+            400,
+            f"unrecognised texture archive magic {head!r} "
+            "(expected XVMH / PVMH / GVMH)",
+        )
+    # Wrap the inline bytes in the same SiblingArchive object the
+    # standalone-sibling discovery path yields, then reuse the existing
+    # magic-aware record builder so PVMH/GVMH go through ONE code path.
+    try:
+        arc = _sibling_archives.SiblingArchive(
+            Path(f"inline.{label.lower()}"), label, tex_bytes,
+        )
+        return _build_records_from_sibling_archive(arc)
+    except HTTPException:
+        raise
+    except Exception as e:  # pragma: no cover - defensive
+        raise HTTPException(
+            400, f"{label} texture archive parse failed: {e}"
+        ) from e
 
 
 # ---------------------------------------------------------------------------
@@ -11414,7 +11751,10 @@ def _compute_bml_inner_tex_offsets(bml_path: Path) -> list[dict]:
             try:
                 xvm = extract_bml_texture(blob, entry.name, timeout=TIMEOUT_BML_PRS)
                 if xvm:
-                    records = _list_xvmh_records(xvm)
+                    # Magic-route (XVMH/PVMH/GVMH) so multi-inner Dreamcast
+                    # BMLs get correct per-inner tile counts and the
+                    # composite tile-id shift stays right.
+                    records = _list_texture_records(xvm)
                     tile_count = len(records)
             except (HTTPException, ValueError, RuntimeError):
                 tile_count = 0
@@ -12323,7 +12663,10 @@ def _build_model_texture_binding(
                 xvm = None
             if xvm is not None:
                 try:
-                    xvm_records = _list_xvmh_records(xvm)
+                    # Magic-route the inline archive: XVMH (Xbox/PSOBB.IO),
+                    # PVMH (Dreamcast), GVMH (GameCube). The De Rol Le body's
+                    # inline PVMH binds here instead of raising "not XVMH".
+                    xvm_records = _list_texture_records(xvm)
                 except HTTPException as e:
                     xvm_error = e.detail if hasattr(e, "detail") else str(e)
             elif xvm_error is None:
@@ -12342,7 +12685,8 @@ def _build_model_texture_binding(
         sibling = bml_path.with_suffix(".xvm")
         if sibling.exists():
             try:
-                xvm_records = _list_xvmh_records(sibling.read_bytes())
+                # Same-stem sibling may be XVMH/PVMH/GVMH — magic-route.
+                xvm_records = _list_texture_records(sibling.read_bytes())
             except HTTPException as e:
                 xvm_error = e.detail if hasattr(e, "detail") else str(e)
         else:

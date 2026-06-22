@@ -476,31 +476,26 @@ class NinjaModel {
 
     if (!BitStream.bitflag(bone.flag, 1)) {
       if (!bone.rot.w) {
-        // Euler bind rotation. applyMatrix4 PRE-multiplies, so applying
-        // Rx then Ry then Rz yields M = Rz*Ry*Rx == intrinsic ZYX. For a
-        // ZXY bone, swap the Y/Z application order so M = Ry*Rz*Rx ==
-        // intrinsic ZXY, matching the reference's per-bone order.
+        // DIVERGENCE 1 (2026-06-21): ALWAYS apply Rx -> Ry -> Rz and IGNORE
+        // the ZXY/bit-5 flag, matching psov2 NinjaModel.js readBone
+        // (324-350): it applies makeRotationX/Y/Z in that fixed order for
+        // EVERY bone (applyMatrix4 PRE-multiplies => M = Rz*Ry*Rx ==
+        // intrinsic ZYX) and merely console.error()s on a ZXY bone — it
+        // never swaps the order. The prior per-bone Y/Z swap (kept for the
+        // animation path agreement, see readAnim) diverged the bind pose
+        // on flagged bones (De Rol Le head/jaw -> splayed skull). `zxy` is
+        // still stashed on userData above for diagnostics.
         const xRotMatrix = new THREE.Matrix4();
         xRotMatrix.makeRotationX(bone.rot.x);
         this.bone.applyMatrix4(xRotMatrix); // ADAPT: applyMatrix -> applyMatrix4
 
-        if (zxy) {
-          const zRotMatrix = new THREE.Matrix4();
-          zRotMatrix.makeRotationZ(bone.rot.z);
-          this.bone.applyMatrix4(zRotMatrix);
+        const yRotMatrix = new THREE.Matrix4();
+        yRotMatrix.makeRotationY(bone.rot.y);
+        this.bone.applyMatrix4(yRotMatrix);
 
-          const yRotMatrix = new THREE.Matrix4();
-          yRotMatrix.makeRotationY(bone.rot.y);
-          this.bone.applyMatrix4(yRotMatrix);
-        } else {
-          const yRotMatrix = new THREE.Matrix4();
-          yRotMatrix.makeRotationY(bone.rot.y);
-          this.bone.applyMatrix4(yRotMatrix);
-
-          const zRotMatrix = new THREE.Matrix4();
-          zRotMatrix.makeRotationZ(bone.rot.z);
-          this.bone.applyMatrix4(zRotMatrix);
-        }
+        const zRotMatrix = new THREE.Matrix4();
+        zRotMatrix.makeRotationZ(bone.rot.z);
+        this.bone.applyMatrix4(zRotMatrix);
       } else {
         const { x, y, z, w } = bone.rot;
         const q = new THREE.Quaternion(x, y, z, w);
@@ -1269,15 +1264,14 @@ class NinjaModel {
         }
 
         if (frame && frame.rot) {
-          // Compose the per-frame Euler rotation in the SAME order the
-          // bone's bind pose uses (ZYX default, ZXY when the eval flag is
-          // set) — the reference picks the order per-bone
-          // (NinjaAnimation.kt). applyMatrix4 pre-multiplies, so X then
-          // Y then Z gives M = Rz*Ry*Rx (intrinsic ZYX); X then Z then Y
-          // gives M = Ry*Rz*Rx (intrinsic ZXY). Mismatching the bind-pose
-          // order would make a ZXY bone twist as it animates.
+          // DIVERGENCE 1 (2026-06-21): compose the per-frame Euler rotation
+          // ALWAYS X -> Y -> Z (net intrinsic ZYX), IGNORING the ZXY flag —
+          // matching the bind-pose change in readBone above and psov2's
+          // fixed-order NinjaModel.js. applyMatrix4 pre-multiplies, so X
+          // then Y then Z gives M = Rz*Ry*Rx (intrinsic ZYX). Bind and
+          // animation MUST agree on order or the bone twists as it
+          // animates; both now use ZYX unconditionally.
           let obj = new THREE.Bone();
-          const zxy = !!(bone.userData && bone.userData.njZxyRotationOrder);
 
           var xRotMatrix = new THREE.Matrix4();
           xRotMatrix.makeRotationX(frame.rot.x);
@@ -1285,16 +1279,11 @@ class NinjaModel {
 
           var yRotMatrix = new THREE.Matrix4();
           yRotMatrix.makeRotationY(frame.rot.y);
+          obj.applyMatrix4(yRotMatrix);
+
           var zRotMatrix = new THREE.Matrix4();
           zRotMatrix.makeRotationZ(frame.rot.z);
-
-          if (zxy) {
-            obj.applyMatrix4(zRotMatrix);
-            obj.applyMatrix4(yRotMatrix);
-          } else {
-            obj.applyMatrix4(yRotMatrix);
-            obj.applyMatrix4(zRotMatrix);
-          }
+          obj.applyMatrix4(zRotMatrix);
 
           let quat = new THREE.Quaternion();
           quat.setFromRotationMatrix(obj.matrix);

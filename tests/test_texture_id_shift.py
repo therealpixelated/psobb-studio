@@ -93,9 +93,11 @@ class TestComputeBmlInnerTexOffsets:
             self._make_entry("inner_b.nj", False),
         ]
         # Each inner's xvm: 3 records for inner_a, 0 for inner_b.
+        # _compute_bml_inner_tex_offsets now magic-routes via
+        # _list_texture_records (XVMH/PVMH/GVMH) instead of assuming XVMH.
         with patch.object(server, "parse_bml", return_value=entries), \
              patch.object(server, "extract_bml_texture", return_value=b"FAKE_XVM"), \
-             patch.object(server, "_list_xvmh_records",
+             patch.object(server, "_list_texture_records",
                           return_value=[{"tile_index": i} for i in range(3)]):
             from pathlib import Path
             with patch.object(Path, "read_bytes", return_value=b"FAKE_BML"):
@@ -127,7 +129,7 @@ class TestComputeBmlInnerTexOffsets:
         ])
         with patch.object(server, "parse_bml", return_value=entries), \
              patch.object(server, "extract_bml_texture", return_value=b"FAKE"), \
-             patch.object(server, "_list_xvmh_records",
+             patch.object(server, "_list_texture_records",
                           side_effect=lambda *_a, **_k: next(counts)):
             from pathlib import Path
             with patch.object(Path, "read_bytes", return_value=b"FAKE"):
@@ -149,7 +151,7 @@ class TestComputeBmlInnerTexOffsets:
         ]
         with patch.object(server, "parse_bml", return_value=entries), \
              patch.object(server, "extract_bml_texture", return_value=b"FAKE"), \
-             patch.object(server, "_list_xvmh_records",
+             patch.object(server, "_list_texture_records",
                           return_value=[{"tile_index": 0}]):
             from pathlib import Path
             with patch.object(Path, "read_bytes", return_value=b"FAKE"):
