@@ -125,40 +125,74 @@ TEX_MODES = {
 # ---------------------------------------------------------------------------
 
 
-def _read_col(px_format: int, color):
+def _read_col(px_format: int, color, psov2_compat: bool = False):
     """Decode a single source pixel value to an RGBA tuple.
 
     Returns (r,g,b,a) for ARGB/RGB modes (alpha set to 0xFF when the
     source format has no alpha channel) and a 6-tuple
     (r0,g0,b0,r1,g1,b1) for YUV422 (px_format=3) where ``color`` is a
     pair (yuv0, yuv1) — see the YUV422 path.
+
+    ``psov2_compat`` (2026-06-21): switch the 16-bit channel expansion to
+    the JS-style ZERO-FILL used by the dashgl psov2 reference's
+    NinjaTexture.js (``(v&0x7C00)>>7`` etc.) instead of our default
+    bit-replication. The two differ by at most 7/255 per channel — that
+    delta is the ONLY thing between us and psov2 pixel-1:1 (the VQ
+    codebook, 2x2 block placement, and twiddle are byte-identical). Use
+    this for the parity harness; the default (bit-replication) is the
+    strictly-more-correct expansion for normal rendering.
     """
     if px_format == 0:  # ARGB1555
         a = ((color >> 15) & 0x1) * 0xff
-        r = int(((color >> 10) & 0x1f) * 0xff / 0x1f)
-        g = int(((color >> 5) & 0x1f) * 0xff / 0x1f)
-        b = int((color & 0x1f) * 0xff / 0x1f)
+        if psov2_compat:
+            # NinjaTexture.js api_read ARGB1555: zero-fill low bits.
+            r = (color & 0x7C00) >> 7
+            g = (color & 0x03E0) >> 2
+            b = (color & 0x1F) << 3
+        else:
+            r = int(((color >> 10) & 0x1f) * 0xff / 0x1f)
+            g = int(((color >> 5) & 0x1f) * 0xff / 0x1f)
+            b = int((color & 0x1f) * 0xff / 0x1f)
         return (r, g, b, a)
 
     elif px_format == 1:  # RGB565
         a = 0xff
-        r = int(((color >> 11) & 0x1f) * 0xff / 0x1f)
-        g = int(((color >> 5) & 0x3f) * 0xff / 0x3f)
-        b = int((color & 0x1f) * 0xff / 0x1f)
+        if psov2_compat:
+            # NinjaTexture.js RGB565: zero-fill low bits.
+            r = (color >> 8) & 0xF8
+            g = (color >> 3) & 0xFC
+            b = (color << 3) & 0xF8
+        else:
+            r = int(((color >> 11) & 0x1f) * 0xff / 0x1f)
+            g = int(((color >> 5) & 0x3f) * 0xff / 0x3f)
+            b = int((color & 0x1f) * 0xff / 0x1f)
         return (r, g, b, a)
 
     elif px_format == 2:  # ARGB4444
-        a = ((color >> 12) & 0xf) * 0x11
-        r = ((color >> 8) & 0xf) * 0x11
-        g = ((color >> 4) & 0xf) * 0x11
-        b = (color & 0xf) * 0x11
+        # nibble<<4 (zero-fill) is already what psov2 does; *0x11
+        # (bit-replicate) is the more-correct default. Switch on compat.
+        if psov2_compat:
+            a = ((color >> 12) & 0xf) << 4
+            r = ((color >> 8) & 0xf) << 4
+            g = ((color >> 4) & 0xf) << 4
+            b = (color & 0xf) << 4
+        else:
+            a = ((color >> 12) & 0xf) * 0x11
+            r = ((color >> 8) & 0xf) * 0x11
+            g = ((color >> 4) & 0xf) * 0x11
+            b = (color & 0xf) * 0x11
         return (r, g, b, a)
 
     elif px_format == 5:  # RGB555
         a = 0xFF
-        r = int(((color >> 10) & 0x1f) * 0xff / 0x1f)
-        g = int(((color >> 5) & 0x1f) * 0xff / 0x1f)
-        b = int((color & 0x1f) * 0xff / 0x1f)
+        if psov2_compat:
+            r = (color & 0x7C00) >> 7
+            g = (color & 0x03E0) >> 2
+            b = (color & 0x1F) << 3
+        else:
+            r = int(((color >> 10) & 0x1f) * 0xff / 0x1f)
+            g = int(((color >> 5) & 0x1f) * 0xff / 0x1f)
+            b = int((color & 0x1f) * 0xff / 0x1f)
         return (r, g, b, a)
 
     elif px_format == 7:  # ARGB8888
@@ -474,12 +508,16 @@ def _decode_body(
     px_format: int,
     tex_format: int,
     palette: Optional[List[Tuple[int, int, int, int]]] = None,
+    psov2_compat: bool = False,
 ) -> List[Tuple[int, int, int, int]]:
     """Decode the PVR body cursor to a list of (r,g,b,a) tuples in row order.
 
     Cursor is expected to be positioned at the start of the LARGEST mip
     (mip-skip already applied by the caller). Out is row-major
     (top-to-bottom, left-to-right) — same convention as Pillow / numpy.
+
+    ``psov2_compat`` threads JS-style zero-fill channel expansion into
+    every ``_read_col`` call (see _read_col) for pixel-1:1 parity.
     """
     twiddled = tex_format not in [9, 10, 11, 12, 14, 15]
     arr = _detwiddle(w, h) if twiddled else None
@@ -541,7 +579,7 @@ def _decode_body(
                 block = []
                 for _i in range(4):
                     pixel = int.from_bytes(f.read(2), 'little')
-                    block.append(_read_col(px_format, pixel))
+                    block.append(_read_col(px_format, pixel, psov2_compat))
                 codebook.append(block)
         else:
             for _ in range(codebook_size):
@@ -549,8 +587,8 @@ def _decode_body(
                 for _i in range(4):
                     pixel = int.from_bytes(f.read(2), 'little')
                     block.append(pixel)
-                r0, g0, b0, r1, g1, b1 = _read_col(px_format, (block[0], block[3]))
-                r2, g2, b2, r3, g3, b3 = _read_col(px_format, (block[1], block[2]))
+                r0, g0, b0, r1, g1, b1 = _read_col(px_format, (block[0], block[3]), psov2_compat)
+                r2, g2, b2, r3, g3, b3 = _read_col(px_format, (block[1], block[2]), psov2_compat)
                 codebook.append([
                     (r0, g0, b0, 0xFF),
                     (r2, g2, b2, 0xFF),
@@ -602,7 +640,7 @@ def _decode_body(
             ordered = [pixels[i] for i in arr]
         else:
             ordered = pixels
-        return [_read_col(px_format, p) for p in ordered]
+        return [_read_col(px_format, p, psov2_compat) for p in ordered]
 
     # ----- YUV420 -----
     if px_format == 6:
@@ -710,6 +748,7 @@ def _parse_pvr_header(data: bytes):
 def decode_pvr(
     data: bytes,
     palette_data: Optional[bytes] = None,
+    psov2_compat: bool = False,
 ) -> Tuple[int, int, bytes]:
     """Decode a PVR file's largest mip to a (w, h, RGBA8) tuple.
 
@@ -720,6 +759,11 @@ def decode_pvr(
 
     Pixel buffer is row-major, top-to-bottom, RGBA8 (length =
     width*height*4).
+
+    ``psov2_compat`` (2026-06-21): use the dashgl psov2 reference's
+    JS-style zero-fill 16-bit channel expansion for pixel-1:1 parity (see
+    _read_col). Default False = bit-replication (more-correct) for normal
+    rendering.
 
     Raises ValueError on truncated / unsupported input.
     """
@@ -736,7 +780,10 @@ def decode_pvr(
         f.seek(body_off)
     else:
         f.seek(body_off + _mip_skip(tex_format, w))
-    pixels = _decode_body(f, w, h, px_format, tex_format, palette=palette)
+    pixels = _decode_body(
+        f, w, h, px_format, tex_format, palette=palette,
+        psov2_compat=psov2_compat,
+    )
 
     out = bytearray(w * h * 4)
     for i, (r, g, b, a) in enumerate(pixels):
@@ -805,13 +852,17 @@ def _vrsharp_mipmap_offsets(tex_w: int, px_format: int, tex_format: int) -> List
     return offs
 
 
-def _read_vq_codebook(f: io.BytesIO, px_format: int, tex_format: int, w: int):
+def _read_vq_codebook(f: io.BytesIO, px_format: int, tex_format: int, w: int,
+                      psov2_compat: bool = False):
     """Read & decode a VQ / SmallVQ codebook from the cursor.
 
     Returns (codebook, codebook_byte_size). Each codebook entry is a list of
     4 RGBA tuples. Mirrors the codebook-read prologue of ``_decode_body``'s
     VQ branch so the per-mip walk can share one codebook across levels (as
     VrSharp does — the codebook precedes the mip index maps).
+
+    ``psov2_compat`` threads JS-style zero-fill channel expansion (see
+    _read_col) for pixel-1:1 parity.
     """
     if tex_format == 16:
         codebook_size = 16 if w <= 16 else 32 if w == 32 else 128 if w == 64 else 256
@@ -827,15 +878,15 @@ def _read_vq_codebook(f: io.BytesIO, px_format: int, tex_format: int, w: int):
             block = []
             for _i in range(4):
                 pixel = int.from_bytes(f.read(2), 'little')
-                block.append(_read_col(px_format, pixel))
+                block.append(_read_col(px_format, pixel, psov2_compat))
             codebook.append(block)
     else:
         for _ in range(codebook_size):
             block = []
             for _i in range(4):
                 block.append(int.from_bytes(f.read(2), 'little'))
-            r0, g0, b0, r1, g1, b1 = _read_col(px_format, (block[0], block[3]))
-            r2, g2, b2, r3, g3, b3 = _read_col(px_format, (block[1], block[2]))
+            r0, g0, b0, r1, g1, b1 = _read_col(px_format, (block[0], block[3]), psov2_compat)
+            r2, g2, b2, r3, g3, b3 = _read_col(px_format, (block[1], block[2]), psov2_compat)
             codebook.append([
                 (r0, g0, b0, 0xFF),
                 (r2, g2, b2, 0xFF),
@@ -885,6 +936,7 @@ def _rgba_tuples_to_bytes(pixels: List[Tuple[int, int, int, int]]) -> bytes:
 def decode_pvr_mips(
     data: bytes,
     palette_data: Optional[bytes] = None,
+    psov2_compat: bool = False,
 ) -> List[Tuple[int, int, bytes]]:
     """Decode all mip levels of a PVR.
 
@@ -906,14 +958,14 @@ def decode_pvr_mips(
 
     # Non-mipmapped: just decode the one body.
     if tex_format not in [2, 4, 6, 8, 10, 12, 15, 17, 18]:
-        return [decode_pvr(data, palette_data=palette_data)]
+        return [decode_pvr(data, palette_data=palette_data, psov2_compat=psov2_compat)]
 
     # The VrSharp mipmapOffsets model (and the on-disk pyramid) is only
     # defined for SQUARE twiddled/VQ/palettized mip chains. Rectangle-mips
     # (10/12) and any non-square input have no VrSharp pyramid model here, so
     # fall back to the verified largest-mip decode rather than guess.
     if w != h or w == 0 or (w & (w - 1)) != 0 or tex_format in (10, 12):
-        return [decode_pvr(data, palette_data=palette_data)]
+        return [decode_pvr(data, palette_data=palette_data, psov2_compat=psov2_compat)]
 
     n = w.bit_length()                 # number of levels (1×1 .. w×w)
     sizes = [1 << k for k in range(n)]  # ascending: 1, 2, 4, ..., w
@@ -924,9 +976,9 @@ def decode_pvr_mips(
     if tex_format in (4, 17):
         f.seek(body_off)
         try:
-            codebook, cb_bytes = _read_vq_codebook(f, px_format, tex_format, w)
+            codebook, cb_bytes = _read_vq_codebook(f, px_format, tex_format, w, psov2_compat)
         except Exception:
-            return [decode_pvr(data, palette_data=palette_data)]
+            return [decode_pvr(data, palette_data=palette_data, psov2_compat=psov2_compat)]
         data_off = body_off + cb_bytes
         offs = _vrsharp_mipmap_offsets(w, px_format, tex_format)  # largest-first
         mips: List[Tuple[int, int, bytes]] = []
@@ -937,13 +989,13 @@ def decode_pvr_mips(
             f.seek(level_off)
             index_bytes = f.read(nbytes)
             if len(index_bytes) < nbytes:
-                return [decode_pvr(data, palette_data=palette_data)]
+                return [decode_pvr(data, palette_data=palette_data, psov2_compat=psov2_compat)]
             try:
                 pixels = _decode_vq_level(index_bytes, codebook, size, size)
             except (IndexError, ValueError):
-                return [decode_pvr(data, palette_data=palette_data)]
+                return [decode_pvr(data, palette_data=palette_data, psov2_compat=psov2_compat)]
             mips.append((size, size, _rgba_tuples_to_bytes(pixels)))
-        return mips if mips else [decode_pvr(data, palette_data=palette_data)]
+        return mips if mips else [decode_pvr(data, palette_data=palette_data, psov2_compat=psov2_compat)]
 
     # ----- Direct-color / palettized mips: per-level _decode_body. ----------
     offs = _vrsharp_mipmap_offsets(w, px_format, tex_format)  # largest-first
@@ -959,7 +1011,7 @@ def decode_pvr_mips(
             # single pixel (y2&1 == 0 -> shift 0). Mirror that here.
             one = f.read(1)
             if not one:
-                return [decode_pvr(data, palette_data=palette_data)]
+                return [decode_pvr(data, palette_data=palette_data, psov2_compat=psov2_compat)]
             idx = one[0] & 0x0F
             if palette is None:
                 pixels = [(idx * 17, idx * 17, idx * 17, 255)]
@@ -970,13 +1022,13 @@ def decode_pvr_mips(
             mips.append((size, size, _rgba_tuples_to_bytes(pixels)))
             continue
         try:
-            pixels = _decode_body(f, size, size, px_format, tex_format, palette=palette)
+            pixels = _decode_body(f, size, size, px_format, tex_format, palette=palette, psov2_compat=psov2_compat)
         except (ValueError, IndexError):
             # Should not happen for a well-formed pyramid; bail to the safe path.
-            return [decode_pvr(data, palette_data=palette_data)]
+            return [decode_pvr(data, palette_data=palette_data, psov2_compat=psov2_compat)]
         mips.append((size, size, _rgba_tuples_to_bytes(pixels)))
 
-    return mips if mips else [decode_pvr(data, palette_data=palette_data)]
+    return mips if mips else [decode_pvr(data, palette_data=palette_data, psov2_compat=psov2_compat)]
 
 
 # ---------------------------------------------------------------------------

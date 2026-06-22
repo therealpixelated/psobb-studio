@@ -138,6 +138,21 @@ class XjVertex:
     normal: Tuple[float, float, float]
     uv: Tuple[float, float]
     bone_idx: int = -1
+    # Multi-bone skin weights (2026-06-21, DIVERGENCE 3 fix). PSOBB Blue
+    # Burst weighted-vertex chunks (head 0x2c) let a single vertex blend
+    # across up to 3 bones; psov2 NinjaModel.js readVertexChunk:648-697
+    # accumulates skinWeights/skinIndices (weight/255) per bone via a
+    # vertex stack and binds a real THREE.Skeleton. The skinned composite
+    # path previously DROPPED the weight and rigidly bound each weighted
+    # vertex to ONE bone (``bone_idx``), distorting weighted seams (e.g.
+    # the De Rol Le skull face splayed into a reddish anemone). These
+    # fields carry up to 4 (bone DFS index, weight) pairs so the frontend
+    # re-bake can blend. Default is the single-bone rigid case derived
+    # from ``bone_idx`` at emit time (weight 1.0). ``skin_bones`` of -1
+    # marks an unused slot. The sum of active weights is normalised to 1.0
+    # at emit so a partial 0x2c chain (only flag 0x80 seen) still binds.
+    skin_bones: Tuple[int, int, int, int] = (-1, -1, -1, -1)
+    skin_weights: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
     # Per-vertex RGBA in 0..1 (2026-06-20). PSOBB bakes shading / AO /
     # tint into either a per-vertex ARGB chunk (strip types 70/71/72 or
     # vertex chunk heads 0x23/0x2a) OR the material-chunk DIFFUSE color.
@@ -403,14 +418,16 @@ def _mat4_compose_trs(
         0.0,  0.0, 0.0, 1.0,
     ]
 
-    if zxy_order:
-        # ZXY: R = Rz * Rx * Ry  (intrinsic Z, X, Y; flag EVAL_ZXY_ANG).
-        R = _mat4_mul(_mat4_mul(Rz, Rx), Ry)
-    else:
-        # ZYX: R = Rz * Ry * Rx  (Phantasmal default — three.js "ZYX").
-        # Confirmed against
-        # web/src/jsMain/kotlin/world/phantasmal/web/core/rendering/conversion/NinjaGeometryConversion.kt::convertObject.
-        R = _mat4_mul(_mat4_mul(Rz, Ry), Rx)
+    # DIVERGENCE 1 (2026-06-21): ALWAYS compose ZYX and IGNORE the
+    # ``zxy_order`` flag, matching psov2 NinjaModel.js readBone (324-350)
+    # which composes the Euler bind rotation X->Y->Z (net intrinsic ZYX)
+    # for EVERY bone and only console.error()s on a ZXY bone — it never
+    # switches order. The prior ZXY branch diverged the bind pose on
+    # flagged bones (De Rol Le head/jaw -> splayed skull) versus the psov2
+    # reference. ``zxy_order`` is retained for call-site compatibility but
+    # is intentionally unused.
+    #   ZYX: R = Rz * Ry * Rx  (three.js "ZYX"; Phantasmal convertObject).
+    R = _mat4_mul(_mat4_mul(Rz, Ry), Rx)
 
     # T * R, with translation column substituted in the last column.
     M = list(R)
@@ -534,6 +551,16 @@ class _ChunkVertex:
     # (Nj heads 0x23 / 0x2a — psov2 NinjaModel.js:638). None means the
     # slot has no own color and the material diffuse should be used.
     color: Optional[Tuple[float, float, float, float]] = None
+    # Weighted-vertex (head 0x2c) skin payload (2026-06-21, DIVERGENCE 3).
+    # ``weight`` is the raw u16 boneWeight from the chunk; ``weight_slot``
+    # is 0/1/2 derived from the chunk flag (0x80/0x81/0x82) i.e. which of
+    # skinWeights.x/y/z this contribution fills (psov2 NinjaModel.js:
+    # 682-695). ``index`` already holds ``base_index + ofs`` (the vertex
+    # stack slot), mirroring psov2's ``stackOfs = indexOfs + ofs``. None
+    # means this is NOT a weighted vertex (rigid; bind fully to the owning
+    # bone). The owning-bone DFS index is supplied by the caller.
+    weight: Optional[int] = None
+    weight_slot: int = 0
 
 
 def _parse_vertex_chunk(
@@ -613,9 +640,19 @@ def _parse_vertex_chunk(
                 # NJD_CV_NF      — u16 idx-offset, u16 boneWeight
                 if pos + 4 > end:
                     break
-                idx_off, _bw = struct.unpack_from("<HH", body, pos)
+                idx_off, bw = struct.unpack_from("<HH", body, pos)
                 pos += 4
                 vertex_index = base_index + idx_off
+                # DIVERGENCE 3 (2026-06-21): surface the weighted-vertex
+                # payload. The chunk ``flags`` byte (0x80/0x81/0x82) selects
+                # which skinWeights component this contribution fills
+                # (psov2 NinjaModel.js:682-695). Mask to the low 2 bits so
+                # 0x80->0, 0x81->1, 0x82->2.
+                vertices.append(_ChunkVertex(
+                    vertex_index, (x, y, z), normal, color,
+                    weight=bw, weight_slot=(flags & 0x03),
+                ))
+                continue
             else:
                 # NJD_CV_D8/UF/S5/S4/IN — skip 4 (user/material flags)
                 pos += 4
@@ -649,9 +686,17 @@ def _parse_vertex_chunk(
             if type_id == 44:
                 if pos + 4 > end:
                     break
-                idx_off, _bw = struct.unpack_from("<HH", body, pos)
+                idx_off, bw = struct.unpack_from("<HH", body, pos)
                 pos += 4
                 vertex_index = base_index + idx_off
+                # DIVERGENCE 3 (2026-06-21): weighted vertex w/ normal
+                # (NJD_CV_VN_NF, head 0x2c). Same accumulation semantics as
+                # type 37 — psov2 NinjaModel.js:658-695.
+                vertices.append(_ChunkVertex(
+                    vertex_index, (x, y, z), normal, color,
+                    weight=bw, weight_slot=(flags & 0x03),
+                ))
+                continue
             else:
                 # NJD_CV_VN_D8/UF/S5/S4/IN — skip 4
                 pos += 4
@@ -1833,6 +1878,7 @@ def _process_vertex_chunks_skinned(
     state: "_NinjaChunkState",
     bone_idx: int,
     bone_idx_map: dict,
+    slot_skin: dict,
 ) -> None:
     """Variant of ``_process_vertex_chunks`` that does NOT bake to world space.
 
@@ -1858,6 +1904,64 @@ def _process_vertex_chunks_skinned(
                     color=cv.color,
                 )
                 bone_idx_map[cv.index] = bone_idx
+                # DIVERGENCE 3 (2026-06-21): accumulate per-slot multi-bone
+                # skin weights, mirroring psov2 NinjaModel.js:648-707. A
+                # weighted vertex (head 0x2c -> cv.weight is not None)
+                # INHERITS the prior contributions already recorded at this
+                # slot (psov2 reads vertexStack[stackOfs]) and then ADDS the
+                # current bone's weight component. A rigid vertex (no weight)
+                # binds fully (1.0) to the owning bone, replacing any prior
+                # contributions at the slot (the slot was freshly written
+                # above). ``slot_skin[index]`` is an ordered dict mapping
+                # bone DFS index -> accumulated float weight.
+                if cv.weight is not None:
+                    prev = slot_skin.get(cv.index)
+                    accum = dict(prev) if prev else {}
+                    accum[bone_idx] = cv.weight / 255.0
+                    slot_skin[cv.index] = accum
+                else:
+                    slot_skin[cv.index] = {bone_idx: 1.0}
+
+
+def _resolve_skin_weights(
+    slot_skin: dict,
+    slot_index: int,
+    owner: int,
+) -> Tuple[Tuple[int, int, int, int], Tuple[float, float, float, float]]:
+    """Project a slot's accumulated {bone:weight} map to a normalised
+    4-bone skin binding (DIVERGENCE 3, 2026-06-21).
+
+    Mirrors psov2's final per-vertex skinWeights/skinIndices vectors
+    (NinjaModel.js binds a THREE.Skeleton with up to 4 influences). We:
+
+      * take the slot's accumulated contributions (multi-bone for a 0x2c
+        chain, single-bone for a rigid vertex),
+      * keep the 4 strongest (PSOBB authoring uses <=3, but 4 is the
+        skeleton attribute width),
+      * NORMALISE so the weights sum to 1.0 (a partial 0x2c chain — only
+        the 0x80 contribution seen, weight<1.0 — would otherwise shrink
+        the vertex toward the origin under linear-blend skinning).
+
+    Falls back to a rigid 1.0 bind on ``owner`` when the slot carries no
+    recorded contributions (defensive — should not happen for tracked
+    slots, matches the prior single-bone behaviour).
+    """
+    contrib = slot_skin.get(slot_index)
+    if not contrib:
+        return (owner, -1, -1, -1), (1.0, 0.0, 0.0, 0.0)
+    # Strongest-first, cap to 4 influences.
+    items = sorted(contrib.items(), key=lambda kv: kv[1], reverse=True)[:4]
+    total = sum(w for _b, w in items)
+    if total <= 0.0:
+        return (owner, -1, -1, -1), (1.0, 0.0, 0.0, 0.0)
+    bones = [-1, -1, -1, -1]
+    weights = [0.0, 0.0, 0.0, 0.0]
+    for i, (b, w) in enumerate(items):
+        bones[i] = b
+        weights[i] = w / total
+    return (bones[0], bones[1], bones[2], bones[3]), (
+        weights[0], weights[1], weights[2], weights[3],
+    )
 
 
 def _emit_strip_mesh_skinned(
@@ -1866,6 +1970,7 @@ def _emit_strip_mesh_skinned(
     clockwise: bool,
     out_meshes: List[XjMesh],
     bone_idx_map: dict,
+    slot_skin: dict,
     strip_flags: int = 0,
 ) -> None:
     """Variant of ``_emit_strip_mesh`` that surfaces bone-local + bone_idx.
@@ -1879,6 +1984,8 @@ def _emit_strip_mesh_skinned(
 
     ``bone_idx_map`` is a ``dict[slot_idx -> bone_dfs_idx]`` populated
     by ``_process_vertex_chunks_skinned`` during the vertex pass.
+    ``slot_skin`` is the parallel ``dict[slot_idx -> {bone:weight}]``
+    map of multi-bone skin contributions (DIVERGENCE 3).
     """
     default_color = state.diffuse_color if state.diffuse_color is not None else (1.0, 1.0, 1.0, 1.0)
     local_verts: List[XjVertex] = []
@@ -1890,6 +1997,7 @@ def _emit_strip_mesh_skinned(
         normal = sv.normal if sv.normal is not None else (slot.normal or (0.0, 1.0, 0.0))
         uv = sv.uv if sv.uv is not None else (0.0, 0.0)
         owner = bone_idx_map.get(sv.index, -1)
+        skin_bones, skin_weights = _resolve_skin_weights(slot_skin, sv.index, owner)
         # Color precedence: strip color > slot color > material diffuse;
         # alpha floored to 0.3 (mirrors the world-baked emitter).
         if sv.color is not None:
@@ -1901,7 +2009,11 @@ def _emit_strip_mesh_skinned(
         if ca < 0.3:
             ca = 0.3
         local_indices.append(len(local_verts))
-        local_verts.append(XjVertex(pos=slot.pos, normal=normal, uv=uv, bone_idx=owner, color=(cr, cg, cb, ca)))
+        local_verts.append(XjVertex(
+            pos=slot.pos, normal=normal, uv=uv, bone_idx=owner,
+            color=(cr, cg, cb, ca),
+            skin_bones=skin_bones, skin_weights=skin_weights,
+        ))
 
     tri_indices = _tristrip_to_triangles(local_indices, cw=clockwise)
     if not tri_indices:
@@ -1953,6 +2065,7 @@ def _process_polygon_chunks_skinned(
     state: "_NinjaChunkState",
     out_meshes: List[XjMesh],
     bone_idx_map: dict,
+    slot_skin: dict,
 ) -> None:
     """Variant of ``_process_polygon_chunks`` that calls ``_emit_strip_mesh_skinned``.
 
@@ -1961,7 +2074,7 @@ def _process_polygon_chunks_skinned(
     """
     state.cache_active = None
     chunks = _walk_chunk_stream(body, start_off)
-    _process_polygon_chunk_list_skinned(body, chunks, state, out_meshes, bone_idx_map)
+    _process_polygon_chunk_list_skinned(body, chunks, state, out_meshes, bone_idx_map, slot_skin)
 
 
 def _process_polygon_chunk_list_skinned(
@@ -1970,6 +2083,7 @@ def _process_polygon_chunk_list_skinned(
     state: "_NinjaChunkState",
     out_meshes: List[XjMesh],
     bone_idx_map: dict,
+    slot_skin: dict,
 ) -> None:
     """Recursive variant matching ``_process_polygon_chunk_list``."""
     for (hdr, type_id, flags, body_pos, body_size) in chunks:
@@ -1985,7 +2099,7 @@ def _process_polygon_chunk_list_skinned(
             state.cache_active = None
             cached = state.cached_chunks.get(flags)
             if cached:
-                _process_polygon_chunk_list_skinned(body, cached, state, out_meshes, bone_idx_map)
+                _process_polygon_chunk_list_skinned(body, cached, state, out_meshes, bone_idx_map, slot_skin)
         elif type_id == 1:
             # BlendAlpha — track active blend mode (see world-baked variant).
             try:
@@ -2013,7 +2127,7 @@ def _process_polygon_chunk_list_skinned(
             for (cw, strip_verts) in sc.strips:
                 if len(strip_verts) < 3:
                     continue
-                _emit_strip_mesh_skinned(state, strip_verts, cw, out_meshes, bone_idx_map, flags)
+                _emit_strip_mesh_skinned(state, strip_verts, cw, out_meshes, bone_idx_map, slot_skin, flags)
 
 
 def parse_xj_njcm_skinned(
@@ -2090,6 +2204,11 @@ def parse_xj_njcm_skinned(
     # Lives outside _NinjaChunkState because that class uses __slots__ and
     # we want a zero-touch addition.
     bone_idx_map: dict = {}
+    # Sidecar map for multi-bone skin weights (DIVERGENCE 3, 2026-06-21):
+    # vertex slot index -> {bone DFS index: accumulated weight}. Built in
+    # the vertex pass (psov2-style 0x2c accumulation) and consumed by the
+    # strip emit. Same zero-touch sidecar rationale as bone_idx_map.
+    slot_skin: dict = {}
 
     # Vertex pass: each node's vertex chunk loads slots, tagged with
     # the owning DFS bone index (looked up via off_to_bone).
@@ -2125,7 +2244,7 @@ def parse_xj_njcm_skinned(
         vlist_off, _plist_off, _bbox = mesh
         if vlist_off:
             owner = off_to_bone.get(off, -1)
-            _process_vertex_chunks_skinned(body, vlist_off, state, owner, bone_idx_map)
+            _process_vertex_chunks_skinned(body, vlist_off, state, owner, bone_idx_map, slot_skin)
 
     # Polygon pass: emit bone-local strips with per-vertex bone_idx.
     for off in visit_order:
@@ -2142,7 +2261,7 @@ def parse_xj_njcm_skinned(
             continue
         _vlist_off, plist_off, _bbox = mesh
         if plist_off:
-            _process_polygon_chunks_skinned(body, plist_off, state, out_meshes, bone_idx_map)
+            _process_polygon_chunks_skinned(body, plist_off, state, out_meshes, bone_idx_map, slot_skin)
 
     return out_meshes, bones
 

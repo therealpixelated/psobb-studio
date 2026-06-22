@@ -315,17 +315,34 @@ def _afs_inner_logical_name(archive_stem: str, idx: int, ext: Optional[str]) -> 
 
 
 def _count_xvmh_records(xvm: bytes) -> int:
-    """Count XVRT records inside a decompressed XVMH archive.
+    """Count texture records inside a decompressed texture archive.
 
-    Reads the declared record count from XVMH's u32 at offset 0x08.
-    Returns 0 for non-XVMH input or malformed headers; never raises.
-    Used by the deep-walk path so we can emit one row per XVR sub-record
-    of an ItemTexture inner without parsing the whole record table.
+    Magic-routes (2026-06-21, psov2 multivariant) so Dreamcast (PVMH) and
+    GameCube (GVMH) inline archives are counted as texture PROVIDERS, not
+    silently skipped:
+
+        XVMH  -> declared u32 LE count at +0x08 (Xbox / PSOBB.IO)
+        PVMH  -> declared u16 LE count at +0x0A (Dreamcast)
+        GVMH  -> declared u16 BE count at +0x0A (GameCube)
+
+    Returns 0 for unrecognised / malformed input; never raises. Used by
+    the deep-walk + sibling-fallback paths so we can emit one row per
+    sub-record of a textured inner without parsing the whole record table.
     """
-    if not xvm or len(xvm) < 0x40 or xvm[:4] != b"XVMH":
+    if not xvm or len(xvm) < 0x10:
         return 0
+    head = xvm[:4]
     try:
-        n = struct.unpack_from("<I", xvm, 0x08)[0]
+        if head == b"XVMH":
+            if len(xvm) < 0x40:
+                return 0
+            n = struct.unpack_from("<I", xvm, 0x08)[0]
+        elif head == b"PVMH":
+            n = struct.unpack_from("<H", xvm, 0x0A)[0]
+        elif head == b"GVMH":
+            n = struct.unpack_from(">H", xvm, 0x0A)[0]
+        else:
+            return 0
     except struct.error:
         return 0
     # Sanity-cap to defend against malformed counts. PSOBB items rarely
@@ -826,22 +843,21 @@ def list_bml_xvmh_inners(bml_path: Path) -> List[tuple]:
             continue
         if not ent.has_texture or ent.tex_size_compressed == 0:
             continue
-        # Read the XVM and count XVR records via a tight inline parse
-        # (avoids importing server._list_xvmh_records). The XVMH format:
-        #   u8[4] "XVMH"; u32 body_size; u32 xvr_count; ...
+        # Read the inline archive and count its texture records. Magic-
+        # routes XVMH (Xbox) / PVMH (Dreamcast) / GVMH (GameCube) via
+        # ``_count_xvmh_records`` so a Dreamcast BML's textured inners are
+        # surfaced for the cross-inner positional fallback instead of
+        # being silently skipped (2026-06-21, psov2 multivariant).
         try:
             xvm = extract_bml_texture(buf, ent.name)
         except Exception:
             continue
-        if xvm is None or len(xvm) < 0x40 or xvm[:4] != b"XVMH":
+        if xvm is None:
             continue
-        try:
-            xvr_count = struct.unpack_from("<I", xvm, 0x08)[0]
-        except struct.error:
-            continue
-        # Sanity-cap to defang malformed counts; real models have <=64
-        # textures (PSOBB's runtime tops out at this magnitude).
-        if 0 < xvr_count < 256:
+        xvr_count = _count_xvmh_records(xvm)
+        # Sanity-cap is already applied inside _count_xvmh_records (real
+        # models have <=64 textures; PSOBB's runtime tops out there).
+        if xvr_count > 0:
             out.append((ent.name, int(xvr_count)))
 
     with _BML_XVMH_LOCK:

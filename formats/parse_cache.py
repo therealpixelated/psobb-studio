@@ -94,7 +94,12 @@ _DISK_PERSIST_MAX_BYTES = 32 * 1024 * 1024
 # (additive FX — e.g. bm_eff_ice). v2 pickles carry the old default
 # blend_mode="none" for every descriptor mesh, so effect models would keep
 # rendering dark-opaque off a stale pkl until this bump forces a re-parse.
-_DISK_CACHE_SCHEMA = 3
+# v4 (2026-06-21, DIVERGENCE 3): XjVertex gained ``skin_bones`` /
+# ``skin_weights`` for multi-bone skinning. v3 pickles carry XjVertex
+# instances without these fields, so the skinned composite would keep
+# rigidly binding weighted verts (distorted De Rol Le skull) off a stale
+# pkl until this bump forces a re-parse.
+_DISK_CACHE_SCHEMA = 4
 
 # Disk cache root. Created on first write; the ``ensure_cache_dir``
 # helper in the server points us at the real location.
