@@ -86,7 +86,7 @@ const state = {
   selectedTileIdx: 0,
   shape: "sphere",
   useUpscaled: true,
-  autoRotate: true,
+  autoRotate: false,
   wireframe: false,
   // three.js
   renderer: null,
@@ -322,6 +322,19 @@ function resizeRenderer() {
   requestRender();
 }
 
+// Restore the default "fit to view" framing — camera at the standard
+// model distance, model unrotated — so an explicitly-selected part/model
+// lands CENTERED instead of inheriting the previous selection's zoom/spin.
+// This is the "some things don't center when you click them / I had to pan
+// around to find it" fix. Model mode only (scene mode owns its own camera
+// via sceneCamDist). Cheap + idempotent; safe to call on every open.
+function resetModelView() {
+  if (state.sceneRoot) return;
+  if (state.camera) state.camera.position.set(0, 0, 3.2);
+  if (state.mesh) state.mesh.rotation.set(0, 0, 0);
+  requestRender();
+}
+
 function disposeMesh() {
   if (state.mesh) {
     state.scene.remove(state.mesh);
@@ -542,7 +555,7 @@ function startLoop() {
     if (!shouldAnimateContinuously()) { state.rafId = null; return; }
     state.rafId = requestAnimationFrame(tick);
     if (state.autoRotate && state.mesh && !state.drag.active && !state.sceneRoot) {
-      state.mesh.rotation.y += 0.008;
+      state.mesh.rotation.y += 0.003;
     }
     // Skeletal animation tick (no-op when state.anim.skinned is false
     // or no motion is loaded). Defined at the end of this file.
@@ -2931,6 +2944,10 @@ function highlightInnerPickList(value) {
  */
 async function loadInnerSelection(info) {
   if (!info || !info.current) return;
+  // Re-frame on every part switch so the newly-selected inner lands
+  // centered (parts normalize to a 2-unit box at origin; this clears any
+  // carried-over zoom from the prior part).
+  resetModelView();
   const sel = info.current;
   if (sel === "__all__") {
     setStatus(`loading ${info.primaries.length} inner parts...`);
@@ -3768,6 +3785,9 @@ async function openByPath(modelPath, _entry, matchedTextures) {
     `<br/><span class="dim">drag to rotate, scroll to zoom.</span>`;
   setStatus(`loading model ${resolvedMeshPath}...`);
   ensureRenderer();
+  // Re-frame for every model/variant open so the new model lands centered
+  // at the default fit-to-view distance (not the prior model's zoom).
+  resetModelView();
 
   // Bundle prefetch: kicks off the consolidated /api/model_bundle GET
   // in parallel with three.js renderer setup. tryLoadSkinnedMesh /
