@@ -478,7 +478,11 @@ def test_classify_dat_bin_families():
     assert _classify_dat_bin("fogentry.dat", "map") == "map"
     assert _classify_dat_bin("ws_data_e.bin", "map") == "metadata"
     assert _classify_dat_bin("ggerr_ja.bin", "map") == "metadata"
-    assert _classify_dat_bin("npcplayerchar.dat", "map") == "model"
+    # npcplayerchar.dat is a NOL roster/config table (magic "NOL\0"), NOT
+    # geometry — classifying it as "model" only ever produced the grey
+    # "model unavailable" cube, so the grey-cube fix (1942e74) rebucketed
+    # it to metadata alongside the other NOL/string tables.
+    assert _classify_dat_bin("npcplayerchar.dat", "map") == "metadata"
     # Unrecognized loose .dat keeps the neutral default — NOT quest.
     assert _classify_dat_bin("mystery_blob.dat", "map") == "map"
 
